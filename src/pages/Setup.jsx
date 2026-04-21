@@ -379,7 +379,6 @@ const styles = {
     backgroundColor: '#1a1a1a',
     borderRadius: 12,
     padding: 24,
-    maxWidth: 600,
   },
   label: {
     display: 'block',
