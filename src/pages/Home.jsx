@@ -108,6 +108,14 @@ export default function Home() {
           const p = presence[podId];
           const isOnline = p?.online;
           const scanners = p?.scanners || [];
+          const operator = p?.operator || '';
+          const status = p?.status || 'offline';
+          const isPaused = status === 'paused';
+          const isActive = isOnline && (status === 'scanning' || status === 'ready' || status === 'pair_scanner');
+
+          const statusLabel = isPaused ? 'PAUSED' : isActive ? 'ONLINE' : 'OFFLINE';
+          const statusColor = isPaused ? '#EAB308' : isActive ? '#22C55E' : '#555';
+          const statusTextColor = isPaused ? '#fff' : isActive ? '#fff' : '#999';
 
           return (
             <Link
@@ -121,19 +129,27 @@ export default function Home() {
                 <div
                   style={{
                     ...styles.statusBadge,
-                    backgroundColor: isOnline ? '#22C55E' : '#555',
-                    color: isOnline ? '#fff' : '#999',
+                    backgroundColor: statusColor,
+                    color: statusTextColor,
                   }}
                 >
                   <div
                     style={{
                       ...styles.statusDot,
-                      backgroundColor: isOnline ? '#fff' : '#777',
+                      backgroundColor: isPaused ? '#fff' : isActive ? '#fff' : '#777',
                     }}
                   />
-                  {isOnline ? 'ONLINE' : 'OFFLINE'}
+                  {statusLabel}
                 </div>
               </div>
+
+              {/* Operator */}
+              {operator && isOnline && (
+                <p style={{ color: '#aaa', fontSize: 13, margin: '0 0 8px' }}>
+                  Operator: <strong style={{ color: '#fff' }}>{operator}</strong>
+                  {isPaused && <span style={{ color: '#EAB308', marginLeft: 8 }}>⏸ Paused</span>}
+                </p>
+              )}
 
               {/* Scanner status */}
               <div style={styles.scannerSection}>
@@ -142,21 +158,21 @@ export default function Home() {
                     <div key={i} style={styles.scannerRow}>
                       <div style={styles.scannerDotGreen} />
                       <span style={styles.scannerName}>{name}</span>
-                      <span style={styles.scannerLinked}>Linked</span>
+                      <span style={styles.scannerLinked}>Paired ✓</span>
                     </div>
                   ))
                 ) : isOnline ? (
                   <div style={styles.scannerRow}>
                     <div style={styles.scannerDotYellow} />
                     <span style={styles.scannerPending}>
-                      Waiting for scanner setup...
+                      Setting up scanner...
                     </span>
                   </div>
                 ) : (
                   <div style={styles.scannerRow}>
                     <div style={styles.scannerDotGray} />
                     <span style={styles.scannerOffline}>
-                      No scanners connected
+                      Not connected
                     </span>
                   </div>
                 )}

@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { db } from '../firebase';
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
   addDoc,
   setDoc,
-  deleteDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
   serverTimestamp,
   Timestamp,
@@ -19,9 +16,7 @@ import {
 import { isValidISBN, cleanISBN } from '../utils/isbn';
 import { playErrorBeep } from '../utils/audio';
 import ExceptionModal from '../components/ExceptionModal';
-import ScannerSelector from '../components/ScannerSelector';
 
-// Color name lookup for display
 const COLOR_NAMES = {
   '#EF4444': 'RED',
   '#3B82F6': 'BLUE',
@@ -35,17 +30,29 @@ function getColorName(hex) {
   return COLOR_NAMES[hex] || hex;
 }
 
+// Setup phases
+const PHASE_OPERATOR = 'operator';
+const PHASE_PAIR_SCANNER = 'pair_scanner';
+const PHASE_READY = 'ready';
+const PHASE_SCANNING = 'scanning';
+const PHASE_PAUSED = 'paused';
+
 export default function Pod() {
   const [searchParams] = useSearchParams();
   const podId = searchParams.get('id') || 'A';
 
-  // Setup phase
-  const [setupDone, setSetupDone] = useState(false);
-  const [scanner1, setScanner1] = useState('');
-  const [scanner2, setScanner2] = useState('');
+  // Setup phases
+  const [phase, setPhase] = useState(PHASE_OPERATOR);
+  const [operatorName, setOperatorName] = useState('');
+  const [scanner1Name, setScanner1Name] = useState('');
+  const [scanner1Paired, setScanner1Paired] = useState(false);
+  const [scanner2Name, setScanner2Name] = useState('');
+  const [scanner2Paired, setScanner2Paired] = useState(false);
   const [activeScanner, setActiveScanner] = useState(1);
-  const [showRegister2, setShowRegister2] = useState(false);
-  const [scanner2Input, setScanner2Input] = useState('');
+  const [pairTarget, setPairTarget] = useState(1); // which scanner we're pairing
+  const [showAddScanner2, setShowAddScanner2] = useState(false);
+  const [showSwitchOperator, setShowSwitchOperator] = useState(false);
+  const [switchName, setSwitchName] = useState('');
 
   // Job data
   const [job, setJob] = useState(null);
@@ -53,75 +60,92 @@ export default function Pod() {
 
   // Scanning state
   const [scanInput, setScanInput] = useState('');
-  const [totalScans, setTotalScans] = useState(0);
+  const [localCount, setLocalCount] = useState(0); // optimistic local count
+  const [firestoreCount, setFirestoreCount] = useState(0);
   const [exceptionCount, setExceptionCount] = useState(0);
   const [pace, setPace] = useState(0);
   const [flashColor, setFlashColor] = useState(null);
   const [flashText, setFlashText] = useState('');
   const [showExceptionModal, setShowExceptionModal] = useState(false);
+  const [lastScanTime, setLastScanTime] = useState(null);
 
   const inputRef = useRef(null);
-  const scanTimestamps = useRef([]);
+  const pairInputRef = useRef(null);
+  const recentScansRef = useRef([]);
 
-  // Keep input focused at all times
+  const totalScans = Math.max(localCount, firestoreCount);
+  const isScanning = phase === PHASE_SCANNING;
+  const isPaused = phase === PHASE_PAUSED;
+
+  // Keep input focused at all times during scanning
   const refocusInput = useCallback(() => {
-    if (inputRef.current && !showExceptionModal && !showRegister2) {
+    if (isScanning && inputRef.current && !showExceptionModal && !showAddScanner2 && !showSwitchOperator) {
       inputRef.current.focus();
     }
-  }, [showExceptionModal, showRegister2]);
+  }, [isScanning, showExceptionModal, showAddScanner2, showSwitchOperator]);
 
   useEffect(() => {
-    const handler = () => refocusInput();
+    if (!isScanning) return;
+    const handler = () => setTimeout(refocusInput, 50);
     document.addEventListener('mousedown', handler);
     document.addEventListener('touchstart', handler);
-    document.addEventListener('keydown', handler);
     return () => {
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('touchstart', handler);
-      document.removeEventListener('keydown', handler);
     };
-  }, [refocusInput]);
+  }, [isScanning, refocusInput]);
+
+  // Also refocus on keydown if not in a modal
+  useEffect(() => {
+    if (!isScanning) return;
+    const handler = (e) => {
+      if (!showExceptionModal && !showAddScanner2 && !showSwitchOperator) {
+        refocusInput();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isScanning, showExceptionModal, showAddScanner2, showSwitchOperator, refocusInput]);
 
   // Load active job
   useEffect(() => {
-    const loadJob = async () => {
-      const q = query(
-        collection(db, 'jobs'),
-        where('meta.active', '==', true)
-      );
-      const snap = await getDocs(q);
+    const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
+    const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
         const jobDoc = snap.docs[0];
         const data = jobDoc.data();
         setJob({ id: jobDoc.id, ...data });
 
-        // Cache manifest locally for fast lookup
         if (data.meta.mode === 'multi') {
-          const manifestSnap = await getDocs(
-            collection(db, 'jobs', jobDoc.id, 'manifest')
-          );
-          const cache = {};
-          manifestSnap.forEach((d) => {
-            cache[d.id] = d.data().poName;
+          getDocs(collection(db, 'jobs', jobDoc.id, 'manifest')).then((ms) => {
+            const cache = {};
+            ms.forEach((d) => { cache[d.id] = d.data().poName; });
+            setManifestCache(cache);
           });
-          setManifestCache(cache);
         }
+      } else {
+        setJob(null);
       }
-    };
-    loadJob();
+    });
+    return unsub;
   }, []);
 
-  // Presence heartbeat — write pod status to Firestore every 30s
+  // Presence heartbeat
   useEffect(() => {
-    if (!setupDone) return;
+    if (phase === PHASE_OPERATOR) return;
 
     const presenceRef = doc(db, 'presence', podId);
-    const scanners = [scanner1, scanner2].filter(Boolean);
+    const scanners = [
+      scanner1Paired ? scanner1Name : null,
+      scanner2Paired ? scanner2Name : null,
+    ].filter(Boolean);
 
     const writePresence = () => {
       setDoc(presenceRef, {
         podId,
         scanners,
+        operator: operatorName,
+        status: phase,
         online: true,
         lastSeen: serverTimestamp(),
       });
@@ -129,20 +153,13 @@ export default function Pod() {
 
     writePresence();
     const interval = setInterval(writePresence, 30000);
-
-    // Cleanup: mark offline on unmount
     return () => {
       clearInterval(interval);
-      setDoc(presenceRef, {
-        podId,
-        scanners,
-        online: false,
-        lastSeen: serverTimestamp(),
-      });
+      setDoc(presenceRef, { podId, scanners, operator: operatorName, status: 'offline', online: false, lastSeen: serverTimestamp() });
     };
-  }, [setupDone, podId, scanner1, scanner2]);
+  }, [phase, podId, operatorName, scanner1Name, scanner1Paired, scanner2Name, scanner2Paired]);
 
-  // Listen for scan count for this pod
+  // Listen for scan count for this pod (Firestore sync)
   useEffect(() => {
     if (!job) return;
     const today = new Date();
@@ -156,20 +173,19 @@ export default function Pod() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      setTotalScans(snap.size);
-      // Compute pace from scan timestamps
+      setFirestoreCount(snap.size);
+
       const now = Date.now();
       const fifteenMinAgo = now - 15 * 60 * 1000;
-      const recentScans = snap.docs.filter((d) => {
+      const recent = snap.docs.filter((d) => {
         const ts = d.data().timestamp?.toDate?.();
         return ts && ts.getTime() > fifteenMinAgo;
       });
-      const minutes = Math.min(15, (now - today.getTime()) / 60000);
-      if (minutes > 0 && recentScans.length > 0) {
-        setPace(Math.round((recentScans.length / Math.min(15, minutes)) * 60));
+      const elapsed = Math.min(15, (now - today.getTime()) / 60000);
+      if (elapsed > 0 && recent.length > 0) {
+        setPace(Math.round((recent.length / Math.min(15, elapsed)) * 60));
       }
     });
-
     return unsub;
   }, [job, podId]);
 
@@ -185,34 +201,25 @@ export default function Pod() {
       where('podId', '==', podId),
       where('timestamp', '>=', Timestamp.fromDate(today))
     );
-
-    const unsub = onSnapshot(q, (snap) => {
-      setExceptionCount(snap.size);
-    });
-
+    const unsub = onSnapshot(q, (snap) => setExceptionCount(snap.size));
     return unsub;
   }, [job, podId]);
 
   const flash = (color, text, duration = 600) => {
     setFlashColor(color);
     setFlashText(text);
-    setTimeout(() => {
-      setFlashColor(null);
-      setFlashText('');
-    }, duration);
+    setTimeout(() => { setFlashColor(null); setFlashText(''); }, duration);
   };
 
-  const handleScan = async (raw) => {
+  const getCurrentScannerName = () => {
+    if (activeScanner === 2 && scanner2Paired) return scanner2Name;
+    return scanner1Name;
+  };
+
+  const handleScan = (raw) => {
     const isbn = cleanISBN(raw);
     if (!isbn) return;
 
-    const currentScanner =
-      activeScanner === 1 ? scanner1 : scanner2 || scanner1;
-
-    // Track timestamps for pace
-    scanTimestamps.current.push(Date.now());
-
-    // Validate ISBN
     if (!isValidISBN(isbn)) {
       playErrorBeep();
       flash('#EF4444', 'INVALID SCAN — RESCAN', 1200);
@@ -224,48 +231,36 @@ export default function Pod() {
       return;
     }
 
-    // Single PO mode
+    // Optimistic local count update
+    setLocalCount((c) => c + 1);
+    setLastScanTime(new Date());
+    recentScansRef.current.push(Date.now());
+
+    const scannerName = getCurrentScannerName();
+
     if (job.meta.mode === 'single') {
       flash('#22C55E', '✓ SCANNED');
-      // Fire-and-forget write
       addDoc(collection(db, 'scans'), {
-        jobId: job.id,
-        podId,
-        scannerId: currentScanner,
-        isbn,
-        poName: job.meta.name,
-        timestamp: serverTimestamp(),
-        type: 'standard',
+        jobId: job.id, podId, scannerId: scannerName, isbn,
+        poName: job.meta.name, timestamp: serverTimestamp(), type: 'standard',
       });
       return;
     }
 
-    // Multi-PO mode
+    // Multi-PO
     const poName = manifestCache[isbn];
     if (poName) {
       const color = job.poColors?.[poName] || '#22C55E';
-      const colorName = getColorName(color);
-      flash(color, `${colorName} GAYLORD`);
+      flash(color, `${getColorName(color)} GAYLORD`);
       addDoc(collection(db, 'scans'), {
-        jobId: job.id,
-        podId,
-        scannerId: currentScanner,
-        isbn,
-        poName,
-        timestamp: serverTimestamp(),
-        type: 'standard',
+        jobId: job.id, podId, scannerId: scannerName, isbn, poName,
+        timestamp: serverTimestamp(), type: 'standard',
       });
     } else {
-      // Not in manifest — exceptions pallet
       flash('#F97316', 'NOT IN MANIFEST — EXCEPTIONS PALLET', 1200);
       addDoc(collection(db, 'scans'), {
-        jobId: job.id,
-        podId,
-        scannerId: currentScanner,
-        isbn,
-        poName: 'EXCEPTIONS',
-        timestamp: serverTimestamp(),
-        type: 'exception',
+        jobId: job.id, podId, scannerId: scannerName, isbn,
+        poName: 'EXCEPTIONS', timestamp: serverTimestamp(), type: 'exception',
       });
     }
   };
@@ -279,72 +274,238 @@ export default function Pod() {
     }
   };
 
-  const handleException = async (data) => {
+  const handleException = (data) => {
     if (!job) return;
-    await addDoc(collection(db, 'exceptions'), {
-      jobId: job.id,
-      podId: data.podId,
-      scannerId: data.scannerId,
-      isbn: data.isbn,
-      reason: data.reason,
+    addDoc(collection(db, 'exceptions'), {
+      jobId: job.id, podId: data.podId, scannerId: data.scannerId,
+      isbn: data.isbn, title: data.title || null, reason: data.reason,
       timestamp: serverTimestamp(),
     });
   };
 
-  const handleRegisterScanner2 = () => {
-    if (scanner2Input.trim()) {
-      setScanner2(scanner2Input.trim());
-      setShowRegister2(false);
-      setScanner2Input('');
-      setActiveScanner(2);
-      setTimeout(refocusInput, 100);
+  // Scanner pairing handler
+  const handlePairScan = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = e.target.value.trim();
+      e.target.value = '';
+      if (val) {
+        if (pairTarget === 1) {
+          setScanner1Paired(true);
+          setPhase(PHASE_READY);
+        } else {
+          setScanner2Paired(true);
+          setShowAddScanner2(false);
+          setPhase(PHASE_SCANNING);
+          setTimeout(refocusInput, 100);
+        }
+      }
     }
   };
 
   // Pace indicator
   const targetPerHour = job
-    ? Math.round(
-        (job.meta.dailyTarget || 22000) /
-          (job.meta.workingHours || 8) /
-          (job.meta.pods?.length || 5)
-      )
+    ? Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 5))
     : 550;
   const paceRatio = targetPerHour > 0 ? pace / targetPerHour : 1;
-  const paceColor =
-    paceRatio >= 1 ? '#22C55E' : paceRatio >= 0.8 ? '#EAB308' : '#EF4444';
+  const paceColor = paceRatio >= 1 ? '#22C55E' : paceRatio >= 0.8 ? '#EAB308' : '#EF4444';
 
-  // Scanner setup screen
-  if (!setupDone) {
+  // ─── PHASE: Enter Operator Name ───
+  if (phase === PHASE_OPERATOR) {
     return (
       <div style={styles.container}>
+        <Link to="/" style={styles.backLink}>← Back to Home</Link>
         <h1 style={styles.podTitle}>Pod {podId}</h1>
         <div style={styles.setupCard}>
-          <h2 style={{ color: '#fff', fontSize: 24, marginBottom: 16 }}>
-            Scanner Setup
-          </h2>
-          <label style={styles.label}>Scanner 1 Name / Operator</label>
+          <div style={styles.stepIndicator}>Step 1 of 2</div>
+          <h2 style={styles.setupHeading}>Who's scanning?</h2>
+          <p style={styles.setupHint}>Enter the operator name for this scanner station.</p>
           <input
             type="text"
-            value={scanner1}
-            onChange={(e) => setScanner1(e.target.value)}
-            placeholder="e.g. Scanner 1, John..."
+            value={operatorName}
+            onChange={(e) => setOperatorName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && operatorName.trim()) {
+                setScanner1Name(operatorName.trim());
+                setPairTarget(1);
+                setPhase(PHASE_PAIR_SCANNER);
+              }
+            }}
+            placeholder="e.g. John, Maria..."
             style={styles.setupInput}
             autoFocus
           />
           <button
             onClick={() => {
-              if (scanner1.trim()) setSetupDone(true);
+              if (operatorName.trim()) {
+                setScanner1Name(operatorName.trim());
+                setPairTarget(1);
+                setPhase(PHASE_PAIR_SCANNER);
+              }
             }}
-            disabled={!scanner1.trim()}
-            style={styles.startBtn}
+            disabled={!operatorName.trim()}
+            style={{ ...styles.primaryBtn, marginTop: 16 }}
           >
-            Start Scanning
+            Next → Pair Scanner
           </button>
         </div>
       </div>
     );
   }
 
+  // ─── PHASE: Pair Scanner ───
+  if (phase === PHASE_PAIR_SCANNER) {
+    return (
+      <div style={styles.container}>
+        <Link to="/" style={styles.backLink}>← Back to Home</Link>
+        <h1 style={styles.podTitle}>Pod {podId}</h1>
+        <div style={styles.setupCard}>
+          <div style={styles.stepIndicator}>Step 2 of 2</div>
+          <h2 style={styles.setupHeading}>Pair Scanner</h2>
+          <p style={styles.setupHint}>
+            Scan <strong>any barcode</strong> with the TERA scanner to confirm it's connected.
+          </p>
+
+          <div style={styles.pairBox}>
+            <div style={styles.pairPulse} />
+            <p style={styles.pairText}>Waiting for scan...</p>
+            <input
+              ref={pairInputRef}
+              type="text"
+              onKeyDown={handlePairScan}
+              autoFocus
+              style={styles.pairInput}
+              placeholder="Scanner will type here..."
+            />
+          </div>
+
+          <div style={styles.scannerStatus}>
+            <div style={styles.scannerStatusRow}>
+              <div style={{ ...styles.dot, backgroundColor: scanner1Paired ? '#22C55E' : '#555' }} />
+              <span style={styles.scannerStatusText}>
+                Scanner 1 ({scanner1Name}): {scanner1Paired ? '✓ Paired' : 'Not paired'}
+              </span>
+            </div>
+          </div>
+
+          {scanner1Paired && (
+            <button
+              onClick={() => setPhase(PHASE_READY)}
+              style={{ ...styles.primaryBtn, marginTop: 16 }}
+            >
+              Continue
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── PHASE: Ready (paired, not yet scanning) ───
+  if (phase === PHASE_READY) {
+    return (
+      <div style={styles.container}>
+        <Link to="/" style={styles.backLink}>← Back to Home</Link>
+        <h1 style={styles.podTitle}>Pod {podId}</h1>
+        <div style={styles.setupCard}>
+          <h2 style={styles.setupHeading}>✓ Ready to Scan</h2>
+
+          <div style={styles.readySummary}>
+            <div style={styles.readyRow}>
+              <span style={styles.readyLabel}>Operator:</span>
+              <span style={styles.readyValue}>{operatorName}</span>
+            </div>
+            <div style={styles.readyRow}>
+              <span style={styles.readyLabel}>Scanner 1:</span>
+              <span style={{ ...styles.readyValue, color: '#22C55E' }}>
+                {scanner1Name} — Paired ✓
+              </span>
+            </div>
+            {scanner2Paired && (
+              <div style={styles.readyRow}>
+                <span style={styles.readyLabel}>Scanner 2:</span>
+                <span style={{ ...styles.readyValue, color: '#22C55E' }}>
+                  {scanner2Name} — Paired ✓
+                </span>
+              </div>
+            )}
+            <div style={styles.readyRow}>
+              <span style={styles.readyLabel}>Job:</span>
+              <span style={styles.readyValue}>{job?.meta?.name || 'No active job'}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setPhase(PHASE_SCANNING);
+              setTimeout(refocusInput, 100);
+            }}
+            style={{ ...styles.primaryBtn, fontSize: 24, padding: '20px 28px' }}
+          >
+            ▶ Start Scanning
+          </button>
+
+          {!scanner2Paired && (
+            <button
+              onClick={() => {
+                setShowAddScanner2(true);
+              }}
+              style={{ ...styles.secondaryBtn, marginTop: 12 }}
+            >
+              + Add Scanner 2
+            </button>
+          )}
+        </div>
+
+        {showAddScanner2 && (
+          <div style={styles.modalOverlay}>
+            <div style={styles.miniModal}>
+              <h3 style={{ color: '#fff', marginBottom: 8 }}>Add Scanner 2</h3>
+              <p style={{ color: '#999', fontSize: 14, marginBottom: 12 }}>
+                Enter the operator name, then scan any barcode to pair.
+              </p>
+              <input
+                type="text"
+                value={scanner2Name}
+                onChange={(e) => setScanner2Name(e.target.value)}
+                placeholder="Scanner 2 operator name..."
+                style={styles.setupInput}
+                autoFocus
+              />
+              {scanner2Name.trim() && (
+                <div style={{ marginTop: 12 }}>
+                  <p style={{ color: '#EAB308', fontSize: 14, marginBottom: 6 }}>
+                    Now scan any barcode to pair Scanner 2:
+                  </p>
+                  <input
+                    type="text"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.target.value.trim()) {
+                        e.target.value = '';
+                        setScanner2Paired(true);
+                        setShowAddScanner2(false);
+                      }
+                    }}
+                    style={styles.setupInput}
+                    placeholder="Scan here..."
+                    autoFocus
+                  />
+                </div>
+              )}
+              <button
+                onClick={() => { setShowAddScanner2(false); setScanner2Name(''); }}
+                style={{ ...styles.secondaryBtn, marginTop: 12 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── PHASE: Scanning / Paused ───
   return (
     <div
       style={{
@@ -353,26 +514,129 @@ export default function Pod() {
         transition: 'background-color 0.15s ease-in',
       }}
     >
-      {/* Flash text overlay */}
+      {/* Flash overlay */}
       {flashText && (
         <div style={styles.flashOverlay}>
           <span style={styles.flashText}>{flashText}</span>
         </div>
       )}
 
-      {/* Header bar */}
+      {/* Pause overlay */}
+      {isPaused && (
+        <div style={styles.pauseOverlay}>
+          <div style={styles.pauseBox}>
+            <h2 style={{ fontSize: 36, margin: 0, color: '#EAB308' }}>⏸ PAUSED</h2>
+            <p style={{ color: '#999', fontSize: 18, margin: '12px 0' }}>
+              Operator: {operatorName} · Pod {podId}
+            </p>
+            <button
+              onClick={() => {
+                setPhase(PHASE_SCANNING);
+                setTimeout(refocusInput, 100);
+              }}
+              style={{ ...styles.primaryBtn, fontSize: 24, padding: '18px 40px' }}
+            >
+              ▶ Resume Scanning
+            </button>
+            <button
+              onClick={() => setShowSwitchOperator(true)}
+              style={{ ...styles.secondaryBtn, marginTop: 12, fontSize: 16 }}
+            >
+              🔄 Switch Operator
+            </button>
+            <Link to="/" style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 14, textDecoration: 'none', display: 'block', textAlign: 'center' }}>
+              ← Back to Home
+            </Link>
+          </div>
+
+          {showSwitchOperator && (
+            <div style={styles.miniModal}>
+              <h3 style={{ color: '#fff', marginBottom: 12 }}>Switch Operator</h3>
+              <p style={{ color: '#999', fontSize: 14, marginBottom: 8 }}>
+                The new operator will use the same paired scanner(s).
+              </p>
+              <input
+                type="text"
+                value={switchName}
+                onChange={(e) => setSwitchName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && switchName.trim()) {
+                    setOperatorName(switchName.trim());
+                    setScanner1Name(switchName.trim());
+                    setSwitchName('');
+                    setShowSwitchOperator(false);
+                    setPhase(PHASE_SCANNING);
+                    setTimeout(refocusInput, 100);
+                  }
+                }}
+                placeholder="New operator name..."
+                style={styles.setupInput}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                <button
+                  onClick={() => {
+                    if (switchName.trim()) {
+                      setOperatorName(switchName.trim());
+                      setScanner1Name(switchName.trim());
+                      setSwitchName('');
+                      setShowSwitchOperator(false);
+                      setPhase(PHASE_SCANNING);
+                      setTimeout(refocusInput, 100);
+                    }
+                  }}
+                  style={styles.primaryBtn}
+                >
+                  Switch & Resume
+                </button>
+                <button onClick={() => { setShowSwitchOperator(false); setSwitchName(''); }} style={styles.secondaryBtn}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Header */}
       <div style={styles.header}>
-        <h1 style={styles.podTitle}>Pod {podId}</h1>
-        <ScannerSelector
-          scanner1={scanner1}
-          scanner2={scanner2}
-          activeScanner={activeScanner}
-          onSetActive={setActiveScanner}
-          onRegister2={() => setShowRegister2(true)}
-        />
+        <div>
+          <h1 style={styles.podTitle}>Pod {podId}</h1>
+          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>
+            Operator: {operatorName}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {/* Active scanner toggle */}
+          <div style={styles.scannerToggle}>
+            <button
+              onClick={() => setActiveScanner(1)}
+              style={activeScanner === 1 ? styles.scannerActive : styles.scannerInactive}
+            >
+              <div style={{ ...styles.dot, backgroundColor: scanner1Paired ? '#22C55E' : '#555' }} />
+              {scanner1Name}
+            </button>
+            {scanner2Paired && (
+              <button
+                onClick={() => setActiveScanner(2)}
+                style={activeScanner === 2 ? styles.scannerActive : styles.scannerInactive}
+              >
+                <div style={{ ...styles.dot, backgroundColor: '#22C55E' }} />
+                {scanner2Name}
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={() => setPhase(PHASE_PAUSED)}
+            style={styles.pauseBtn}
+          >
+            ⏸ Pause
+          </button>
+        </div>
       </div>
 
-      {/* Hidden scan input (always focused) */}
+      {/* Hidden scan input */}
       <input
         ref={inputRef}
         type="text"
@@ -390,12 +654,8 @@ export default function Pod() {
           <div style={styles.statLabel}>Scanned Today</div>
         </div>
         <div style={styles.stat}>
-          <div style={{ ...styles.statValue, color: paceColor }}>
-            {pace}
-          </div>
-          <div style={styles.statLabel}>
-            Scans/hr (target: {targetPerHour})
-          </div>
+          <div style={{ ...styles.statValue, color: paceColor }}>{pace}</div>
+          <div style={styles.statLabel}>Scans/hr (target: {targetPerHour})</div>
         </div>
         <div style={styles.stat}>
           <div style={{ ...styles.statValue, color: exceptionCount > 0 ? '#F97316' : '#fff' }}>
@@ -405,80 +665,35 @@ export default function Pod() {
         </div>
       </div>
 
-      {/* Pace indicator bar */}
+      {/* Pace bar */}
       <div style={styles.paceBarContainer}>
-        <div
-          style={{
-            ...styles.paceBar,
-            width: `${Math.min(100, paceRatio * 100)}%`,
-            backgroundColor: paceColor,
-          }}
-        />
+        <div style={{ ...styles.paceBar, width: `${Math.min(100, paceRatio * 100)}%`, backgroundColor: paceColor }} />
       </div>
 
+      {/* Last scan indicator */}
+      {lastScanTime && (
+        <p style={{ textAlign: 'center', color: '#555', fontSize: 13, marginTop: 12 }}>
+          Last scan: {lastScanTime.toLocaleTimeString()}
+        </p>
+      )}
+
       {/* Exception button */}
-      <button
-        onClick={() => setShowExceptionModal(true)}
-        style={styles.exceptionBtn}
-      >
-        LOG EXCEPTION
+      <button onClick={() => setShowExceptionModal(true)} style={styles.exceptionBtn}>
+        ⚠️ LOG EXCEPTION
       </button>
 
-      {/* No job warning */}
       {!job && (
         <div style={styles.warning}>
-          No active job found. Go to /setup to create one.
+          No active job found. <Link to="/setup" style={{ color: '#93c5fd' }}>Go to Setup</Link>
         </div>
       )}
 
-      {/* Register Scanner 2 modal */}
-      {showRegister2 && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.miniModal}>
-            <h3 style={{ color: '#fff', marginBottom: 12 }}>
-              Register Scanner 2
-            </h3>
-            <input
-              type="text"
-              value={scanner2Input}
-              onChange={(e) => setScanner2Input(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleRegisterScanner2();
-              }}
-              placeholder="Scanner 2 name / operator..."
-              style={styles.setupInput}
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-              <button onClick={handleRegisterScanner2} style={styles.startBtn}>
-                Register
-              </button>
-              <button
-                onClick={() => {
-                  setShowRegister2(false);
-                  setTimeout(refocusInput, 100);
-                }}
-                style={styles.cancelBtn}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Exception modal */}
       {showExceptionModal && (
         <ExceptionModal
           podId={podId}
-          scannerId={
-            activeScanner === 1 ? scanner1 : scanner2 || scanner1
-          }
+          scannerId={getCurrentScannerName()}
           onSubmit={handleException}
-          onClose={() => {
-            setShowExceptionModal(false);
-            setTimeout(refocusInput, 100);
-          }}
+          onClose={() => { setShowExceptionModal(false); setTimeout(refocusInput, 100); }}
         />
       )}
     </div>
@@ -495,160 +710,126 @@ const styles = {
     flexDirection: 'column',
     position: 'relative',
   },
+  backLink: {
+    color: '#666',
+    textDecoration: 'none',
+    fontSize: 14,
+    marginBottom: 12,
+    display: 'inline-block',
+  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 16,
-  },
-  podTitle: {
-    fontSize: 48,
-    fontWeight: 800,
-    margin: 0,
-  },
-  hiddenInput: {
-    position: 'absolute',
-    opacity: 0,
-    height: 0,
-    width: 0,
-    top: -100,
-    left: -100,
-  },
-  statsRow: {
-    display: 'flex',
-    gap: 24,
-    justifyContent: 'center',
-    marginTop: 40,
     flexWrap: 'wrap',
+    gap: 12,
   },
-  stat: {
-    textAlign: 'center',
-    minWidth: 160,
+  podTitle: { fontSize: 48, fontWeight: 800, margin: 0 },
+
+  // Scanner toggle
+  scannerToggle: { display: 'flex', gap: 6 },
+  scannerActive: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    padding: '8px 14px', borderRadius: 6,
+    border: '2px solid #22C55E', backgroundColor: '#14532d',
+    color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
-  statValue: {
-    fontSize: 72,
-    fontWeight: 800,
-    lineHeight: 1,
-    color: '#fff',
+  scannerInactive: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    padding: '8px 14px', borderRadius: 6,
+    border: '1px solid #444', backgroundColor: '#222',
+    color: '#999', fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
-  statLabel: {
-    fontSize: 18,
-    color: '#999',
-    marginTop: 8,
+  dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+
+  pauseBtn: {
+    padding: '8px 16px', borderRadius: 6,
+    border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.1)',
+    color: '#EAB308', fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
-  paceBarContainer: {
-    marginTop: 32,
-    height: 12,
-    backgroundColor: '#333',
-    borderRadius: 6,
-    overflow: 'hidden',
-    maxWidth: 600,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  paceBar: {
-    height: '100%',
-    borderRadius: 6,
-    transition: 'width 0.5s ease, background-color 0.5s ease',
-  },
+
+  hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0, top: -100, left: -100 },
+
+  statsRow: { display: 'flex', gap: 24, justifyContent: 'center', marginTop: 40, flexWrap: 'wrap' },
+  stat: { textAlign: 'center', minWidth: 160 },
+  statValue: { fontSize: 72, fontWeight: 800, lineHeight: 1, color: '#fff' },
+  statLabel: { fontSize: 18, color: '#999', marginTop: 8 },
+
+  paceBarContainer: { marginTop: 32, height: 12, backgroundColor: '#333', borderRadius: 6, overflow: 'hidden', maxWidth: 600, alignSelf: 'center', width: '100%' },
+  paceBar: { height: '100%', borderRadius: 6, transition: 'width 0.5s ease, background-color 0.5s ease' },
+
   exceptionBtn: {
-    marginTop: 40,
-    alignSelf: 'center',
-    padding: '20px 40px',
-    borderRadius: 12,
-    border: '3px solid #F97316',
-    backgroundColor: 'rgba(249, 115, 22, 0.15)',
-    color: '#F97316',
-    fontSize: 24,
-    fontWeight: 800,
-    cursor: 'pointer',
-    letterSpacing: 1,
+    marginTop: 40, alignSelf: 'center', padding: '20px 40px', borderRadius: 12,
+    border: '3px solid #F97316', backgroundColor: 'rgba(249,115,22,0.15)',
+    color: '#F97316', fontSize: 24, fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
   },
-  flashOverlay: {
-    position: 'fixed',
-    inset: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 500,
-    pointerEvents: 'none',
+
+  flashOverlay: { position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, pointerEvents: 'none' },
+  flashText: { fontSize: 72, fontWeight: 900, textAlign: 'center', color: '#fff', textShadow: '2px 2px 8px rgba(0,0,0,0.7)', padding: 20 },
+
+  warning: { marginTop: 32, padding: 16, backgroundColor: '#7f1d1d', borderRadius: 8, textAlign: 'center', fontSize: 18 },
+
+  // Pause overlay
+  pauseOverlay: {
+    position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    zIndex: 900, gap: 16,
   },
-  flashText: {
-    fontSize: 72,
-    fontWeight: 900,
-    textAlign: 'center',
-    color: '#fff',
-    textShadow: '2px 2px 8px rgba(0,0,0,0.7)',
-    padding: 20,
-  },
-  warning: {
-    marginTop: 32,
-    padding: 16,
-    backgroundColor: '#7f1d1d',
-    borderRadius: 8,
-    textAlign: 'center',
-    fontSize: 18,
-  },
-  setupCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 32,
-    maxWidth: 400,
-    margin: '40px auto',
-  },
-  label: {
-    display: 'block',
-    fontSize: 14,
-    fontWeight: 600,
-    color: '#aaa',
-    marginBottom: 6,
-  },
+  pauseBox: { textAlign: 'center' },
+
+  // Setup card
+  setupCard: { backgroundColor: '#1a1a1a', borderRadius: 12, padding: 32, maxWidth: 480, margin: '20px auto' },
+  stepIndicator: { fontSize: 13, color: '#666', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  setupHeading: { color: '#fff', fontSize: 28, fontWeight: 700, marginBottom: 8, marginTop: 0 },
+  setupHint: { color: '#888', fontSize: 15, marginBottom: 20, lineHeight: 1.4 },
   setupInput: {
-    width: '100%',
-    padding: '12px 14px',
-    borderRadius: 8,
-    border: '1px solid #444',
-    backgroundColor: '#222',
-    color: '#fff',
-    fontSize: 18,
-    boxSizing: 'border-box',
+    width: '100%', padding: '14px 16px', borderRadius: 8,
+    border: '1px solid #444', backgroundColor: '#222', color: '#fff',
+    fontSize: 18, boxSizing: 'border-box',
   },
-  startBtn: {
-    marginTop: 16,
-    padding: '14px 28px',
-    borderRadius: 8,
-    border: 'none',
-    backgroundColor: '#22C55E',
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 700,
-    cursor: 'pointer',
-    width: '100%',
+
+  // Pair scanner
+  pairBox: {
+    textAlign: 'center', padding: 32, border: '2px dashed #444',
+    borderRadius: 12, backgroundColor: '#0a0a0a', marginBottom: 16,
   },
-  cancelBtn: {
-    padding: '14px 28px',
-    borderRadius: 8,
-    border: '1px solid #555',
-    backgroundColor: '#333',
-    color: '#ccc',
-    fontSize: 18,
-    fontWeight: 600,
-    cursor: 'pointer',
-    flex: 1,
+  pairPulse: {
+    width: 16, height: 16, borderRadius: '50%', backgroundColor: '#EAB308',
+    margin: '0 auto 12px', animation: 'pulse 2s infinite',
   },
+  pairText: { color: '#EAB308', fontSize: 18, fontWeight: 600, marginBottom: 12 },
+  pairInput: {
+    width: '80%', padding: '12px 14px', borderRadius: 8,
+    border: '1px solid #555', backgroundColor: '#1a1a1a', color: '#fff',
+    fontSize: 16, textAlign: 'center', boxSizing: 'border-box',
+  },
+
+  scannerStatus: { marginTop: 12 },
+  scannerStatusRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 },
+  scannerStatusText: { color: '#ccc', fontSize: 14 },
+
+  // Ready summary
+  readySummary: { backgroundColor: '#0a0a0a', borderRadius: 8, padding: 16, marginBottom: 20 },
+  readyRow: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #222' },
+  readyLabel: { color: '#888', fontSize: 14 },
+  readyValue: { color: '#fff', fontSize: 14, fontWeight: 600 },
+
+  // Buttons
+  primaryBtn: {
+    width: '100%', padding: '16px 28px', borderRadius: 8, border: 'none',
+    backgroundColor: '#22C55E', color: '#fff', fontSize: 18,
+    fontWeight: 700, cursor: 'pointer',
+  },
+  secondaryBtn: {
+    width: '100%', padding: '12px 20px', borderRadius: 8,
+    border: '1px solid #444', backgroundColor: '#222', color: '#ccc',
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  },
+
   modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
+    position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
   },
-  miniModal: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 32,
-    minWidth: 340,
-  },
+  miniModal: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 32, minWidth: 360 },
 };
