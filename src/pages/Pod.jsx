@@ -7,6 +7,8 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  setDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -108,6 +110,37 @@ export default function Pod() {
     };
     loadJob();
   }, []);
+
+  // Presence heartbeat — write pod status to Firestore every 30s
+  useEffect(() => {
+    if (!setupDone) return;
+
+    const presenceRef = doc(db, 'presence', podId);
+    const scanners = [scanner1, scanner2].filter(Boolean);
+
+    const writePresence = () => {
+      setDoc(presenceRef, {
+        podId,
+        scanners,
+        online: true,
+        lastSeen: serverTimestamp(),
+      });
+    };
+
+    writePresence();
+    const interval = setInterval(writePresence, 30000);
+
+    // Cleanup: mark offline on unmount
+    return () => {
+      clearInterval(interval);
+      setDoc(presenceRef, {
+        podId,
+        scanners,
+        online: false,
+        lastSeen: serverTimestamp(),
+      });
+    };
+  }, [setupDone, podId, scanner1, scanner2]);
 
   // Listen for scan count for this pod
   useEffect(() => {
