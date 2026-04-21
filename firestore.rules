@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // DEVELOPMENT ONLY — open access
+    // For production: restrict by IP or deploy behind VPN
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
