@@ -18,7 +18,7 @@ function AutoRefreshIndicator({ lastUpdated }) {
 import { db } from '../firebase';
 import {
   collection, doc, getDocs, getDoc, updateDoc, setDoc,
-  query, where, onSnapshot, Timestamp,
+  query, where, onSnapshot, Timestamp, deleteDoc,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
 import { exportTodayXLSX, exportAllXLSX, exportPerPO, downloadBlob, exportReconciliation, exportExceptionsXLSX } from '../utils/export';
@@ -38,10 +38,11 @@ export default function Dashboard() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(Notification?.permission === 'granted');
   const [podNotes, setPodNotes] = useState({});
   const [messageInputs, setMessageInputs] = useState({});
-  const [showPanel, setShowPanel] = useState(''); // '' | 'exceptions' | 'shifts' | 'leaderboard' | 'hourly' | 'manifest'
+  const [showPanel, setShowPanel] = useState(''); // '' | 'exceptions' | 'shifts' | 'leaderboard' | 'hourly' | 'manifest' | 'bols'
   const [manifestData, setManifestData] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedExceptions, setSelectedExceptions] = useState(new Set());
+  const [bols, setBols] = useState([]);
 
   // Load active job
   useEffect(() => {
@@ -149,6 +150,17 @@ export default function Dashboard() {
     const q = query(collection(db, 'shifts'), where('jobId', '==', job.id));
     const unsub = onSnapshot(q, (snap) => {
       setShifts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [job]);
+
+  // BOLs
+  useEffect(() => {
+    if (!job) return;
+    const q = query(collection(db, 'bols'), where('jobId', '==', job.id));
+    const unsub = onSnapshot(q, (snap) => {
+      setBols(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '')));
     });
     return unsub;
   }, [job]);
@@ -461,6 +473,7 @@ export default function Dashboard() {
           ['leaderboard', '🏆 Leaderboard'],
           ['hourly', '📊 Hourly'],
           ['shifts', '⏱ Shifts'],
+          ['bols', `🚛 BOLs (${bols.length})`],
         ].map(([key, label]) => (
           <button key={key} onClick={() => setShowPanel(showPanel === key ? '' : key)}
             style={{ ...st.panelBtn, ...(showPanel === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
@@ -577,6 +590,53 @@ export default function Dashboard() {
               );
             })}
           {shifts.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No shifts recorded</p>}
+        </div>
+      )}
+
+      {/* BOLs panel */}
+      {showPanel === 'bols' && (
+        <div style={st.panel}>
+          {bols.map((bol) => (
+            <div key={bol.id} style={{ display: 'flex', gap: 12, padding: '10px 16px', borderBottom: '1px solid #222', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>{bol.date}</span>
+              {bol.truckId && <span style={{ color: '#888', fontSize: 13 }}>{bol.truckId}</span>}
+              <span style={{
+                padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700,
+                backgroundColor: bol.pickedUp ? '#14532d' : '#422006',
+                color: bol.pickedUp ? '#22C55E' : '#EAB308',
+              }}>
+                {bol.pickedUp ? 'PICKED UP' : 'PENDING'}
+              </span>
+              <span style={{ color: '#666', fontSize: 12 }}>{bol.fileName}</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <button onClick={() => {
+                  const a = document.createElement('a');
+                  a.href = bol.fileData;
+                  a.download = bol.fileName;
+                  a.click();
+                }} style={st.exportBtn}>Download</button>
+                <button onClick={() => {
+                  const w = window.open('', '_blank');
+                  if (bol.fileData.startsWith('data:application/pdf')) {
+                    w.document.write(`<iframe src="${bol.fileData}" style="width:100%;height:100%;border:none"></iframe>`);
+                  } else {
+                    w.document.write(`<img src="${bol.fileData}" style="max-width:100%" />`);
+                  }
+                }} style={st.exportBtn}>Print</button>
+                {!bol.pickedUp && (
+                  <button onClick={async () => {
+                    await updateDoc(doc(db, 'bols', bol.id), { pickedUp: true });
+                  }} style={{ ...st.exportBtn, borderColor: '#22C55E', color: '#22C55E' }}>Mark Picked Up</button>
+                )}
+                {bol.pickedUp && (
+                  <button onClick={async () => {
+                    await updateDoc(doc(db, 'bols', bol.id), { pickedUp: false });
+                  }} style={{ ...st.exportBtn, borderColor: '#888', color: '#888' }}>Undo</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {bols.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No BOLs uploaded</p>}
         </div>
       )}
     </div>

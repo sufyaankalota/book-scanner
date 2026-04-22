@@ -68,6 +68,10 @@ export default function Setup() {
   const [autoExportEnabled, setAutoExportEnabled] = useState(false);
   const [scheduleSaved, setScheduleSaved] = useState(false);
 
+  // Customer password
+  const [customerPw, setCustomerPw] = useState('');
+  const [customerPwSaved, setCustomerPwSaved] = useState(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -332,10 +336,10 @@ export default function Setup() {
 
         {/* Admin sections */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
-          {['pin', 'branding', 'alerts', 'qr', 'schedule', 'retention', 'audit'].map((key) => (
+          {['pin', 'branding', 'alerts', 'qr', 'schedule', 'retention', 'audit', 'customer'].map((key) => (
             <button key={key} onClick={() => { setShowSection(showSection === key ? '' : key); if (key === 'audit') loadAuditLog(); }}
               style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
-              {key === 'pin' ? '🔒 PIN' : key === 'branding' ? '🎨 Branding' : key === 'alerts' ? '⚙️ Alerts' : key === 'qr' ? '📱 QR Codes' : key === 'schedule' ? '⏰ Auto-Export' : key === 'retention' ? '🗑 Retention' : '📋 Audit'}
+              {key === 'pin' ? '🔒 PIN' : key === 'branding' ? '🎨 Branding' : key === 'alerts' ? '⚙️ Alerts' : key === 'qr' ? '📱 QR Codes' : key === 'schedule' ? '⏰ Auto-Export' : key === 'retention' ? '🗑 Retention' : key === 'audit' ? '📋 Audit' : '🔑 Customer'}
             </button>
           ))}
         </div>
@@ -454,6 +458,22 @@ export default function Setup() {
                 {auditLogs.length === 0 && <p style={{ color: '#888' }}>No audit logs yet.</p>}
               </div>
             )}
+          </div>
+        )}
+
+        {showSection === 'customer' && (
+          <div style={s.card}>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>Set a password for the Customer Portal (/portal). Customers use this to view daily volumes, reports, upload POs and BOLs.</p>
+            <input type="text" value={customerPw}
+              onChange={(e) => setCustomerPw(e.target.value)}
+              placeholder="Customer password..." style={s.input} />
+            <button onClick={async () => {
+              if (!customerPw.trim()) return;
+              await setDoc(doc(db, 'config', 'customer'), { password: customerPw.trim() }, { merge: true });
+              setCustomerPwSaved(true);
+              setTimeout(() => setCustomerPwSaved(false), 2000);
+            }} disabled={!customerPw.trim()}
+              style={{ ...s.primaryBtn, marginTop: 8 }}>{customerPwSaved ? '✓ Password Saved!' : 'Set Customer Password'}</button>
           </div>
         )}
       </div>

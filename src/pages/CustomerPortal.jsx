@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import {
-  collection, doc, setDoc, getDocs, getDoc, addDoc,
-  query, where, onSnapshot, Timestamp, serverTimestamp, writeBatch,
+  collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc,
+  query, where, onSnapshot, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
@@ -15,13 +14,19 @@ const DEFAULT_COLORS = [
 ];
 
 export default function CustomerPortal() {
+  // Auth
+  const [authenticated, setAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Data
   const [job, setJob] = useState(null);
   const [allScans, setAllScans] = useState([]);
   const [allExceptions, setAllExceptions] = useState([]);
-  const [shifts, setShifts] = useState([]);
   const [bols, setBols] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('daily');
 
   // PO Upload
   const [manifest, setManifest] = useState(null);
@@ -36,8 +41,40 @@ export default function CustomerPortal() {
   const [bolNotes, setBolNotes] = useState('');
   const [bolUploading, setBolUploading] = useState(false);
 
-  // Load active job
+  // Exception photo viewer
+  const [viewingPhoto, setViewingPhoto] = useState(null);
+
+  // Customer Login
+  const handleLogin = async () => {
+    if (!password.trim()) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const configDoc = await getDoc(doc(db, 'config', 'customer'));
+      const storedPassword = configDoc.exists() ? configDoc.data().password : null;
+      if (!storedPassword) {
+        setAuthError('Customer access not configured. Contact the warehouse.');
+      } else if (password === storedPassword) {
+        setAuthenticated(true);
+        sessionStorage.setItem('customer-auth', 'true');
+      } else {
+        setAuthError('Incorrect password.');
+      }
+    } catch {
+      setAuthError('Login failed. Try again.');
+    }
+    setAuthLoading(false);
+  };
+
   useEffect(() => {
+    if (sessionStorage.getItem('customer-auth') === 'true') {
+      setAuthenticated(true);
+    }
+  }, []);
+
+  // Data Loading (only when authenticated)
+  useEffect(() => {
+    if (!authenticated) return;
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
@@ -47,65 +84,50 @@ export default function CustomerPortal() {
       setLoading(false);
     });
     return unsub;
-  }, []);
+  }, [authenticated]);
 
-  // Scans
   useEffect(() => {
-    if (!job) return;
+    if (!authenticated || !job) return;
     const q = query(collection(db, 'scans'), where('jobId', '==', job.id));
-    const unsub = onSnapshot(q, (snap) => {
+    return onSnapshot(q, (snap) => {
       setAllScans(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
-    return unsub;
-  }, [job]);
+  }, [authenticated, job]);
 
-  // Exceptions
   useEffect(() => {
-    if (!job) return;
+    if (!authenticated || !job) return;
     const q = query(collection(db, 'exceptions'), where('jobId', '==', job.id));
-    const unsub = onSnapshot(q, (snap) => {
+    return onSnapshot(q, (snap) => {
       setAllExceptions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
-    return unsub;
-  }, [job]);
+  }, [authenticated, job]);
 
-  // Shifts
   useEffect(() => {
-    if (!job) return;
-    const q = query(collection(db, 'shifts'), where('jobId', '==', job.id));
-    const unsub = onSnapshot(q, (snap) => {
-      setShifts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    return unsub;
-  }, [job]);
-
-  // BOLs
-  useEffect(() => {
-    if (!job) return;
+    if (!authenticated || !job) return;
     const q = query(collection(db, 'bols'), where('jobId', '==', job.id));
-    const unsub = onSnapshot(q, (snap) => {
+    return onSnapshot(q, (snap) => {
       setBols(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.date || '').localeCompare(a.date || '')));
     });
-    return unsub;
-  }, [job]);
+  }, [authenticated, job]);
 
-  // ─── Computed Data ───
+  // Computed
   const dailyBreakdown = useMemo(() => {
     const byDay = {};
     for (const s of allScans) {
       const d = s.timestamp?.toDate?.();
       if (!d) continue;
       const key = d.toISOString().slice(0, 10);
-      if (!byDay[key]) byDay[key] = { scans: 0, exceptions: 0 };
-      byDay[key].scans++;
+      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0 };
+      byDay[key].total++;
       if (s.type === 'exception') byDay[key].exceptions++;
+      else byDay[key].standard++;
     }
     for (const ex of allExceptions) {
       const d = ex.timestamp?.toDate?.();
       if (!d) continue;
       const key = d.toISOString().slice(0, 10);
-      if (!byDay[key]) byDay[key] = { scans: 0, exceptions: 0 };
+      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0 };
       byDay[key].exceptions++;
     }
     return Object.entries(byDay)
@@ -113,39 +135,44 @@ export default function CustomerPortal() {
       .map(([date, data]) => ({ date, ...data }));
   }, [allScans, allExceptions]);
 
-  const weeklyBreakdown = useMemo(() => {
-    const weeks = {};
+  const dailyExceptions = useMemo(() => {
+    const byDay = {};
     for (const s of allScans) {
+      if (s.type !== 'exception') continue;
       const d = s.timestamp?.toDate?.();
       if (!d) continue;
-      const weekStart = new Date(d);
-      weekStart.setDate(d.getDate() - d.getDay());
-      const key = weekStart.toISOString().slice(0, 10);
-      if (!weeks[key]) weeks[key] = { scans: 0, exceptions: 0 };
-      weeks[key].scans++;
-      if (s.type === 'exception') weeks[key].exceptions++;
+      const key = d.toISOString().slice(0, 10);
+      if (!byDay[key]) byDay[key] = [];
+      byDay[key].push({
+        isbn: s.isbn, reason: 'Not in Manifest', title: '',
+        photo: null, time: d, podId: s.podId,
+      });
     }
-    return Object.entries(weeks)
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([weekOf, data]) => ({ weekOf, ...data }));
-  }, [allScans]);
-
-  const byPOBreakdown = useMemo(() => {
-    const byPO = {};
-    for (const s of allScans) {
-      if (s.type === 'exception') continue;
-      const po = s.poName || 'UNASSIGNED';
-      byPO[po] = (byPO[po] || 0) + 1;
+    for (const ex of allExceptions) {
+      const d = ex.timestamp?.toDate?.();
+      if (!d) continue;
+      const key = d.toISOString().slice(0, 10);
+      if (!byDay[key]) byDay[key] = [];
+      byDay[key].push({
+        isbn: ex.isbn || '', reason: ex.reason, title: ex.title || '',
+        photo: ex.photo || null, time: d, podId: ex.podId,
+      });
     }
-    return Object.entries(byPO)
-      .sort((a, b) => b[1] - a[1])
-      .map(([po, count]) => ({ po, count }));
-  }, [allScans]);
+    return Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [allScans, allExceptions]);
 
-  const totalStandard = allScans.filter((s) => s.type === 'standard').length;
-  const totalExceptions = allScans.filter((s) => s.type === 'exception').length + allExceptions.length;
+  const totalProcessed = allScans.filter((s) => s.type === 'standard').length;
+  const totalExcCount = allScans.filter((s) => s.type === 'exception').length + allExceptions.length;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayData = dailyBreakdown.find((d) => d.date === todayKey);
 
-  // ─── PO Upload ───
+  const toDateStr = (ts) => {
+    if (!ts) return '';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString();
+  };
+
+  // PO Upload
   const handlePOUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     setFileError(''); setUploadStatus('');
@@ -172,20 +199,19 @@ export default function CustomerPortal() {
         });
         await batch.commit();
       }
-      // Auto-assign PO colors if multi-mode
       if (job.meta.mode === 'multi') {
         const colors = {};
         poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length]; });
         await setDoc(doc(db, 'jobs', job.id), { poColors: colors }, { merge: true });
       }
-      setUploadStatus(`✓ Uploaded ${entries.length.toLocaleString()} ISBNs across ${poNames.length} POs`);
+      setUploadStatus('Uploaded ' + entries.length.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
       setManifest(null); setPoNames([]);
     } catch (err) {
       setUploadStatus('Upload failed: ' + err.message);
     }
   };
 
-  // ─── BOL Upload ───
+  // BOL Upload
   const handleBOLFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -199,14 +225,11 @@ export default function CustomerPortal() {
     setBolUploading(true);
     try {
       await addDoc(collection(db, 'bols'), {
-        jobId: job.id,
-        date: bolDate,
+        jobId: job.id, date: bolDate,
         truckId: bolTruckId.trim() || null,
         notes: bolNotes.trim() || null,
-        fileName: bolFile.name,
-        fileData: bolFile.data,
-        fileSize: bolFile.size,
-        uploadedAt: serverTimestamp(),
+        fileName: bolFile.name, fileData: bolFile.data, fileSize: bolFile.size,
+        pickedUp: false, uploadedAt: serverTimestamp(),
       });
       setBolFile(null); setBolTruckId(''); setBolNotes('');
       setBolDate(new Date().toISOString().slice(0, 10));
@@ -216,393 +239,357 @@ export default function CustomerPortal() {
     setBolUploading(false);
   };
 
-  // ─── Report Exports ───
-  const toDateStr = (ts) => {
-    if (!ts) return '';
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleString();
-  };
-
-  const exportDaily = (date) => {
+  // Report Exports
+  const exportDailyScans = (date) => {
     const dayScans = allScans.filter((s) => {
       const d = s.timestamp?.toDate?.();
-      return d && d.toISOString().slice(0, 10) === date;
+      return d && d.toISOString().slice(0, 10) === date && s.type === 'standard';
     });
-    const dayExcs = allExceptions.filter((ex) => {
+    const wb = XLSX.utils.book_new();
+    const data = dayScans.map((s) => ({
+      ISBN: s.isbn, PO: s.poName || '', Timestamp: toDateStr(s.timestamp),
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), 'Scanned Items');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+      { Metric: 'Date', Value: date },
+      { Metric: 'Units Scanned', Value: data.length },
+    ]), 'Summary');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    downloadBlob(buf, 'scans_' + date + '.xlsx');
+  };
+
+  const exportDailyExceptions = (date) => {
+    const dayAutoExc = allScans.filter((s) => {
+      const d = s.timestamp?.toDate?.();
+      return d && d.toISOString().slice(0, 10) === date && s.type === 'exception';
+    });
+    const dayManualExc = allExceptions.filter((ex) => {
       const d = ex.timestamp?.toDate?.();
       return d && d.toISOString().slice(0, 10) === date;
     });
     const wb = XLSX.utils.book_new();
-    const scanData = dayScans.filter((s) => s.type === 'standard').map((s) => ({
-      ISBN: s.isbn, PO: s.poName || '', Pod: s.podId, Scanner: s.scannerId, Time: toDateStr(s.timestamp),
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scanData.length ? scanData : [{ Note: 'No scans' }]), 'Scans');
-    const excData = [
-      ...dayScans.filter((s) => s.type === 'exception').map((s) => ({
-        ISBN: s.isbn, Reason: 'Not in Manifest', Pod: s.podId, Scanner: s.scannerId, Time: toDateStr(s.timestamp),
+    const data = [
+      ...dayAutoExc.map((s) => ({
+        ISBN: s.isbn, Reason: 'Not in Manifest', Title: '', Timestamp: toDateStr(s.timestamp),
       })),
-      ...dayExcs.map((ex) => ({
-        ISBN: ex.isbn || '', Title: ex.title || '', Reason: ex.reason, Pod: ex.podId, Scanner: ex.scannerId, Time: toDateStr(ex.timestamp),
+      ...dayManualExc.map((ex) => ({
+        ISBN: ex.isbn || '', Reason: ex.reason, Title: ex.title || '',
+        'Has Photo': ex.photo ? 'Yes' : 'No', Timestamp: toDateStr(ex.timestamp),
       })),
     ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(excData.length ? excData : [{ Note: 'No exceptions' }]), 'Exceptions');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-      { Metric: 'Date', Value: date },
-      { Metric: 'Standard Scans', Value: scanData.length },
-      { Metric: 'Exceptions', Value: excData.length },
-    ]), 'Summary');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No exceptions' }]), 'Exceptions');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    downloadBlob(buf, `${job.meta.name}_daily_${date}.xlsx`);
+    downloadBlob(buf, 'exceptions_' + date + '.xlsx');
   };
 
-  const exportWeekly = (weekOf) => {
-    const weekStart = new Date(weekOf);
-    const weekEnd = new Date(weekOf);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-    const weekScans = allScans.filter((s) => {
-      const d = s.timestamp?.toDate?.();
-      return d && d >= weekStart && d < weekEnd;
-    });
-    const wb = XLSX.utils.book_new();
-    const data = weekScans.filter((s) => s.type === 'standard').map((s) => ({
-      ISBN: s.isbn, PO: s.poName || '', Pod: s.podId, Scanner: s.scannerId, Time: toDateStr(s.timestamp),
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), 'Scans');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-      { Metric: 'Week Of', Value: weekOf },
-      { Metric: 'Standard Scans', Value: data.length },
-      { Metric: 'Exceptions', Value: weekScans.filter((s) => s.type === 'exception').length },
-    ]), 'Summary');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    downloadBlob(buf, `${job.meta.name}_weekly_${weekOf}.xlsx`);
+  const handleLogout = () => {
+    sessionStorage.removeItem('customer-auth');
+    setAuthenticated(false);
+    setPassword('');
   };
 
-  const exportByPO = (po) => {
-    const poScans = allScans.filter((s) => s.type === 'standard' && s.poName === po);
-    const wb = XLSX.utils.book_new();
-    const data = poScans.map((s) => ({
-      ISBN: s.isbn, Pod: s.podId, Scanner: s.scannerId, Time: toDateStr(s.timestamp),
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), po);
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    downloadBlob(buf, `${job.meta.name}_${po}.xlsx`);
-  };
+  // LOGIN SCREEN
+  if (!authenticated) {
+    return (
+      <div style={st.loginContainer}>
+        <div style={st.loginCard}>
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>&#128230;</div>
+            <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>Customer Portal</h1>
+            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>Enter your access password to continue</p>
+          </div>
+          <input type="password" value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
+            placeholder="Password..." autoFocus style={st.loginInput} />
+          {authError && <p style={{ color: '#EF4444', fontSize: 14, marginTop: 8, textAlign: 'center' }}>{authError}</p>}
+          <button onClick={handleLogin} disabled={!password.trim() || authLoading}
+            style={{ ...st.loginBtn, opacity: !password.trim() || authLoading ? 0.5 : 1 }}>
+            {authLoading ? 'Verifying...' : 'Sign In'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const exportAllData = () => {
-    const wb = XLSX.utils.book_new();
-    const scanData = allScans.filter((s) => s.type === 'standard').map((s) => ({
-      ISBN: s.isbn, PO: s.poName || '', Pod: s.podId, Scanner: s.scannerId, Time: toDateStr(s.timestamp),
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scanData.length ? scanData : [{ Note: 'No scans' }]), 'All Scans');
-    const excData = [
-      ...allScans.filter((s) => s.type === 'exception').map((s) => ({
-        ISBN: s.isbn, Reason: 'Not in Manifest', Pod: s.podId, Scanner: s.scannerId, Time: toDateStr(s.timestamp),
-      })),
-      ...allExceptions.map((ex) => ({
-        ISBN: ex.isbn || '', Title: ex.title || '', Reason: ex.reason, Pod: ex.podId, Time: toDateStr(ex.timestamp),
-      })),
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(excData.length ? excData : [{ Note: 'No exceptions' }]), 'All Exceptions');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-      { Metric: 'Job Name', Value: job.meta.name },
-      { Metric: 'Total Standard Scans', Value: scanData.length },
-      { Metric: 'Total Exceptions', Value: excData.length },
-      { Metric: 'Export Date', Value: new Date().toLocaleString() },
-    ]), 'Summary');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    downloadBlob(buf, `${job.meta.name}_complete_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
-
-  // ─── Render ───
-  if (loading) return <div style={s.container}><p style={s.text}>Loading...</p></div>;
+  // LOADING / NO JOB
+  if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;
   if (!job) return (
-    <div style={s.container}>
-      <Link to="/" style={s.backLink}>← Back to Home</Link>
-      <h1 style={s.title}>Customer Portal</h1>
-      <p style={s.text}>No active job. Contact the warehouse supervisor to activate a job.</p>
+    <div style={st.container}>
+      <div style={st.topBar}>
+        <span style={{ color: '#888', fontSize: 14 }}>&#128230; Customer Portal</span>
+        <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
+      </div>
+      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>&#128203;</div>
+        <h2 style={{ color: '#fff', marginBottom: 8 }}>No Active Job</h2>
+        <p style={{ color: '#888' }}>There is no active processing job at this time. Please check back later.</p>
+      </div>
     </div>
   );
 
+  // MAIN PORTAL
   return (
-    <div style={s.container}>
-      <Link to="/" style={s.backLink}>← Back to Home</Link>
-
-      <div style={s.headerRow}>
+    <div style={st.container}>
+      <div style={st.topBar}>
         <div>
-          <h1 style={s.title}>📦 Customer Portal</h1>
-          <p style={s.subtitle}>{job.meta.name} · {job.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'}</p>
+          <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>&#128230; Customer Portal</span>
+          <span style={{ color: '#666', fontSize: 14, marginLeft: 12 }}>{job.meta.name}</span>
+        </div>
+        <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
+      </div>
+
+      <div style={st.statsRow}>
+        <div style={st.statBox}>
+          <div style={st.statVal}>{(todayData?.standard || 0).toLocaleString()}</div>
+          <div style={st.statLbl}>Today's Units</div>
+        </div>
+        <div style={st.statBox}>
+          <div style={{ ...st.statVal, color: (todayData?.exceptions || 0) > 0 ? '#F97316' : '#888' }}>
+            {todayData?.exceptions || 0}
+          </div>
+          <div style={st.statLbl}>Today's Exceptions</div>
+        </div>
+        <div style={st.statBox}>
+          <div style={st.statVal}>{totalProcessed.toLocaleString()}</div>
+          <div style={st.statLbl}>Total Units Processed</div>
+        </div>
+        <div style={st.statBox}>
+          <div style={{ ...st.statVal, color: totalExcCount > 0 ? '#F97316' : '#888' }}>{totalExcCount}</div>
+          <div style={st.statLbl}>Total Exceptions</div>
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div style={s.tabBar}>
-        {[
-          ['overview', '📊 Overview'],
-          ['reports', '📥 Reports'],
-          ['upload', '📤 Upload POs'],
-          ['bols', '🚛 BOLs'],
-        ].map(([key, label]) => (
+      <div style={st.tabBar}>
+        {[['daily','Daily Volume'],['exceptions','Exceptions'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']].map(([key, label]) => (
           <button key={key} onClick={() => setActiveTab(key)}
-            style={{ ...s.tab, ...(activeTab === key ? s.tabActive : {}) }}>
+            style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}) }}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* ═══ Overview Tab ═══ */}
-      {activeTab === 'overview' && (
+      {activeTab === 'daily' && (
         <div>
-          <div style={s.statsRow}>
-            <div style={s.statBox}>
-              <div style={s.statVal}>{totalStandard.toLocaleString()}</div>
-              <div style={s.statLbl}>Scans Completed</div>
-            </div>
-            <div style={s.statBox}>
-              <div style={{ ...s.statVal, color: totalExceptions > 0 ? '#F97316' : '#888' }}>{totalExceptions}</div>
-              <div style={s.statLbl}>Exceptions</div>
-            </div>
-            <div style={s.statBox}>
-              <div style={s.statVal}>{dailyBreakdown.length}</div>
-              <div style={s.statLbl}>Days Active</div>
-            </div>
-            <div style={s.statBox}>
-              <div style={s.statVal}>{job.meta.dailyTarget?.toLocaleString() || '—'}</div>
-              <div style={s.statLbl}>Daily Target</div>
-            </div>
-          </div>
-
-          {/* Progress */}
-          <div style={s.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ color: '#aaa', fontSize: 14 }}>Today's Progress</span>
-              <span style={{ color: '#3B82F6', fontWeight: 700 }}>
-                {dailyBreakdown[0]?.scans.toLocaleString() || 0} / {job.meta.dailyTarget?.toLocaleString()}
-              </span>
-            </div>
-            <div style={{ height: 8, backgroundColor: '#333', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ height: '100%', backgroundColor: '#3B82F6', borderRadius: 4, width: `${Math.min(100, ((dailyBreakdown[0]?.scans || 0) / (job.meta.dailyTarget || 1)) * 100)}%`, transition: 'width 0.5s' }} />
-            </div>
-          </div>
-
-          {/* By PO summary */}
-          {byPOBreakdown.length > 0 && (
-            <div style={s.card}>
-              <h3 style={s.cardTitle}>Scans by PO</h3>
-              {byPOBreakdown.map((item) => (
-                <div key={item.po} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #222' }}>
-                  <span style={{ color: '#ccc', fontSize: 14 }}>{item.po}</span>
-                  <span style={{ color: '#fff', fontWeight: 700, fontFamily: 'monospace' }}>{item.count.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
+          {dailyBreakdown.length === 0 && (
+            <div style={st.card}><p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No processing data yet.</p></div>
           )}
+          {dailyBreakdown.map((d) => (
+            <div key={d.date} style={st.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>{d.date}</div>
+                  <div style={{ color: '#888', fontSize: 13, marginTop: 2 }}>
+                    {d.date === todayKey ? 'Today' : new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: '#fff', fontSize: 24, fontWeight: 800, fontFamily: 'monospace' }}>
+                    {d.standard.toLocaleString()}
+                  </div>
+                  <div style={{ color: '#888', fontSize: 12 }}>units scanned</div>
+                </div>
+              </div>
+              {d.exceptions > 0 && (
+                <div style={{ marginTop: 8, padding: '6px 12px', backgroundColor: '#7f1d1d22', borderRadius: 6, display: 'inline-block' }}>
+                  <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button onClick={() => exportDailyScans(d.date)} style={st.smallBtn}>Scans Report</button>
+                {d.exceptions > 0 && (
+                  <button onClick={() => exportDailyExceptions(d.date)} style={st.smallBtn}>Exceptions Report</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-          {/* Recent daily */}
-          {dailyBreakdown.length > 0 && (
-            <div style={s.card}>
-              <h3 style={s.cardTitle}>Recent Daily Totals</h3>
-              {dailyBreakdown.slice(0, 7).map((d) => (
-                <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #222' }}>
-                  <span style={{ color: '#888', fontSize: 14 }}>{d.date}</span>
-                  <div style={{ display: 'flex', gap: 16 }}>
-                    <span style={{ color: '#fff', fontWeight: 600 }}>{d.scans.toLocaleString()} scans</span>
-                    {d.exceptions > 0 && <span style={{ color: '#F97316', fontSize: 13 }}>{d.exceptions} exc</span>}
+      {activeTab === 'exceptions' && (
+        <div>
+          {dailyExceptions.length === 0 && (
+            <div style={st.card}><p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions recorded.</p></div>
+          )}
+          {dailyExceptions.map(([date, excs]) => (
+            <div key={date} style={st.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ color: '#fff', fontSize: 16, fontWeight: 700, margin: 0 }}>{date}</h3>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{excs.length} exception{excs.length > 1 ? 's' : ''}</span>
+                  <button onClick={() => exportDailyExceptions(date)} style={st.smallBtn}>Export</button>
+                </div>
+              </div>
+              {excs.map((exc, i) => (
+                <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 0', borderTop: '1px solid #222', alignItems: 'flex-start' }}>
+                  {exc.photo && (
+                    <img src={exc.photo} alt="Exception"
+                      onClick={() => setViewingPhoto(exc.photo)}
+                      style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', border: '1px solid #444', cursor: 'pointer', flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontSize: 12, fontWeight: 600 }}>
+                        {exc.reason}
+                      </span>
+                      {exc.isbn && <span style={{ color: '#ccc', fontFamily: 'monospace', fontSize: 13 }}>{exc.isbn}</span>}
+                    </div>
+                    {exc.title && <div style={{ color: '#aaa', fontSize: 13, marginTop: 2 }}>"{exc.title}"</div>}
+                    <div style={{ color: '#666', fontSize: 12, marginTop: 2 }}>{exc.time.toLocaleTimeString()}</div>
                   </div>
                 </div>
               ))}
+            </div>
+          ))}
+          {viewingPhoto && (
+            <div onClick={() => setViewingPhoto(null)}
+              style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'pointer', padding: 24 }}>
+              <img src={viewingPhoto} alt="Exception photo" style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, border: '2px solid #444' }} />
             </div>
           )}
         </div>
       )}
 
-      {/* ═══ Reports Tab ═══ */}
       {activeTab === 'reports' && (
         <div>
-          <div style={s.card}>
-            <h3 style={s.cardTitle}>📊 Export All Data</h3>
-            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>
-              Complete dataset with all scans, exceptions, and summary.
-            </p>
-            <button onClick={exportAllData} style={s.exportBtn}>📥 Download Complete Report</button>
-          </div>
-
-          {/* Daily reports */}
-          <div style={s.card}>
-            <h3 style={s.cardTitle}>📅 Daily Reports</h3>
-            {dailyBreakdown.length === 0 && <p style={{ color: '#888', fontSize: 14 }}>No scan data yet.</p>}
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>Daily Scan Reports</h3>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Download a list of all items scanned on each day.</p>
+            {dailyBreakdown.length === 0 && <p style={{ color: '#666', fontSize: 14 }}>No data yet.</p>}
             {dailyBreakdown.slice(0, 14).map((d) => (
               <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
                 <div>
                   <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{d.date}</span>
-                  <span style={{ color: '#888', fontSize: 13, marginLeft: 12 }}>{d.scans} scans · {d.exceptions} exceptions</span>
+                  <span style={{ color: '#888', fontSize: 13, marginLeft: 12 }}>{d.standard.toLocaleString()} units</span>
                 </div>
-                <button onClick={() => exportDaily(d.date)} style={s.smallBtn}>📥 Export</button>
+                <button onClick={() => exportDailyScans(d.date)} style={st.smallBtn}>Download</button>
               </div>
             ))}
           </div>
-
-          {/* Weekly reports */}
-          {weeklyBreakdown.length > 0 && (
-            <div style={s.card}>
-              <h3 style={s.cardTitle}>📆 Weekly Reports</h3>
-              {weeklyBreakdown.map((w) => (
-                <div key={w.weekOf} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
-                  <div>
-                    <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>Week of {w.weekOf}</span>
-                    <span style={{ color: '#888', fontSize: 13, marginLeft: 12 }}>{w.scans} scans</span>
-                  </div>
-                  <button onClick={() => exportWeekly(w.weekOf)} style={s.smallBtn}>📥 Export</button>
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>Daily Exception Reports</h3>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Download exception details for each day.</p>
+            {dailyBreakdown.filter((d) => d.exceptions > 0).length === 0 && <p style={{ color: '#666', fontSize: 14 }}>No exceptions.</p>}
+            {dailyBreakdown.filter((d) => d.exceptions > 0).map((d) => (
+              <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
+                <div>
+                  <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{d.date}</span>
+                  <span style={{ color: '#F97316', fontSize: 13, marginLeft: 12 }}>{d.exceptions} exceptions</span>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* By PO reports */}
-          {byPOBreakdown.length > 0 && (
-            <div style={s.card}>
-              <h3 style={s.cardTitle}>📋 Reports by PO</h3>
-              {byPOBreakdown.map((item) => (
-                <div key={item.po} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
-                  <div>
-                    <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{item.po}</span>
-                    <span style={{ color: '#888', fontSize: 13, marginLeft: 12 }}>{item.count.toLocaleString()} scans</span>
-                  </div>
-                  <button onClick={() => exportByPO(item.po)} style={s.smallBtn}>📥 Export</button>
-                </div>
-              ))}
-            </div>
-          )}
+                <button onClick={() => exportDailyExceptions(d.date)} style={st.smallBtn}>Download</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ═══ Upload POs Tab ═══ */}
       {activeTab === 'upload' && (
         <div>
-          <div style={s.card}>
-            <h3 style={s.cardTitle}>📤 Upload Purchase Orders</h3>
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>Upload Purchase Orders</h3>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
               Upload a CSV or XLSX file with columns: <strong style={{ color: '#ccc' }}>ISBN</strong> and <strong style={{ color: '#ccc' }}>PO</strong>.
-              This will add ISBNs to the scanning manifest.
             </p>
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handlePOUpload}
-              style={s.input} />
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={handlePOUpload} style={st.input} />
             {fileError && <p style={{ color: '#EF4444', marginTop: 8, fontSize: 14 }}>{fileError}</p>}
             {manifest && (
               <div style={{ marginTop: 12 }}>
                 <p style={{ color: '#22C55E', fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-                  ✓ Parsed {Object.keys(manifest).length.toLocaleString()} ISBNs across {poNames.length} POs
+                  Parsed {Object.keys(manifest).length.toLocaleString()} ISBNs across {poNames.length} POs
                 </p>
                 <div style={{ maxHeight: 200, overflowY: 'auto', backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #333', marginBottom: 12 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        <th style={s.th}>PO Name</th>
-                        <th style={s.th}>ISBN Count</th>
-                      </tr>
-                    </thead>
+                    <thead><tr><th style={st.th}>PO Name</th><th style={st.th}>ISBN Count</th></tr></thead>
                     <tbody>
                       {poNames.map((po) => {
                         const count = Object.values(manifest).filter((v) => v === po).length;
-                        return (
-                          <tr key={po}>
-                            <td style={s.td}>{po}</td>
-                            <td style={s.td}>{count.toLocaleString()}</td>
-                          </tr>
-                        );
+                        return (<tr key={po}><td style={st.td}>{po}</td><td style={st.td}>{count.toLocaleString()}</td></tr>);
                       })}
                     </tbody>
                   </table>
                 </div>
-                <button onClick={submitPO} style={s.primaryBtn}>
-                  Upload to Active Job
-                </button>
+                <button onClick={submitPO} style={st.primaryBtn}>Upload to Job</button>
               </div>
             )}
             {uploadStatus && (
-              <p style={{ color: uploadStatus.startsWith('✓') ? '#22C55E' : uploadStatus === 'Uploading...' ? '#3B82F6' : '#EF4444', marginTop: 8, fontSize: 14, fontWeight: 600 }}>
+              <p style={{ color: uploadStatus.startsWith('Uploaded') ? '#22C55E' : uploadStatus === 'Uploading...' ? '#3B82F6' : '#EF4444', marginTop: 8, fontSize: 14, fontWeight: 600 }}>
                 {uploadStatus}
               </p>
             )}
           </div>
-
-          <div style={{ ...s.card, backgroundColor: '#1a1a2e' }}>
-            <h4 style={{ color: '#818cf8', margin: '0 0 8px', fontSize: 14 }}>💡 File Format Requirements</h4>
+          <div style={{ ...st.card, backgroundColor: '#1a1a2e' }}>
+            <h4 style={{ color: '#818cf8', margin: '0 0 8px', fontSize: 14 }}>File Format</h4>
             <ul style={{ color: '#888', fontSize: 13, margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
               <li>First row must be headers (e.g., "ISBN", "PO")</li>
-              <li>ISBN column: numeric ISBNs (10 or 13 digit, dashes optional)</li>
-              <li>PO column: Purchase Order identifier (text)</li>
+              <li>ISBN column: numeric ISBNs (10 or 13 digit)</li>
+              <li>PO column: Purchase Order identifier</li>
               <li>Supported formats: .csv, .xlsx, .xls</li>
-              <li>Duplicate ISBNs are automatically deduplicated</li>
             </ul>
           </div>
         </div>
       )}
 
-      {/* ═══ BOLs Tab ═══ */}
       {activeTab === 'bols' && (
         <div>
-          <div style={s.card}>
-            <h3 style={s.cardTitle}>🚛 Upload Bill of Lading</h3>
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>Upload Bill of Lading</h3>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
               Upload BOL documents for daily truckload pickups.
             </p>
-
-            <label style={s.label}>Pickup Date</label>
-            <input type="date" value={bolDate} onChange={(e) => setBolDate(e.target.value)} style={s.input} />
-
-            <label style={s.label}>Truck / Carrier ID (optional)</label>
+            <label style={st.label}>Pickup Date</label>
+            <input type="date" value={bolDate} onChange={(e) => setBolDate(e.target.value)} style={st.input} />
+            <label style={st.label}>Truck / Carrier ID (optional)</label>
             <input type="text" value={bolTruckId} onChange={(e) => setBolTruckId(e.target.value)}
-              placeholder="e.g. FEDEX-12345" style={s.input} />
-
-            <label style={s.label}>Notes (optional)</label>
+              placeholder="e.g. FEDEX-12345" style={st.input} />
+            <label style={st.label}>Notes (optional)</label>
             <textarea value={bolNotes} onChange={(e) => setBolNotes(e.target.value)}
-              placeholder="Any pickup notes..." rows={3}
-              style={{ ...s.input, resize: 'vertical', fontFamily: 'inherit' }} />
-
-            <label style={s.label}>BOL Document (PDF, image, or scan)</label>
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={handleBOLFile} style={s.input} />
+              placeholder="Pickup notes..." rows={3}
+              style={{ ...st.input, resize: 'vertical', fontFamily: 'inherit' }} />
+            <label style={st.label}>BOL Document</label>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={handleBOLFile} style={st.input} />
             {bolFile && (
               <p style={{ color: '#22C55E', fontSize: 13, marginTop: 4 }}>
-                ✓ {bolFile.name} ({(bolFile.size / 1024).toFixed(1)} KB)
+                {bolFile.name} ({(bolFile.size / 1024).toFixed(1)} KB)
               </p>
             )}
-
             <button onClick={submitBOL} disabled={!bolFile || bolUploading}
-              style={{ ...s.primaryBtn, marginTop: 16, opacity: !bolFile || bolUploading ? 0.5 : 1 }}>
-              {bolUploading ? 'Uploading...' : '📤 Upload BOL'}
+              style={{ ...st.primaryBtn, marginTop: 16, opacity: !bolFile || bolUploading ? 0.5 : 1 }}>
+              {bolUploading ? 'Uploading...' : 'Upload BOL'}
             </button>
           </div>
 
-          {/* BOL history */}
           {bols.length > 0 && (
-            <div style={s.card}>
-              <h3 style={s.cardTitle}>📋 BOL History</h3>
+            <div style={st.card}>
+              <h3 style={st.cardTitle}>BOL History</h3>
               {bols.map((bol) => (
-                <div key={bol.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #222', flexWrap: 'wrap', gap: 8 }}>
-                  <div>
-                    <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{bol.date}</span>
-                    {bol.truckId && <span style={{ color: '#888', fontSize: 13, marginLeft: 8 }}>🚛 {bol.truckId}</span>}
-                    <span style={{ color: '#666', fontSize: 12, marginLeft: 8 }}>{bol.fileName}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {bol.notes && (
-                      <span style={{ fontSize: 12, color: '#888', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {bol.notes}
+                <div key={bol.id} style={{ padding: '12px 0', borderBottom: '1px solid #222' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>{bol.date}</span>
+                      {bol.truckId && <span style={{ color: '#888', fontSize: 13 }}>{bol.truckId}</span>}
+                      <span style={{
+                        padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700,
+                        backgroundColor: bol.pickedUp ? '#14532d' : '#422006',
+                        color: bol.pickedUp ? '#22C55E' : '#EAB308',
+                      }}>
+                        {bol.pickedUp ? 'PICKED UP' : 'PENDING'}
                       </span>
-                    )}
+                    </div>
                     <button onClick={() => {
                       const a = document.createElement('a');
                       a.href = bol.fileData;
                       a.download = bol.fileName;
                       a.click();
-                    }} style={s.smallBtn}>📥 Download</button>
+                    }} style={st.smallBtn}>Download</button>
                   </div>
+                  {bol.notes && <p style={{ color: '#888', fontSize: 13, marginTop: 4, marginBottom: 0 }}>{bol.notes}</p>}
+                  <p style={{ color: '#666', fontSize: 11, marginTop: 2, marginBottom: 0 }}>{bol.fileName}</p>
                 </div>
               ))}
             </div>
           )}
           {bols.length === 0 && (
-            <div style={s.card}>
+            <div style={st.card}>
               <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No BOLs uploaded yet.</p>
             </div>
           )}
@@ -612,31 +599,70 @@ export default function CustomerPortal() {
   );
 }
 
-const s = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #111)', color: 'var(--text, #fff)', padding: '24px 16px', fontFamily: 'system-ui,sans-serif', maxWidth: 1000, margin: '0 auto' },
-  backLink: { color: '#666', textDecoration: 'none', fontSize: 14, marginBottom: 8, display: 'inline-block' },
-  headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 16 },
-  title: { fontSize: 'clamp(24px, 4vw, 32px)', fontWeight: 800, margin: '8px 0 0' },
-  subtitle: { fontSize: 15, color: 'var(--text-secondary, #888)', marginTop: 4, marginBottom: 0 },
-  text: { color: 'var(--text-secondary, #aaa)', fontSize: 16 },
-  tabBar: { display: 'flex', gap: 4, marginBottom: 24, flexWrap: 'wrap' },
-  tab: {
-    padding: '10px 18px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#333',
-    backgroundColor: '#1a1a1a', color: '#888', fontSize: 14, fontWeight: 600,
-    cursor: 'pointer', transition: 'all 0.2s',
+const st = {
+  loginContainer: {
+    minHeight: '100vh', backgroundColor: '#0a0a0a', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: 24,
   },
-  tabActive: { borderColor: '#3B82F6', color: '#3B82F6', backgroundColor: '#1e3a5f' },
-  statsRow: { display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 },
-  statBox: { backgroundColor: '#1a1a1a', borderRadius: 10, padding: '16px 20px', flex: 1, minWidth: 120, textAlign: 'center', border: '1px solid #333' },
-  statVal: { fontSize: 28, fontWeight: 800, color: '#fff', lineHeight: 1 },
-  statLbl: { fontSize: 12, color: '#888', marginTop: 4 },
-  card: { backgroundColor: '#1a1a1a', borderRadius: 12, padding: 20, border: '1px solid #333', marginBottom: 16 },
-  cardTitle: { fontSize: 16, fontWeight: 700, color: '#ccc', marginTop: 0, marginBottom: 16 },
-  label: { display: 'block', fontSize: 14, fontWeight: 600, color: '#aaa', marginBottom: 6, marginTop: 16 },
-  input: { width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #333', backgroundColor: '#222', color: '#fff', fontSize: 16, boxSizing: 'border-box' },
-  exportBtn: { padding: '12px 24px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: '#1e3a5f', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' },
-  smallBtn: { padding: '6px 12px', borderRadius: 6, border: '1px solid #444', backgroundColor: '#222', color: '#ccc', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
-  primaryBtn: { padding: '14px 28px', borderRadius: 8, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' },
+  loginCard: {
+    backgroundColor: '#1a1a1a', borderRadius: 16, padding: 40, width: '100%', maxWidth: 400,
+    border: '1px solid #333',
+  },
+  loginInput: {
+    width: '100%', padding: '14px 16px', borderRadius: 8, border: '1px solid #444',
+    backgroundColor: '#222', color: '#fff', fontSize: 18, boxSizing: 'border-box',
+    textAlign: 'center', letterSpacing: 2,
+  },
+  loginBtn: {
+    width: '100%', padding: '14px', borderRadius: 8, border: 'none',
+    backgroundColor: '#3B82F6', color: '#fff', fontSize: 16, fontWeight: 700,
+    cursor: 'pointer', marginTop: 16,
+  },
+  container: {
+    minHeight: '100vh', backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #fff)',
+    padding: '16px 16px 40px', fontFamily: 'system-ui,sans-serif', maxWidth: 900, margin: '0 auto',
+  },
+  topBar: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid #222',
+  },
+  logoutBtn: {
+    padding: '6px 16px', borderRadius: 6, border: '1px solid #444',
+    backgroundColor: 'transparent', color: '#888', fontSize: 13, cursor: 'pointer',
+  },
+  text: { color: '#aaa', fontSize: 16 },
+  statsRow: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 },
+  statBox: {
+    backgroundColor: '#1a1a1a', borderRadius: 10, padding: '16px 16px', flex: 1,
+    minWidth: 100, textAlign: 'center', border: '1px solid #222',
+  },
+  statVal: { fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 800, color: '#fff', lineHeight: 1 },
+  statLbl: { fontSize: 11, color: '#666', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  tabBar: { display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap' },
+  tab: {
+    padding: '8px 16px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#222',
+    backgroundColor: '#111', color: '#666', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  },
+  tabActive: { borderColor: '#3B82F6', color: '#3B82F6', backgroundColor: '#0f1d3a' },
+  card: {
+    backgroundColor: '#1a1a1a', borderRadius: 12, padding: 20, border: '1px solid #222', marginBottom: 12,
+  },
+  cardTitle: { fontSize: 15, fontWeight: 700, color: '#ccc', marginTop: 0, marginBottom: 12 },
+  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 6, marginTop: 14 },
+  input: {
+    width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #333',
+    backgroundColor: '#222', color: '#fff', fontSize: 15, boxSizing: 'border-box',
+  },
+  smallBtn: {
+    padding: '6px 12px', borderRadius: 6, border: '1px solid #333',
+    backgroundColor: '#1a1a1a', color: '#aaa', fontSize: 12, fontWeight: 600,
+    cursor: 'pointer', whiteSpace: 'nowrap',
+  },
+  primaryBtn: {
+    padding: '14px 28px', borderRadius: 8, border: 'none',
+    backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 700,
+    cursor: 'pointer', width: '100%',
+  },
   th: { padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #333', color: '#888', fontWeight: 600, position: 'sticky', top: 0, backgroundColor: '#0a0a0a' },
   td: { padding: '6px 12px', borderBottom: '1px solid #222', color: '#ccc' },
 };
