@@ -20,9 +20,11 @@ function PodCard({ pod, presence, operatorStats, notes, onNotesChange }) {
           <span style={{ ...styles.statusBadge, backgroundColor: statusColor }}>
             {statusLabel}
           </span>
-          <span style={{ ...styles.paceIndicator, backgroundColor: paceColor }}>
-            {paceLabel}
-          </span>
+          {(isOnline || pod.scanCount > 0) && (
+            <span style={{ ...styles.paceIndicator, backgroundColor: paceColor }}>
+              {paceLabel}
+            </span>
+          )}
         </div>
       </div>
 

@@ -479,7 +479,7 @@ export default function Dashboard() {
                   <span style={{ color: '#ddd', fontSize: 14, fontWeight: 600 }}>{s.operatorName}</span>
                   <span style={{ color: '#888', fontSize: 13 }}>Pod {s.podId}</span>
                   <span style={{ marginLeft: 'auto', color: '#888', fontSize: 12 }}>
-                    {start?.toLocaleTimeString() || '—'} - {end?.toLocaleTimeString() || 'now'} ({hours}h)
+                    {start?.toLocaleTimeString() || '—'} - {end?.toLocaleTimeString() || 'now'} ({end ? `${hours}h` : 'active'})
                   </span>
                   <span style={{ color: '#666', fontSize: 12 }}>{s.totalScans || 0} scans</span>
                 </div>
@@ -508,7 +508,7 @@ const st = {
   progressContainer: { height: 8, backgroundColor: 'var(--bg-input, #333)', borderRadius: 4, overflow: 'hidden', marginBottom: 24 },
   progressBar: { height: '100%', backgroundColor: '#22C55E', borderRadius: 4, transition: 'width 0.5s ease' },
   podGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 16 },
-  panelBtn: { padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border, #444)', backgroundColor: 'transparent', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  panelBtn: { padding: '8px 16px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border, #444)', backgroundColor: 'transparent', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   panel: { backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, border: '1px solid var(--border, #333)', maxHeight: 420, overflowY: 'auto', marginBottom: 16 },
   exRow: { display: 'flex', gap: 12, alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--border, #222)', flexWrap: 'wrap' },
   exTag: { padding: '2px 8px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' },

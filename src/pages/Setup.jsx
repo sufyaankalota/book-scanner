@@ -431,7 +431,7 @@ const s = {
   toggle: { padding: '12px 20px', borderRadius: 8, border: '1px solid #444', backgroundColor: '#222', color: '#aaa', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
   activeToggle: { padding: '12px 20px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: '#1e3a5f', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
   primaryBtn: { padding: '14px 28px', borderRadius: 8, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', width: '100%' },
-  secondaryBtn: { padding: '10px 18px', borderRadius: 8, border: '1px solid #444', backgroundColor: '#222', color: '#ccc', fontSize: 14, fontWeight: 600, cursor: 'pointer' },
+  secondaryBtn: { padding: '10px 18px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#444', backgroundColor: '#222', color: '#ccc', fontSize: 14, fontWeight: 600, cursor: 'pointer' },
   dangerBtn: { padding: '12px 24px', borderRadius: 8, border: 'none', backgroundColor: '#EF4444', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer' },
   editBtn: { padding: '12px 24px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 16, fontWeight: 600, cursor: 'pointer' },
   linkBtn: { padding: '12px 24px', borderRadius: 8, backgroundColor: '#3B82F6', color: '#fff', fontSize: 16, fontWeight: 700, textDecoration: 'none', display: 'inline-block', textAlign: 'center' },
