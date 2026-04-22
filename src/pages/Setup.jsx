@@ -30,6 +30,7 @@ export default function Setup() {
   const [poColors, setPoColors] = useState({});
   const [fileError, setFileError] = useState('');
   const [activeJob, setActiveJob] = useState(null);
+  const [pastJobs, setPastJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [location, setLocation] = useState('');
@@ -91,6 +92,10 @@ export default function Setup() {
           setBrandName(brandDoc.data().name || '');
           setBrandSubtitle(brandDoc.data().subtitle || '');
         }
+        // Load past (closed) jobs
+        const pastSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
+        setPastJobs(pastSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.meta.closedAt?.toDate?.()?.getTime() || 0) - (a.meta.closedAt?.toDate?.()?.getTime() || 0)));
         // Load alert thresholds
         const alertDoc = await getDoc(doc(db, 'config', 'alerts'));
         if (alertDoc.exists()) {
@@ -175,6 +180,45 @@ export default function Setup() {
       logAudit('job_closed', { jobId: activeJob.id });
       setActiveJob(null); setEditMode(false);
     } catch (err) { alert('Failed to close job: ' + err.message); }
+  };
+
+  const handleDeleteJob = async () => {
+    if (!activeJob) return;
+    const name = activeJob.meta.name || activeJob.id;
+    if (!window.confirm(`DELETE job "${name}" and ALL its data (scans, exceptions, shifts, BOLs, manifest)? This cannot be undone.`)) return;
+    if (!window.confirm('Are you absolutely sure? This is permanent.')) return;
+    try {
+      // Close job first if active
+      if (activeJob.meta.active) {
+        await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.active': false, 'meta.closedAt': serverTimestamp() });
+        for (const podId of activeJob.meta.pods || []) {
+          try { await setDoc(doc(db, 'presence', podId), { podId, scanners: [], operator: '', status: 'offline', online: false, lastSeen: serverTimestamp() }); } catch {}
+        }
+      }
+      // Delete scans
+      const scanSnap = await getDocs(query(collection(db, 'scans'), where('jobId', '==', activeJob.id)));
+      const BATCH = 400;
+      let batch = writeBatch(db); let count = 0;
+      for (const d of scanSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
+      // Delete exceptions
+      const excSnap = await getDocs(query(collection(db, 'exceptions'), where('jobId', '==', activeJob.id)));
+      for (const d of excSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
+      // Delete shifts
+      const shiftSnap = await getDocs(query(collection(db, 'shifts'), where('jobId', '==', activeJob.id)));
+      for (const d of shiftSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
+      // Delete BOLs
+      const bolSnap = await getDocs(query(collection(db, 'bols'), where('jobId', '==', activeJob.id)));
+      for (const d of bolSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
+      // Delete manifest subcollection
+      const manifestSnap = await getDocs(collection(db, 'jobs', activeJob.id, 'manifest'));
+      for (const d of manifestSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
+      // Final batch + delete job doc
+      batch.delete(doc(db, 'jobs', activeJob.id));
+      await batch.commit();
+      logAudit('job_deleted', { jobId: activeJob.id, jobName: name, deletedRecords: count });
+      setActiveJob(null); setEditMode(false);
+      alert(`Job "${name}" and ${count} related records deleted.`);
+    } catch (err) { alert('Delete failed: ' + err.message); }
   };
 
   const handleEditSave = async () => {
@@ -315,6 +359,7 @@ export default function Setup() {
                 <Link to="/dashboard" style={s.linkBtn}>Go to Dashboard</Link>
                 <button onClick={() => setEditMode(true)} style={s.editBtn}>✏️ Edit Job</button>
                 <button onClick={handleCloseJob} style={s.dangerBtn}>Close Job</button>
+                <button onClick={handleDeleteJob} style={{ ...s.dangerBtn, backgroundColor: '#450a0a', borderColor: '#7f1d1d' }}>🗑 Delete Job</button>
               </div>
             </>
           ) : (
@@ -558,6 +603,40 @@ export default function Setup() {
           {saving ? 'Activating...' : 'Activate Job'}
         </button>
       </div>
+
+      {/* Past Jobs */}
+      {pastJobs.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <h2 style={{ color: '#888', fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Past Jobs</h2>
+          {pastJobs.map((pj) => (
+            <div key={pj.id} style={{ ...s.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 16 }}>
+              <div>
+                <div style={{ color: '#ccc', fontSize: 16, fontWeight: 700 }}>{pj.meta.name}</div>
+                <div style={{ color: '#666', fontSize: 13, marginTop: 2 }}>
+                  {pj.meta.mode} · {pj.meta.pods?.length || 0} pods · closed {pj.meta.closedAt?.toDate?.()?.toLocaleDateString() || '—'}
+                </div>
+              </div>
+              <button onClick={async () => {
+                if (!window.confirm(`Delete job "${pj.meta.name}" and ALL its data? This cannot be undone.`)) return;
+                try {
+                  const scanSnap = await getDocs(query(collection(db, 'scans'), where('jobId', '==', pj.id)));
+                  const excSnap = await getDocs(query(collection(db, 'exceptions'), where('jobId', '==', pj.id)));
+                  const shiftSnap = await getDocs(query(collection(db, 'shifts'), where('jobId', '==', pj.id)));
+                  const bolSnap = await getDocs(query(collection(db, 'bols'), where('jobId', '==', pj.id)));
+                  const mfSnap = await getDocs(collection(db, 'jobs', pj.id, 'manifest'));
+                  const allDocs = [...scanSnap.docs, ...excSnap.docs, ...shiftSnap.docs, ...bolSnap.docs, ...mfSnap.docs];
+                  let batch = writeBatch(db); let c = 0;
+                  for (const d of allDocs) { batch.delete(d.ref); c++; if (c % 400 === 0) { await batch.commit(); batch = writeBatch(db); } }
+                  batch.delete(doc(db, 'jobs', pj.id));
+                  await batch.commit();
+                  logAudit('job_deleted', { jobId: pj.id, jobName: pj.meta.name, deletedRecords: c });
+                  setPastJobs((prev) => prev.filter((j) => j.id !== pj.id));
+                } catch (err) { alert('Delete failed: ' + err.message); }
+              }} style={{ ...s.dangerBtn, fontSize: 13, padding: '8px 16px' }}>🗑 Delete</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
