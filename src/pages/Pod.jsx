@@ -350,14 +350,23 @@ export default function Pod() {
     }
     if (!job) { playErrorBeep(); flash('#EF4444', 'NO ACTIVE JOB'); return; }
 
-    // Optimistic update
-    setLocalCount((c) => c + 1);
     setLastScanTime(new Date());
     setShowIdleWarning(false);
     if (!scanStartTimeRef.current) scanStartTimeRef.current = Date.now();
 
     const scannerName = operatorName;
     const scanId = `s_${now}_${Math.random().toString(36).slice(2, 6)}`;
+
+    // Training mode: don't write to Firestore, don't count
+    if (trainingMode) {
+      playSuccessBeep();
+      flash('#818cf8', t('trainingMode') + ' ✓');
+      setRecentScans((prev) => [{ id: scanId, isbn, poName: 'TRAINING', time: new Date(), docId: 'training' }, ...prev].slice(0, 20));
+      return;
+    }
+
+    // Optimistic update (only for real scans)
+    setLocalCount((c) => c + 1);
 
     // Milestone check
     const newTotal = totalScans + 1;
@@ -366,14 +375,6 @@ export default function Pod() {
       triggerConfetti();
       setMilestoneMsg(getMilestoneMessage(milestone));
       setTimeout(() => setMilestoneMsg(''), 4000);
-    }
-
-    // Training mode: don't write to Firestore
-    if (trainingMode) {
-      playSuccessBeep();
-      flash('#818cf8', t('trainingMode') + ' ✓');
-      setRecentScans((prev) => [{ id: scanId, isbn, poName: 'TRAINING', time: new Date(), docId: 'training' }, ...prev].slice(0, 20));
-      return;
     }
 
     if (job.meta.mode === 'single') {
@@ -451,6 +452,10 @@ export default function Pod() {
 
   const handleException = (data) => {
     if (!job) return;
+    if (trainingMode) {
+      flash('#818cf8', t('trainingMode') + ' — exception not saved');
+      return;
+    }
     addDoc(collection(db, 'exceptions'), {
       jobId: job.id, podId: data.podId, scannerId: data.scannerId,
       isbn: data.isbn, title: data.title || null, reason: data.reason,
@@ -505,7 +510,7 @@ export default function Pod() {
   const dailyPct = dailyPodTarget > 0 ? Math.min(100, Math.round((totalScans / dailyPodTarget) * 100)) : 0;
   const goalPct = dailyPodTarget > 0 ? Math.min(100, Math.round((targetPerHour * (job?.meta?.workingHours || 8) / dailyPodTarget) * 100)) : 50;
 
-  const scaleStyle = fontSize !== 100 ? { zoom: fontSize / 100 } : {};
+  const scaleStyle = fontSize !== 100 ? { transform: `scale(${fontSize / 100})`, transformOrigin: 'top center', width: `${10000 / fontSize}%`, marginLeft: 'auto', marginRight: 'auto' } : {};
 
   // ═══════════════════════════════════════════
   // PHASE: Enter Operator Name
@@ -613,12 +618,16 @@ export default function Pod() {
               </button>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
               <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 14, minWidth: 90 }}>{t('fontSize')}:</span>
               <input type="range" min={80} max={140} value={fontSize}
                 onChange={(e) => setFontSize(Number(e.target.value))} style={{ flex: 1 }} />
               <span style={{ color: 'var(--text-secondary, #888)', fontSize: 13 }}>{fontSize}%</span>
             </label>
+            <div style={{ marginLeft: 102, marginBottom: 12, padding: '6px 12px', borderRadius: 6, backgroundColor: 'var(--bg-card, #1a1a1a)', border: '1px solid var(--border, #333)' }}>
+              <span style={{ fontSize: `${fontSize * 0.48}px`, fontWeight: 800, color: 'var(--text, #fff)' }}>1,234</span>
+              <span style={{ fontSize: `${fontSize * 0.13}px`, color: 'var(--text-secondary, #999)', marginLeft: 8 }}>Total Scans — preview</span>
+            </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 14, minWidth: 90 }}>{t('volume')}:</span>
