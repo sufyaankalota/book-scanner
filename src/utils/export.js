@@ -172,3 +172,52 @@ export function exportReconciliation(scans, manifestData, jobMeta) {
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   downloadBlob(buf, `${jobMeta.name || 'reconciliation'}_reconciliation_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
+/** Export exceptions only — for sending to customer */
+export function exportExceptionsXLSX(scans, exceptions, jobMeta) {
+  const wb = XLSX.utils.book_new();
+  const exceptionScans = scans.filter((s) => s.type === 'exception');
+  const allExceptions = [
+    ...exceptionScans.map((s) => ({
+      ISBN: s.isbn, Reason: 'Not in Manifest', Pod: s.podId,
+      Scanner: s.scannerId, Timestamp: toDateString(s.timestamp),
+    })),
+    ...exceptions.map((ex) => ({
+      ISBN: ex.isbn || '', Title: ex.title || '', Reason: ex.reason,
+      Pod: ex.podId, Scanner: ex.scannerId, Resolved: ex.resolved ? 'Yes' : 'No',
+      Timestamp: toDateString(ex.timestamp),
+    })),
+  ];
+  const ws = XLSX.utils.json_to_sheet(allExceptions);
+  XLSX.utils.book_append_sheet(wb, ws, 'Exceptions');
+  const ws2 = XLSX.utils.json_to_sheet([
+    { Metric: 'Job Name', Value: jobMeta.name || '' },
+    { Metric: 'Total Exceptions', Value: allExceptions.length },
+    { Metric: 'Not in Manifest', Value: exceptionScans.length },
+    { Metric: 'Manual Exceptions', Value: exceptions.length },
+    { Metric: 'Export Date', Value: new Date().toLocaleString() },
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  downloadBlob(buf, `${jobMeta.name || 'exceptions'}_exceptions_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+/** Export shift summary for email/print */
+export function exportShiftSummary(shiftStats) {
+  const wb = XLSX.utils.book_new();
+  const data = [
+    { Field: 'Operator', Value: shiftStats.operator },
+    { Field: 'Pod', Value: shiftStats.pod },
+    { Field: 'Job', Value: shiftStats.job },
+    { Field: 'Total Scans', Value: shiftStats.total },
+    { Field: 'Exceptions', Value: shiftStats.exceptions },
+    { Field: 'Avg Pace/hr', Value: shiftStats.pace },
+    { Field: 'Hours Worked', Value: shiftStats.hours },
+    { Field: 'Break Time', Value: shiftStats.breakMinutes ? `${shiftStats.breakMinutes} min` : '0 min' },
+    { Field: 'Date', Value: new Date().toLocaleDateString() },
+    { Field: 'End Time', Value: new Date().toLocaleTimeString() },
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Shift Summary');
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  downloadBlob(buf, `shift_${shiftStats.operator}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}

@@ -58,6 +58,16 @@ export default function Setup() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
+  // Alert thresholds
+  const [idleTimeout, setIdleTimeout] = useState(5);
+  const [paceWarning, setPaceWarning] = useState(80);
+  const [alertsSaved, setAlertsSaved] = useState(false);
+
+  // Export scheduling
+  const [autoExportTime, setAutoExportTime] = useState('17:00');
+  const [autoExportEnabled, setAutoExportEnabled] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -76,6 +86,18 @@ export default function Setup() {
         if (brandDoc.exists()) {
           setBrandName(brandDoc.data().name || '');
           setBrandSubtitle(brandDoc.data().subtitle || '');
+        }
+        // Load alert thresholds
+        const alertDoc = await getDoc(doc(db, 'config', 'alerts'));
+        if (alertDoc.exists()) {
+          setIdleTimeout(alertDoc.data().idleTimeout || 5);
+          setPaceWarning(alertDoc.data().paceWarning || 80);
+        }
+        // Load export schedule
+        const schedDoc = await getDoc(doc(db, 'config', 'schedule'));
+        if (schedDoc.exists()) {
+          setAutoExportEnabled(schedDoc.data().enabled || false);
+          setAutoExportTime(schedDoc.data().time || '17:00');
         }
       } catch (err) { console.error('Failed to load:', err); }
       setLoading(false);
@@ -214,6 +236,49 @@ export default function Setup() {
     setAuditLoading(false);
   };
 
+  const handleAlertsSave = async () => {
+    try {
+      await setDoc(doc(db, 'config', 'alerts'), { idleTimeout: Number(idleTimeout), paceWarning: Number(paceWarning) });
+      logAudit('alerts_updated', { idleTimeout, paceWarning });
+      setAlertsSaved(true);
+      setTimeout(() => setAlertsSaved(false), 3000);
+    } catch (err) { alert('Failed to save: ' + err.message); }
+  };
+
+  const handleScheduleSave = async () => {
+    try {
+      await setDoc(doc(db, 'config', 'schedule'), { enabled: autoExportEnabled, time: autoExportTime });
+      logAudit('schedule_updated', { enabled: autoExportEnabled, time: autoExportTime });
+      setScheduleSaved(true);
+      setTimeout(() => setScheduleSaved(false), 3000);
+    } catch (err) { alert('Failed to save: ' + err.message); }
+  };
+
+  const getPodUrl = (podId) => {
+    const base = window.location.origin;
+    return `${base}/pod?id=${encodeURIComponent(podId)}`;
+  };
+
+  const getQrUrl = (podId) => {
+    const podUrl = getPodUrl(podId);
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(podUrl)}`;
+  };
+
+  const printQrCodes = () => {
+    const podIds = activeJob?.meta?.pods || [];
+    const html = podIds.map((id) => `
+      <div style="text-align:center;page-break-inside:avoid;margin:24px 0">
+        <h2 style="font-size:28px;margin-bottom:8px">Pod ${id}</h2>
+        <img src="${getQrUrl(id)}" width="200" height="200" />
+        <p style="font-size:12px;color:#888">${getPodUrl(id)}</p>
+      </div>
+    `).join('');
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>Pod QR Codes</title></head><body style="font-family:sans-serif">${html}</body></html>`);
+    w.document.close();
+    w.print();
+  };
+
   if (loading) return <div style={s.container}><p style={s.text}>Loading...</p></div>;
 
   // ─── Active Job View ───
@@ -267,10 +332,10 @@ export default function Setup() {
 
         {/* Admin sections */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
-          {['pin', 'branding', 'retention', 'audit'].map((key) => (
+          {['pin', 'branding', 'alerts', 'qr', 'schedule', 'retention', 'audit'].map((key) => (
             <button key={key} onClick={() => { setShowSection(showSection === key ? '' : key); if (key === 'audit') loadAuditLog(); }}
               style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
-              {key === 'pin' ? '🔒 PIN' : key === 'branding' ? '🎨 Branding' : key === 'retention' ? '🗑 Data Retention' : '📋 Audit Log'}
+              {key === 'pin' ? '🔒 PIN' : key === 'branding' ? '🎨 Branding' : key === 'alerts' ? '⚙️ Alerts' : key === 'qr' ? '📱 QR Codes' : key === 'schedule' ? '⏰ Auto-Export' : key === 'retention' ? '🗑 Retention' : '📋 Audit'}
             </button>
           ))}
         </div>
@@ -297,6 +362,63 @@ export default function Setup() {
               placeholder="e.g. Book Processing Center" style={s.input} />
             <button onClick={handleBrandingSave}
               style={{ ...s.primaryBtn, marginTop: 12 }}>{brandSaved ? '✓ Saved!' : 'Save Branding'}</button>
+          </div>
+        )}
+
+        {showSection === 'alerts' && (
+          <div style={s.card}>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>Configure alert thresholds for pod monitoring.</p>
+            <label style={s.label}>Idle Timeout (minutes)</label>
+            <input type="number" value={idleTimeout} onChange={(e) => setIdleTimeout(e.target.value)}
+              min={1} max={30} style={s.input} />
+            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>Alert when a pod has no scans for this many minutes</p>
+            <label style={s.label}>Pace Warning Threshold (%)</label>
+            <input type="number" value={paceWarning} onChange={(e) => setPaceWarning(e.target.value)}
+              min={10} max={100} style={s.input} />
+            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>Warn when pace drops below this % of target</p>
+            <button onClick={handleAlertsSave}
+              style={{ ...s.primaryBtn, marginTop: 12 }}>{alertsSaved ? '✓ Saved!' : 'Save Alert Settings'}</button>
+          </div>
+        )}
+
+        {showSection === 'qr' && (
+          <div style={s.card}>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Print QR codes for each pod. Operators can scan to open their pod page.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'center' }}>
+              {(activeJob?.meta?.pods || []).map((podId) => (
+                <div key={podId} style={{ textAlign: 'center' }}>
+                  <img src={getQrUrl(podId)} alt={`QR for Pod ${podId}`} width={150} height={150}
+                    style={{ borderRadius: 8, border: '1px solid #333' }} />
+                  <p style={{ color: '#ccc', fontSize: 14, fontWeight: 600, marginTop: 4 }}>Pod {podId}</p>
+                  <p style={{ color: '#666', fontSize: 10, wordBreak: 'break-all', maxWidth: 150 }}>{getPodUrl(podId)}</p>
+                </div>
+              ))}
+            </div>
+            <button onClick={printQrCodes}
+              style={{ ...s.primaryBtn, marginTop: 16 }}>🖨 Print All QR Codes</button>
+          </div>
+        )}
+
+        {showSection === 'schedule' && (
+          <div style={s.card}>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Automatically export the daily report at a set time.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <label style={{ color: '#ccc', fontSize: 14 }}>Enable auto-export</label>
+              <button onClick={() => setAutoExportEnabled(!autoExportEnabled)}
+                style={{ padding: '4px 16px', borderRadius: 20, border: 'none',
+                  backgroundColor: autoExportEnabled ? '#22C55E' : '#333',
+                  color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background-color 0.2s' }}>
+                {autoExportEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            <label style={s.label}>Export Time</label>
+            <input type="time" value={autoExportTime} onChange={(e) => setAutoExportTime(e.target.value)}
+              style={s.input} />
+            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
+              Report will auto-download on any open Dashboard tab at this time
+            </p>
+            <button onClick={handleScheduleSave}
+              style={{ ...s.primaryBtn, marginTop: 12 }}>{scheduleSaved ? '✓ Saved!' : 'Save Schedule'}</button>
           </div>
         )}
 

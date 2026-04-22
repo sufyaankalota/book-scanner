@@ -1,12 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+
+function AutoRefreshIndicator({ lastUpdated }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.round((Date.now() - lastUpdated.getTime()) / 1000);
+  const label = secs < 5 ? 'just now' : secs < 60 ? `${secs}s ago` : `${Math.round(secs / 60)}m ago`;
+  return (
+    <div style={{ textAlign: 'center', color: '#555', fontSize: 12, marginBottom: 12 }}>
+      🔄 Updated {label}
+    </div>
+  );
+}
 import { db } from '../firebase';
 import {
-  collection, doc, getDocs, updateDoc, setDoc,
+  collection, doc, getDocs, getDoc, updateDoc, setDoc,
   query, where, onSnapshot, Timestamp,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
-import { exportTodayXLSX, exportAllXLSX, exportPerPO, downloadBlob, exportReconciliation } from '../utils/export';
+import { exportTodayXLSX, exportAllXLSX, exportPerPO, downloadBlob, exportReconciliation, exportExceptionsXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
 
 export default function Dashboard() {
@@ -25,6 +40,8 @@ export default function Dashboard() {
   const [messageInputs, setMessageInputs] = useState({});
   const [showPanel, setShowPanel] = useState(''); // '' | 'exceptions' | 'shifts' | 'leaderboard' | 'hourly' | 'manifest'
   const [manifestData, setManifestData] = useState({});
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [selectedExceptions, setSelectedExceptions] = useState(new Set());
 
   // Load active job
   useEffect(() => {
@@ -72,6 +89,7 @@ export default function Dashboard() {
     const unsub = onSnapshot(q, (snap) => {
       const scans = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setAllScans(scans);
+      setLastUpdated(new Date());
       const pods = {};
       const opStats = {};
       const now = Date.now();
@@ -135,6 +153,27 @@ export default function Dashboard() {
     return unsub;
   }, [job]);
 
+  // Auto-export scheduling
+  useEffect(() => {
+    if (!job) return;
+    let exported = false;
+    const interval = setInterval(async () => {
+      if (exported) return;
+      try {
+        const schedDoc = await getDoc(doc(db, 'config', 'schedule'));
+        if (!schedDoc.exists() || !schedDoc.data().enabled) return;
+        const targetTime = schedDoc.data().time || '17:00';
+        const now = new Date();
+        const [h, m] = targetTime.split(':').map(Number);
+        if (now.getHours() === h && now.getMinutes() === m) {
+          exported = true;
+          exportTodayXLSX(allScans, allExceptions, job.meta);
+        }
+      } catch {}
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [job, allScans, allExceptions]);
+
   // Enable notifications
   const enableNotifications = async () => {
     try {
@@ -166,6 +205,34 @@ export default function Dashboard() {
       await updateDoc(doc(db, 'exceptions', exId), { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: 'supervisor' });
       logAudit('resolve_exception', { exceptionId: exId });
     } catch {}
+  };
+
+  // Bulk resolve exceptions
+  const bulkResolve = async () => {
+    if (selectedExceptions.size === 0) return;
+    const ids = [...selectedExceptions];
+    for (const exId of ids) {
+      try {
+        await updateDoc(doc(db, 'exceptions', exId), { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: 'supervisor' });
+      } catch {}
+    }
+    logAudit('bulk_resolve_exceptions', { count: ids.length });
+    setSelectedExceptions(new Set());
+  };
+
+  // Toggle exception selection
+  const toggleException = (exId) => {
+    setSelectedExceptions((prev) => {
+      const next = new Set(prev);
+      if (next.has(exId)) next.delete(exId); else next.add(exId);
+      return next;
+    });
+  };
+
+  // Export exceptions for customer
+  const handleExportExceptions = () => {
+    if (!job) return;
+    exportExceptionsXLSX(allScans, allExceptions, job.meta);
   };
 
   // Leaderboard
@@ -319,6 +386,11 @@ export default function Dashboard() {
         <div style={{ ...st.progressBar, width: `${Math.min(100, (totalScans / dailyTarget) * 100)}%` }} />
       </div>
 
+      {/* Auto-refresh indicator */}
+      {lastUpdated && (
+        <AutoRefreshIndicator lastUpdated={lastUpdated} />
+      )}
+
       {/* Notification toggle */}
       {!notificationsEnabled && typeof Notification !== 'undefined' && (
         <button onClick={enableNotifications} style={{ ...st.exportBtn, marginBottom: 16 }}>
@@ -400,6 +472,20 @@ export default function Dashboard() {
       {/* Exceptions panel */}
       {showPanel === 'exceptions' && (
         <div style={st.panel}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #333' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {selectedExceptions.size > 0 && (
+                <button onClick={bulkResolve}
+                  style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  ✓ Resolve Selected ({selectedExceptions.size})
+                </button>
+              )}
+            </div>
+            <button onClick={handleExportExceptions}
+              style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              📥 Export for Customer
+            </button>
+          </div>
           {allScans.filter((s) => s.type === 'exception').map((s) => (
             <div key={s.id} style={st.exRow}>
               <span style={st.exTag}>NOT IN MANIFEST</span>
@@ -409,6 +495,11 @@ export default function Dashboard() {
           ))}
           {allExceptions.map((ex) => (
             <div key={ex.id} style={{ ...st.exRow, opacity: ex.resolved ? 0.5 : 1 }}>
+              {!ex.resolved && (
+                <input type="checkbox" checked={selectedExceptions.has(ex.id)}
+                  onChange={() => toggleException(ex.id)}
+                  style={{ accentColor: '#3B82F6', cursor: 'pointer', width: 16, height: 16 }} />
+              )}
               <span style={st.exTag}>{ex.reason}</span>
               <span style={st.exDetail}>
                 {ex.isbn ? `ISBN: ${ex.isbn}` : ''}{ex.title ? ` "${ex.title}"` : ''} · Pod {ex.podId} · {ex.scannerId}

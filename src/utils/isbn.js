@@ -33,3 +33,15 @@ function isValidISBN13(isbn) {
 export function cleanISBN(code) {
   return code.replace(/[-\s]/g, '').trim();
 }
+
+/** Detect barcode type: ISBN-13, ISBN-10, UPC-A, EAN-13, or Unknown */
+export function detectBarcodeType(code) {
+  const cleaned = code.replace(/[-\s]/g, '').trim();
+  if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) {
+    if (cleaned.startsWith('978') || cleaned.startsWith('979')) return 'ISBN-13';
+    return 'EAN-13';
+  }
+  if (cleaned.length === 10 && /^\d{9}[\dXx]$/.test(cleaned)) return 'ISBN-10';
+  if (cleaned.length === 12 && /^\d{12}$/.test(cleaned)) return 'UPC-A';
+  return 'Unknown';
+}

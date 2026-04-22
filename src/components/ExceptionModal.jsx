@@ -12,7 +12,9 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   const [isbn, setIsbn] = useState('');
   const [title, setTitle] = useState('');
   const [step, setStep] = useState('reason');
+  const [photoData, setPhotoData] = useState(null);
   const isbnRef = useRef(null);
+  const fileRef = useRef(null);
 
   const handleReasonSelect = (r) => {
     setReason(r);
@@ -20,11 +22,33 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     setTimeout(() => isbnRef.current?.focus(), 100);
   };
 
+  const handlePhoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Compress to thumbnail via canvas
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 400;
+        const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setPhotoData(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = () => {
     onSubmit({
       reason,
       isbn: isbn.trim() || null,
       title: title.trim() || null,
+      photo: photoData || null,
       podId,
       scannerId,
     });
@@ -91,6 +115,31 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               placeholder="e.g. Harry Potter..."
               style={styles.input}
             />
+
+            <p style={{ ...styles.fieldLabel, marginTop: 14 }}>
+              📸 Photo (optional):
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhoto}
+              style={{ display: 'none' }}
+            />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button onClick={() => fileRef.current?.click()}
+                style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#222', color: '#ccc', fontSize: 14, cursor: 'pointer' }}>
+                {photoData ? '📷 Retake Photo' : '📷 Take Photo'}
+              </button>
+              {photoData && (
+                <>
+                  <img src={photoData} alt="Exception photo" style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover', border: '1px solid #555' }} />
+                  <button onClick={() => setPhotoData(null)}
+                    style={{ background: 'none', border: 'none', color: '#888', fontSize: 16, cursor: 'pointer', padding: 4 }}>✕</button>
+                </>
+              )}
+            </div>
 
             <div style={styles.instructionBanner}>
               <span style={styles.instructionIcon}>📦</span>

@@ -5,12 +5,13 @@ import {
   collection, doc, getDocs, getDoc, addDoc, setDoc, deleteDoc, updateDoc,
   query, where, onSnapshot, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
-import { isValidISBN, cleanISBN } from '../utils/isbn';
+import { isValidISBN, cleanISBN, detectBarcodeType } from '../utils/isbn';
 import { playErrorBeep, playSuccessBeep, playColorBeep, getVolume, setVolume } from '../utils/audio';
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
 import { logAudit } from '../utils/audit';
+import { exportShiftSummary } from '../utils/export';
 import ExceptionModal from '../components/ExceptionModal';
 
 const COLOR_NAMES = {
@@ -78,6 +79,16 @@ export default function Pod() {
   const [lang, setLangState] = useState(getLang());
   const [theme, setThemeState] = useState(getTheme());
 
+  // ─── New feature states ───
+  const [scanStreak, setScanStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(() => parseInt(sessionStorage.getItem('bestStreak') || '0', 10));
+  const [lastBarcodeType, setLastBarcodeType] = useState('');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [breakMinutesUsed, setBreakMinutesUsed] = useState(0);
+  const [operatorHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('operator-history') || '[]'); } catch { return []; }
+  });
+
   const lastScannedRef = useRef({ isbn: '', time: 0 });
   const inputRef = useRef(null);
   const pairInputRef = useRef(null);
@@ -90,6 +101,18 @@ export default function Pod() {
   const totalScans = Math.max(localCount, firestoreCount);
   const isScanning = phase === PHASE_SCANNING;
   const isPaused = phase === PHASE_PAUSED;
+
+  // ─── Save operator to history ───
+  const saveOperatorToHistory = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const history = JSON.parse(localStorage.getItem('operator-history') || '[]');
+      const filtered = history.filter((n) => n.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, 10);
+      localStorage.setItem('operator-history', JSON.stringify(updated));
+    } catch {}
+  };
 
   // ─── Font size ───
   useEffect(() => {
@@ -175,6 +198,9 @@ export default function Pod() {
     const handler = (e) => {
       if (e.key === 'Escape' && !showExceptionModal && !showSwitchOperator && !showSettings) {
         e.preventDefault(); setShowExceptionModal(true); return;
+      }
+      if (e.key === '?' && !showExceptionModal && !showSwitchOperator) {
+        e.preventDefault(); setShowShortcuts((p) => !p); return;
       }
       if (!showExceptionModal && !showSwitchOperator && !showSettings) refocusInput();
     };
@@ -347,10 +373,13 @@ export default function Pod() {
     lastScannedRef.current = { isbn, time: now };
 
     if (!isValidISBN(isbn)) {
-      playErrorBeep(); flash('#EF4444', t('invalidIsbn'), 1200); return;
+      playErrorBeep(); flash('#EF4444', t('invalidIsbn'), 1200);
+      setLastBarcodeType(detectBarcodeType(isbn));
+      return;
     }
     if (!job) { playErrorBeep(); flash('#EF4444', 'NO ACTIVE JOB'); return; }
 
+    setLastBarcodeType(detectBarcodeType(isbn));
     setLastScanTime(new Date());
     setShowIdleWarning(false);
     if (!scanStartTimeRef.current) scanStartTimeRef.current = Date.now();
@@ -381,6 +410,7 @@ export default function Pod() {
     if (job.meta.mode === 'single') {
       playSuccessBeep();
       flash('#22C55E', '✓ ' + t('scanSuccess'));
+      setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); sessionStorage.setItem('bestStreak', String(n)); } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
@@ -401,6 +431,7 @@ export default function Pod() {
       const color = job.poColors?.[poName] || '#22C55E';
       playColorBeep(color);
       flash(color, `${getColorName(color)} GAYLORD`);
+      setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); sessionStorage.setItem('bestStreak', String(n)); } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn, poName,
@@ -415,6 +446,7 @@ export default function Pod() {
     } else {
       playErrorBeep();
       flash('#F97316', 'NOT IN MANIFEST — EXCEPTIONS', 1200);
+      setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
@@ -476,20 +508,27 @@ export default function Pod() {
   // End shift summary
   const handleEndShift = async () => {
     const elapsed = scanStartTimeRef.current ? ((Date.now() - scanStartTimeRef.current) / 3600000).toFixed(1) : '0';
-    setShiftStats({
+    const stats = {
       operator: operatorName, pod: podId, total: totalScans,
       exceptions: exceptionCount, pace,
       hours: elapsed, job: job?.meta?.name || 'Unknown',
-    });
+      breakMinutes: breakMinutesUsed,
+    };
+    setShiftStats(stats);
     setShowEndShift(true);
     await endShift();
   };
 
   const confirmEndShift = () => {
+    // Auto-export shift summary
+    if (shiftStats && shiftStats.total > 0) {
+      try { exportShiftSummary(shiftStats); } catch {}
+    }
     setShowEndShift(false); setShiftStats(null);
     setPhase(PHASE_OPERATOR); setOperatorName('');
     setScannerPaired(false); setLocalCount(0);
     setRecentScans([]); scanStartTimeRef.current = null;
+    setScanStreak(0); setBreakMinutesUsed(0);
     sessionStorage.removeItem(`pod_${podId}_state`);
   };
 
@@ -533,11 +572,27 @@ export default function Pod() {
           <input type="text" value={operatorName}
             onChange={(e) => setOperatorName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && operatorName.trim()) { setPodLocked(false); setPhase(PHASE_PAIR_SCANNER); }
+              if (e.key === 'Enter' && operatorName.trim()) { saveOperatorToHistory(operatorName); setPodLocked(false); setPhase(PHASE_PAIR_SCANNER); }
             }}
             placeholder="e.g. John, Maria..." style={styles.setupInput} autoFocus />
+
+          {/* Recent operators quick-select */}
+          {operatorHistory.length > 0 && !operatorName.trim() && (
+            <div style={{ marginTop: 12 }}>
+              <p style={{ color: '#666', fontSize: 12, marginBottom: 6 }}>Recent operators:</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {operatorHistory.slice(0, 6).map((name) => (
+                  <button key={name} onClick={() => { setOperatorName(name); }}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #ccc)', fontSize: 14, cursor: 'pointer' }}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <button
-            onClick={() => { if (operatorName.trim()) { setPodLocked(false); setPhase(PHASE_PAIR_SCANNER); } }}
+            onClick={() => { if (operatorName.trim()) { saveOperatorToHistory(operatorName); setPodLocked(false); setPhase(PHASE_PAIR_SCANNER); } }}
             disabled={!operatorName.trim()}
             style={{ ...styles.primaryBtn, marginTop: 16, opacity: operatorName.trim() ? 1 : 0.5 }}
           >Next → Pair Scanner</button>
@@ -745,11 +800,11 @@ export default function Pod() {
 
             {/* Break timer buttons */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, justifyContent: 'center' }}>
-              <button onClick={() => { setBreakTimer(15 * 60); setBreakTotal(15 * 60); }}
+              <button onClick={() => { setBreakTimer(15 * 60); setBreakTotal(15 * 60); setBreakMinutesUsed((p) => p + 15); }}
                 style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}>
                 ☕ {t('break15')}
               </button>
-              <button onClick={() => { setBreakTimer(30 * 60); setBreakTotal(30 * 60); }}
+              <button onClick={() => { setBreakTimer(30 * 60); setBreakTotal(30 * 60); setBreakMinutesUsed((p) => p + 30); }}
                 style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}>
                 ☕ {t('break30')}
               </button>
@@ -815,6 +870,8 @@ export default function Pod() {
                 ['Exceptions', shiftStats.exceptions],
                 ['Avg Pace', `${shiftStats.pace}/hr`],
                 ['Hours Worked', `${shiftStats.hours}h`],
+                ['Break Time', `${shiftStats.breakMinutes || 0} min`],
+                ['Best Streak', `${bestStreak} scans`],
               ].map(([label, val]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #333' }}>
                   <span style={{ color: '#888' }}>{label}</span>
@@ -822,6 +879,7 @@ export default function Pod() {
                 </div>
               ))}
             </div>
+            <p style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>📥 Shift report will download automatically</p>
             <button onClick={confirmEndShift}
               style={{ ...styles.primaryBtn, backgroundColor: '#EF4444' }}>
               Confirm End Shift
@@ -886,6 +944,29 @@ export default function Pod() {
       {duplicateInfo && (
         <div style={{ textAlign: 'center', color: '#EAB308', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
           ⚠️ {duplicateInfo}
+        </div>
+      )}
+
+      {/* Scan streak & barcode type */}
+      {(scanStreak >= 5 || lastBarcodeType) && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
+          {scanStreak >= 5 && (
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#22C55E' }}>
+              🔥 {scanStreak} scan streak!{scanStreak >= bestStreak && scanStreak > 5 ? ' (NEW BEST!)' : ''}
+            </span>
+          )}
+          {lastBarcodeType && (
+            <span style={{ fontSize: 12, color: '#888', padding: '2px 8px', borderRadius: 4, backgroundColor: 'var(--bg-card, #1a1a1a)' }}>
+              {lastBarcodeType}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Offline queue indicator */}
+      {!isOnline && (
+        <div style={{ textAlign: 'center', color: '#fca5a5', fontSize: 13, marginBottom: 8 }}>
+          📤 Scans will sync when back online
         </div>
       )}
 
@@ -963,6 +1044,30 @@ export default function Pod() {
         <ExceptionModal podId={podId} scannerId={operatorName}
           onSubmit={handleException}
           onClose={() => { setShowExceptionModal(false); setTimeout(refocusInput, 100); }} />
+      )}
+
+      {/* Keyboard shortcuts overlay */}
+      {showShortcuts && (
+        <div style={styles.pauseOverlay} onClick={() => setShowShortcuts(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#1a1a1a', borderRadius: 16, padding: 32, maxWidth: 400, width: '90%' }}>
+            <h2 style={{ color: '#fff', marginTop: 0, fontSize: 20, textAlign: 'center' }}>⌨️ Keyboard Shortcuts</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                ['Esc', 'Open exception modal'],
+                ['?', 'Toggle this help overlay'],
+                ['Enter', 'Submit / Advance'],
+                ['Space', 'Resume from pause'],
+              ].map(([key, desc]) => (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #333' }}>
+                  <kbd style={{ backgroundColor: '#333', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace', fontSize: 14, color: '#fff', border: '1px solid #555' }}>{key}</kbd>
+                  <span style={{ color: '#aaa', fontSize: 14 }}>{desc}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowShortcuts(false)}
+              style={{ ...styles.primaryBtn, marginTop: 16, width: '100%' }}>Close</button>
+          </div>
+        </div>
       )}
     </div>
   );

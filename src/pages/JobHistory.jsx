@@ -85,6 +85,45 @@ export default function JobHistory() {
 
   const maxTrend = trendData.length ? Math.max(...trendData.map((d) => d.count)) : 1;
 
+  // Week-over-week comparison
+  const weeklyComparison = useMemo(() => {
+    if (trendData.length < 2) return null;
+    const weeks = {};
+    for (const d of trendData) {
+      const date = new Date(d.date);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const key = weekStart.toISOString().slice(0, 10);
+      if (!weeks[key]) weeks[key] = { total: 0, days: 0, label: key };
+      weeks[key].total += d.count;
+      weeks[key].days++;
+    }
+    const sorted = Object.values(weeks).sort((a, b) => a.label.localeCompare(b.label));
+    if (sorted.length < 2) return null;
+    const result = sorted.map((w, i) => {
+      const avg = Math.round(w.total / w.days);
+      const prevAvg = i > 0 ? Math.round(sorted[i - 1].total / sorted[i - 1].days) : null;
+      const change = prevAvg ? Math.round(((avg - prevAvg) / prevAvg) * 100) : null;
+      return { ...w, avg, change };
+    });
+    return result;
+  }, [trendData]);
+
+  // Operator breakdown
+  const operatorBreakdown = useMemo(() => {
+    if (!jobScans.length) return [];
+    const byOp = {};
+    for (const s of jobScans) {
+      if (!s.scannerId) continue;
+      if (!byOp[s.scannerId]) byOp[s.scannerId] = { scans: 0, exceptions: 0 };
+      byOp[s.scannerId].scans++;
+      if (s.type === 'exception') byOp[s.scannerId].exceptions++;
+    }
+    return Object.entries(byOp)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.scans - a.scans);
+  }, [jobScans]);
+
   const handleExportJob = () => {
     if (!selectedJob || !jobScans.length) return;
     const wb = XLSX.utils.book_new();
@@ -172,6 +211,48 @@ export default function JobHistory() {
                   <div style={s.miniStat}><strong>{laborMetrics.totalHours}h</strong><br /><span style={s.miniLbl}>Labor Hours</span></div>
                   <div style={s.miniStat}><strong>{laborMetrics.scansPerHour}</strong><br /><span style={s.miniLbl}>Scans/Hr</span></div>
                 </div>
+              </div>
+            )}
+
+            {/* Week-over-week comparison */}
+            {weeklyComparison && weeklyComparison.length > 1 && (
+              <div style={s.card}>
+                <h3 style={s.cardTitle}>📈 Week-over-Week Comparison</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {weeklyComparison.map((w) => (
+                    <div key={w.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #222' }}>
+                      <span style={{ color: '#888', fontSize: 13, minWidth: 90 }}>Week of {w.label.slice(5)}</span>
+                      <span style={{ color: '#fff', fontWeight: 700, minWidth: 60 }}>{w.total.toLocaleString()}</span>
+                      <span style={{ color: '#888', fontSize: 12 }}>({w.avg}/day avg)</span>
+                      {w.change !== null && (
+                        <span style={{ fontSize: 13, fontWeight: 700, color: w.change >= 0 ? '#22C55E' : '#EF4444', marginLeft: 'auto' }}>
+                          {w.change >= 0 ? '▲' : '▼'} {Math.abs(w.change)}%
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Operator breakdown */}
+            {operatorBreakdown.length > 0 && (
+              <div style={s.card}>
+                <h3 style={s.cardTitle}>👥 Operator Breakdown</h3>
+                {operatorBreakdown.map((op, i) => (
+                  <div key={op.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #222' }}>
+                    <span style={{ color: i === 0 ? '#EAB308' : '#888', fontSize: 14, width: 24, textAlign: 'center', fontWeight: 700 }}>
+                      {i + 1}
+                    </span>
+                    <span style={{ flex: 1, color: '#ddd', fontSize: 15, fontWeight: 600 }}>{op.name}</span>
+                    <span style={{ fontFamily: 'monospace', color: '#fff', fontWeight: 700 }}>{op.scans.toLocaleString()}</span>
+                    {op.exceptions > 0 && (
+                      <span style={{ fontSize: 11, color: '#F97316', backgroundColor: '#7f1d1d', padding: '1px 6px', borderRadius: 4 }}>
+                        {op.exceptions} exc
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
 
