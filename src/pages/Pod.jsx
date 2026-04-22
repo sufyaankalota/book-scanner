@@ -386,6 +386,9 @@ export default function Pod() {
       const val = scanInput.trim();
       setScanInput('');
       if (val) handleScan(val);
+    } else if (e.key.length === 1) {
+      // Build barcode from individual keystrokes (works with readOnly + inputMode=none on iPad)
+      setScanInput((prev) => prev + e.key);
     }
   };
 
@@ -672,12 +675,14 @@ export default function Pod() {
         </div>
       </div>
 
-      {/* Hidden scan input */}
+      {/* Hidden scan input — readOnly + inputMode=none prevents iPad virtual keyboard;
+          USB scanner keystrokes captured via onKeyDown */}
       <input
-        ref={inputRef} type="text" value={scanInput}
-        onChange={(e) => setScanInput(e.target.value)}
+        ref={inputRef} type="text"
         onKeyDown={handleKeyDown}
-        autoFocus style={styles.hiddenInput}
+        autoFocus inputMode="none" readOnly
+        style={styles.hiddenInput}
+        aria-label="Barcode scanner input"
       />
 
       {/* Stats */}
