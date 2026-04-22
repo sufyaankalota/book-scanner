@@ -22,14 +22,14 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div style={{
-          minHeight: '100vh', backgroundColor: '#111', display: 'flex',
+          minHeight: '100vh', backgroundColor: 'var(--bg, #111)', display: 'flex',
           flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'system-ui, sans-serif', padding: 24, color: '#fff',
+          fontFamily: 'system-ui, sans-serif', padding: 24, color: 'var(--text, #fff)',
         }}>
           <h1 style={{ color: '#EF4444', fontSize: 32, marginBottom: 12 }}>
             Something went wrong
           </h1>
-          <p style={{ color: '#888', fontSize: 16, marginBottom: 24 }}>
+          <p style={{ color: 'var(--text-secondary, #888)', fontSize: 16, marginBottom: 24 }}>
             The app encountered an error. Please refresh the page.
           </p>
           <button

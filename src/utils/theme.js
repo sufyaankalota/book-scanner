@@ -25,7 +25,7 @@ const THEMES = {
 };
 
 export function getTheme() {
-  return localStorage.getItem('app-theme') || 'light';
+  return localStorage.getItem('app-theme') || 'dark';
 }
 
 export function setTheme(name) {

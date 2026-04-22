@@ -76,7 +76,7 @@ function PodCard({ pod, presence, operatorStats, notes, onNotesChange }) {
             value={notes || ''}
             onChange={(e) => onNotesChange(e.target.value)}
             placeholder="Pod notes..."
-            style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #333', backgroundColor: '#111', color: '#ccc', fontSize: 12, boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border, #333)', backgroundColor: 'var(--bg-input, #111)', color: 'var(--text-secondary, #ccc)', fontSize: 12, boxSizing: 'border-box' }}
           />
         </div>
       )}
@@ -88,10 +88,10 @@ export default React.memo(PodCard);
 
 const styles = {
   card: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'var(--bg-card, #1a1a1a)',
     borderRadius: 12,
     padding: 20,
-    border: '1px solid #333',
+    border: '1px solid var(--border, #333)',
   },
   header: {
     display: 'flex',
@@ -105,7 +105,7 @@ const styles = {
     fontSize: 24,
     fontWeight: 800,
     margin: 0,
-    color: '#fff',
+    color: 'var(--text, #fff)',
   },
   statusBadge: {
     padding: '3px 10px',
@@ -120,7 +120,7 @@ const styles = {
     borderRadius: 20,
     fontSize: 11,
     fontWeight: 700,
-    color: '#000',
+    color: '#fff',
     letterSpacing: 0.5,
   },
   operatorLine: {
@@ -140,17 +140,17 @@ const styles = {
   statValue: {
     fontSize: 28,
     fontWeight: 800,
-    color: '#fff',
+    color: 'var(--text, #fff)',
     lineHeight: 1,
   },
   statLabel: {
     fontSize: 11,
-    color: '#888',
+    color: 'var(--text-secondary, #888)',
     marginTop: 4,
   },
   operatorSection: {
     marginTop: 12,
-    borderTop: '1px solid #333',
+    borderTop: '1px solid var(--border, #333)',
     paddingTop: 10,
   },
   operatorRow: {
@@ -158,8 +158,8 @@ const styles = {
     justifyContent: 'space-between',
     padding: '3px 0',
   },
-  opName: { color: '#aaa', fontSize: 13 },
-  opCount: { color: '#fff', fontSize: 13, fontWeight: 600 },
+  opName: { color: 'var(--text-secondary, #aaa)', fontSize: 13 },
+  opCount: { color: 'var(--text, #fff)', fontSize: 13, fontWeight: 600 },
   scanners: {
     marginTop: 12,
     display: 'flex',

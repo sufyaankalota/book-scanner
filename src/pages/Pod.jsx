@@ -240,7 +240,7 @@ export default function Pod() {
     return () => {
       clearInterval(interval);
       unsub();
-      setDoc(presenceRef, { podId, scanners: [], operator: '', status: 'offline', online: false, lastSeen: serverTimestamp() });
+      setDoc(presenceRef, { podId, scanners: [], operator: '', status: 'offline', online: false, lastSeen: serverTimestamp() }, { merge: true });
     };
   }, [phase, podId, operatorName, scannerPaired]);
 
@@ -505,7 +505,7 @@ export default function Pod() {
   const dailyPct = dailyPodTarget > 0 ? Math.min(100, Math.round((totalScans / dailyPodTarget) * 100)) : 0;
   const goalPct = dailyPodTarget > 0 ? Math.min(100, Math.round((targetPerHour * (job?.meta?.workingHours || 8) / dailyPodTarget) * 100)) : 50;
 
-  const scaleStyle = { fontSize: `calc(1em * ${fontSize / 100})` };
+  const scaleStyle = fontSize !== 100 ? { zoom: fontSize / 100 } : {};
 
   // ═══════════════════════════════════════════
   // PHASE: Enter Operator Name
@@ -601,45 +601,45 @@ export default function Pod() {
           </div>
 
           {/* Settings panel in Ready phase */}
-          <div style={{ backgroundColor: '#0a0a0a', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-            <h3 style={{ color: '#aaa', fontSize: 14, marginTop: 0, marginBottom: 12 }}>{t('settings')}</h3>
+          <div style={{ backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+            <h3 style={{ color: 'var(--text-secondary, #aaa)', fontSize: 14, marginTop: 0, marginBottom: 12 }}>{t('settings')}</h3>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <span style={{ color: '#ccc', fontSize: 14, minWidth: 90 }}>{t('training')}:</span>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 14, minWidth: 90 }}>{t('training')}:</span>
               <button onClick={() => setTrainingMode(!trainingMode)}
                 style={{ padding: '6px 16px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  backgroundColor: trainingMode ? '#818cf8' : '#333', color: '#fff', fontSize: 13, fontWeight: 600 }}>
+                  backgroundColor: trainingMode ? '#818cf8' : 'var(--bg-input, #333)', color: 'var(--text, #fff)', fontSize: 13, fontWeight: 600 }}>
                 {trainingMode ? 'ON' : 'OFF'}
               </button>
             </label>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <span style={{ color: '#ccc', fontSize: 14, minWidth: 90 }}>{t('fontSize')}:</span>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 14, minWidth: 90 }}>{t('fontSize')}:</span>
               <input type="range" min={80} max={140} value={fontSize}
                 onChange={(e) => setFontSize(Number(e.target.value))} style={{ flex: 1 }} />
-              <span style={{ color: '#888', fontSize: 13 }}>{fontSize}%</span>
+              <span style={{ color: 'var(--text-secondary, #888)', fontSize: 13 }}>{fontSize}%</span>
             </label>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <span style={{ color: '#ccc', fontSize: 14, minWidth: 90 }}>{t('volume')}:</span>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 14, minWidth: 90 }}>{t('volume')}:</span>
               <input type="range" min={0} max={100} value={volLevel}
                 onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ flex: 1 }} />
-              <span style={{ color: '#888', fontSize: 13 }}>{volLevel}%</span>
+              <span style={{ color: 'var(--text-secondary, #888)', fontSize: 13 }}>{volLevel}%</span>
             </label>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <span style={{ color: '#ccc', fontSize: 14, minWidth: 90 }}>{t('language')}:</span>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 14, minWidth: 90 }}>{t('language')}:</span>
               <select value={lang} onChange={(e) => { setLang(e.target.value); setLangState(e.target.value); }}
-                style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #444', backgroundColor: '#222', color: '#fff', fontSize: 14 }}>
+                style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #fff)', fontSize: 14 }}>
                 <option value="en">English</option>
                 <option value="es">Español</option>
               </select>
             </label>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ color: '#ccc', fontSize: 14, minWidth: 90 }}>{t('theme')}:</span>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 14, minWidth: 90 }}>{t('theme')}:</span>
               <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
-                style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #444', backgroundColor: '#222', color: '#ccc', fontSize: 13, cursor: 'pointer' }}>
+                style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, cursor: 'pointer' }}>
                 {theme === 'light' ? '☀️ Light' : theme === 'dark' ? '🌙 Dark' : '🌑 Dim'}
               </button>
             </label>
@@ -844,24 +844,24 @@ export default function Pod() {
 
       {/* Inline settings panel */}
       {showSettings && (
-        <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 12 }}>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10, padding: 16, border: '1px solid var(--border, #333)', marginBottom: 12 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: '#aaa', fontSize: 13 }}>{t('volume')}:</span>
+              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13 }}>{t('volume')}:</span>
               <input type="range" min={0} max={100} value={volLevel}
                 onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ width: 80 }} />
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: '#aaa', fontSize: 13 }}>{t('fontSize')}:</span>
+              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13 }}>{t('fontSize')}:</span>
               <input type="range" min={80} max={140} value={fontSize}
                 onChange={(e) => setFontSize(Number(e.target.value))} style={{ width: 80 }} />
             </label>
             <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
-              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #444', backgroundColor: '#222', color: '#ccc', fontSize: 12, cursor: 'pointer' }}>
+              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 12, cursor: 'pointer' }}>
               {theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🌑'} {t('theme')}
             </button>
             <button onClick={() => { const next = lang === 'en' ? 'es' : 'en'; setLang(next); setLangState(next); }}
-              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #444', backgroundColor: '#222', color: '#ccc', fontSize: 12, cursor: 'pointer' }}>
+              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 12, cursor: 'pointer' }}>
               {lang === 'en' ? '🇺🇸 EN' : '🇲🇽 ES'}
             </button>
           </div>
@@ -981,12 +981,12 @@ const styles = {
   },
   dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
   undoBtn: {
-    padding: '8px 14px', borderRadius: 6, border: '1px solid #666',
-    backgroundColor: '#333', color: '#ccc', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border, #666)',
+    backgroundColor: 'var(--bg-input, #333)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
   },
   settingsBtn: {
-    padding: '8px 12px', borderRadius: 6, border: '1px solid #444',
-    backgroundColor: '#222', color: '#ccc', fontSize: 16, cursor: 'pointer',
+    padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border, #444)',
+    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 16, cursor: 'pointer',
   },
   pauseBtn: {
     padding: '8px 16px', borderRadius: 6,
@@ -1036,34 +1036,34 @@ const styles = {
   setupHint: { color: '#888', fontSize: 15, marginBottom: 20, lineHeight: 1.4 },
   setupInput: {
     width: '100%', padding: '14px 16px', borderRadius: 8,
-    border: '1px solid #444', backgroundColor: '#222', color: '#fff',
+    border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #fff)',
     fontSize: 18, boxSizing: 'border-box',
   },
   pairBox: {
-    textAlign: 'center', padding: '24px 16px', border: '2px dashed #444',
-    borderRadius: 12, backgroundColor: '#0a0a0a', marginBottom: 16,
+    textAlign: 'center', padding: '24px 16px', border: '2px dashed var(--border, #444)',
+    borderRadius: 12, backgroundColor: 'var(--bg-input, #0a0a0a)', marginBottom: 16,
   },
   pairPulse: { width: 16, height: 16, borderRadius: '50%', backgroundColor: '#EAB308', margin: '0 auto 12px', animation: 'pulse 2s infinite' },
   pairText: { color: '#EAB308', fontSize: 18, fontWeight: 600, marginBottom: 12 },
   pairInput: {
     width: '80%', padding: '12px 14px', borderRadius: 8,
-    border: '1px solid #555', backgroundColor: '#1a1a1a', color: '#fff',
+    border: '1px solid var(--border, #555)', backgroundColor: 'var(--bg-card, #1a1a1a)', color: 'var(--text, #fff)',
     fontSize: 16, textAlign: 'center', boxSizing: 'border-box',
   },
   scannerStatus: { marginTop: 12 },
   scannerStatusRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 },
   scannerStatusText: { color: '#ccc', fontSize: 14 },
-  readySummary: { backgroundColor: '#0a0a0a', borderRadius: 8, padding: 16, marginBottom: 20 },
-  readyRow: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #222' },
-  readyLabel: { color: '#888', fontSize: 14 },
-  readyValue: { color: '#fff', fontSize: 14, fontWeight: 600 },
+  readySummary: { backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 8, padding: 16, marginBottom: 20 },
+  readyRow: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border, #222)' },
+  readyLabel: { color: 'var(--text-secondary, #888)', fontSize: 14 },
+  readyValue: { color: 'var(--text, #fff)', fontSize: 14, fontWeight: 600 },
   primaryBtn: {
     width: '100%', padding: '16px 28px', borderRadius: 8, border: 'none',
     backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer',
   },
   secondaryBtn: {
-    padding: '12px 20px', borderRadius: 8, border: '1px solid #444',
-    backgroundColor: '#222', color: '#ccc', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    padding: '12px 20px', borderRadius: 8, border: '1px solid var(--border, #444)',
+    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
-  miniModal: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 32, minWidth: 320, maxWidth: '90vw' },
+  miniModal: { backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 16, padding: 32, minWidth: 320, maxWidth: '90vw' },
 };

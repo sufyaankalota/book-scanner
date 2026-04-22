@@ -275,8 +275,8 @@ export default function Home() {
 const styles = {
   container: {
     minHeight: '100vh',
-    backgroundColor: '#111',
-    color: '#fff',
+    backgroundColor: 'var(--bg, #111)',
+    color: 'var(--text, #fff)',
     fontFamily: 'system-ui, sans-serif',
     padding: '32px 24px',
     maxWidth: 1200,
@@ -299,7 +299,7 @@ const styles = {
   },
   subtitle: {
     fontSize: 18,
-    color: '#888',
+    color: 'var(--text-secondary, #888)',
     marginTop: 4,
   },
   installBtn: {
@@ -307,9 +307,9 @@ const styles = {
     margin: '0 auto 24px',
     padding: '10px 24px',
     borderRadius: 8,
-    border: '1px solid #3B82F6',
-    backgroundColor: '#1e3a5f',
-    color: '#fff',
+    border: '1px solid var(--accent, #3B82F6)',
+    backgroundColor: 'var(--bg-input, #1e3a5f)',
+    color: 'var(--text, #fff)',
     fontSize: 16,
     fontWeight: 600,
     cursor: 'pointer',
@@ -353,6 +353,7 @@ const styles = {
   },
   quickLinks: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: 12,
     marginBottom: 32,
   },
@@ -362,9 +363,9 @@ const styles = {
     gap: 6,
     padding: '10px 20px',
     borderRadius: 8,
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #333',
-    color: '#ddd',
+    backgroundColor: 'var(--bg-card, #1a1a1a)',
+    border: '1px solid var(--border, #333)',
+    color: 'var(--text-secondary, #ddd)',
     fontSize: 16,
     fontWeight: 600,
     textDecoration: 'none',
@@ -376,7 +377,7 @@ const styles = {
   },
   sectionHint: {
     fontSize: 14,
-    color: '#888',
+    color: 'var(--text-secondary, #888)',
     marginBottom: 16,
   },
   podGrid: {
@@ -387,12 +388,12 @@ const styles = {
   },
   podCard: {
     display: 'block',
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #333',
+    backgroundColor: 'var(--bg-card, #1a1a1a)',
+    border: '1px solid var(--border, #333)',
     borderRadius: 12,
     padding: 20,
     textDecoration: 'none',
-    color: '#fff',
+    color: 'var(--text, #fff)',
     transition: 'border-color 0.2s, transform 0.2s',
   },
   podHeader: {
@@ -453,7 +454,7 @@ const styles = {
   },
   scannerName: {
     fontSize: 14,
-    color: '#ccc',
+    color: 'var(--text-secondary, #ccc)',
     fontWeight: 600,
   },
   scannerLinked: {
@@ -477,8 +478,8 @@ const styles = {
     marginTop: 8,
   },
   instructions: {
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #333',
+    backgroundColor: 'var(--bg-card, #1a1a1a)',
+    border: '1px solid var(--border, #333)',
     borderRadius: 12,
     padding: 24,
   },
@@ -513,12 +514,12 @@ const styles = {
   stepTitle: {
     fontSize: 15,
     fontWeight: 700,
-    color: '#fff',
+    color: 'var(--text, #fff)',
     marginBottom: 2,
   },
   stepText: {
     fontSize: 13,
-    color: '#999',
+    color: 'var(--text-secondary, #999)',
     lineHeight: 1.4,
   },
 };
