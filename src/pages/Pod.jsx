@@ -492,6 +492,7 @@ export default function Pod() {
               type="text"
               onKeyDown={handlePairScan}
               autoFocus
+              inputMode="none"
               style={styles.pairInput}
               placeholder="Scanner will type here..."
             />

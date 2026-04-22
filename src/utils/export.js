@@ -77,6 +77,7 @@ function buildWorkbook(scans, exceptions, jobMeta, label) {
   const allExceptions = [
     ...exceptionScans.map((s) => ({
       ISBN: s.isbn,
+      Title: '',
       Reason: 'Not in Manifest',
       PO: s.poName || '',
       Pod: s.podId,
