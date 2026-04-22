@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import {
-  collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc,
+  collection, doc, setDoc, getDoc, addDoc,
   query, where, onSnapshot, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';

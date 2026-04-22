@@ -18,7 +18,7 @@ function AutoRefreshIndicator({ lastUpdated }) {
 import { db } from '../firebase';
 import {
   collection, doc, getDocs, getDoc, updateDoc, setDoc,
-  query, where, onSnapshot, Timestamp, deleteDoc,
+  query, where, onSnapshot, Timestamp,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
 import { exportTodayXLSX, exportAllXLSX, exportPerPO, downloadBlob, exportReconciliation, exportExceptionsXLSX } from '../utils/export';
