@@ -11,7 +11,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   const [reason, setReason] = useState('');
   const [isbn, setIsbn] = useState('');
   const [title, setTitle] = useState('');
-  const [step, setStep] = useState('reason'); // 'reason' | 'details'
+  const [step, setStep] = useState('reason');
   const isbnRef = useRef(null);
 
   const handleReasonSelect = (r) => {
@@ -36,12 +36,19 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
       e.preventDefault();
       handleSubmit();
     }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
   };
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
+    <div style={styles.overlay}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <h2 style={styles.title}>⚠️ Log Exception</h2>
+        <div style={styles.titleRow}>
+          <h2 style={styles.title}>⚠️ Log Exception</h2>
+          <button onClick={onClose} style={styles.closeX} aria-label="Close">✕</button>
+        </div>
 
         {step === 'reason' && (
           <div>
@@ -60,9 +67,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
 
         {step === 'details' && (
           <div>
-            <div style={styles.reasonTag}>
-              {reason}
-            </div>
+            <div style={styles.reasonTag}>{reason}</div>
 
             <p style={styles.fieldLabel}>ISBN (scan or type):</p>
             <input
@@ -87,7 +92,6 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               style={styles.input}
             />
 
-            {/* Instruction banner */}
             <div style={styles.instructionBanner}>
               <span style={styles.instructionIcon}>📦</span>
               <span style={styles.instructionText}>
@@ -100,21 +104,17 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
                 Log Exception
               </button>
               <button
-                onClick={() => {
-                  setIsbn('');
-                  setTitle('');
-                  handleSubmit();
-                }}
-                style={styles.skipBtn}
+                onClick={() => { setStep('reason'); setIsbn(''); setTitle(''); setReason(''); }}
+                style={styles.backBtn}
               >
-                Skip & Log
+                ← Back
               </button>
             </div>
           </div>
         )}
 
-        <button onClick={onClose} style={styles.closeBtn}>
-          ← Cancel
+        <button onClick={onClose} style={styles.cancelBtn}>
+          Cancel
         </button>
       </div>
     </div>
@@ -130,20 +130,42 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+    padding: 16,
   },
   modal: {
     backgroundColor: '#1a1a1a',
     borderRadius: 16,
     padding: 32,
-    minWidth: 380,
+    width: '100%',
     maxWidth: 520,
     border: '2px solid #F97316',
+    position: 'relative',
+  },
+  titleRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   title: {
     fontSize: 28,
     fontWeight: 700,
     color: '#fff',
-    marginBottom: 16,
+    margin: 0,
+  },
+  closeX: {
+    background: 'none',
+    border: '1px solid #555',
+    borderRadius: 8,
+    color: '#888',
+    fontSize: 20,
+    width: 40,
+    height: 40,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   subtitle: {
     fontSize: 20,
@@ -200,16 +222,11 @@ const styles = {
     backgroundColor: '#422006',
     border: '1px solid #F97316',
   },
-  instructionIcon: {
-    fontSize: 24,
-  },
-  instructionText: {
-    fontSize: 16,
-    color: '#fed7aa',
-    lineHeight: 1.3,
-  },
+  instructionIcon: { fontSize: 24 },
+  instructionText: { color: '#fdba74', fontSize: 15, lineHeight: 1.4 },
   submitBtn: {
-    padding: '16px 24px',
+    flex: 1,
+    padding: '14px 20px',
     borderRadius: 8,
     border: 'none',
     backgroundColor: '#F97316',
@@ -217,29 +234,26 @@ const styles = {
     fontSize: 18,
     fontWeight: 700,
     cursor: 'pointer',
-    flex: 1,
   },
-  skipBtn: {
-    padding: '16px 24px',
+  backBtn: {
+    padding: '14px 20px',
     borderRadius: 8,
     border: '1px solid #555',
     backgroundColor: '#333',
     color: '#ccc',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 600,
     cursor: 'pointer',
-    flex: 1,
   },
-  closeBtn: {
-    marginTop: 16,
-    padding: '10px 20px',
-    borderRadius: 6,
-    border: '1px solid #555',
+  cancelBtn: {
+    width: '100%',
+    marginTop: 12,
+    padding: '12px',
+    borderRadius: 8,
+    border: '1px solid #444',
     backgroundColor: 'transparent',
-    color: '#999',
+    color: '#888',
     fontSize: 14,
     cursor: 'pointer',
-    width: '100%',
-    textAlign: 'center',
   },
 };

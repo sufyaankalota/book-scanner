@@ -39,3 +39,30 @@ button:focus-visible {
   background: #3B82F6;
   color: #fff;
 }
+
+/* Pulse animation for scanner pairing */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+/* Prevent iOS zoom on input focus (inputs < 16px trigger auto-zoom) */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* Touch-friendly: ensure all interactive elements have adequate tap targets */
+button, a, [role="button"] {
+  min-height: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Responsive adjustments for tablets */
+@media (max-width: 768px) {
+  html { font-size: 15px; }
+}
+
+@media (max-width: 480px) {
+  html { font-size: 14px; }
+}

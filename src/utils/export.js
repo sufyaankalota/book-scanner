@@ -85,6 +85,7 @@ function buildWorkbook(scans, exceptions, jobMeta, label) {
     })),
     ...exceptions.map((ex) => ({
       ISBN: ex.isbn || '',
+      Title: ex.title || '',
       Reason: ex.reason,
       PO: '',
       Pod: ex.podId,

@@ -15,32 +15,43 @@ export function parseManifestFile(file) {
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
         const manifest = {};
-        for (const row of rows) {
-          // Find ISBN and PO columns (case-insensitive header match)
-          const keys = Object.keys(row);
-          const isbnKey = keys.find((k) =>
-            /isbn/i.test(k)
-          );
-          const poKey = keys.find((k) =>
-            /po|purchase.?order/i.test(k)
-          );
+        if (rows.length === 0) {
+          reject(new Error('File is empty or has no data rows'));
+          return;
+        }
 
-          if (!isbnKey || !poKey) {
-            reject(
-              new Error(
-                'Could not find ISBN and PO columns. Headers found: ' +
-                  keys.join(', ')
-              )
-            );
-            return;
+        // Find column headers from first row
+        const keys = Object.keys(rows[0]);
+        const isbnKey = keys.find((k) => /isbn/i.test(k));
+        const poKey = keys.find((k) => /po|purchase.?order/i.test(k));
+
+        if (!isbnKey || !poKey) {
+          reject(
+            new Error(
+              'Could not find ISBN and PO columns. Headers found: ' +
+                keys.join(', ')
+            )
+          );
+          return;
+        }
+
+        let skipped = 0;
+        for (const row of rows) {
+          const isbn = String(row[isbnKey] || '').replace(/[-\s]/g, '').trim();
+          const po = String(row[poKey] || '').trim();
+
+          if (!isbn || !po) {
+            skipped++;
+            continue;
           }
 
-          const isbn = String(row[isbnKey]).replace(/[-\s]/g, '').trim();
-          const po = String(row[poKey]).trim();
-
-          if (isbn && po && !manifest[isbn]) {
+          if (!manifest[isbn]) {
             manifest[isbn] = po;
           }
+        }
+
+        if (skipped > 0) {
+          console.warn(`Manifest: skipped ${skipped} rows with missing ISBN or PO`);
         }
 
         const poNames = [...new Set(Object.values(manifest))];
