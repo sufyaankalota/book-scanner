@@ -134,6 +134,9 @@ export default function Home() {
         <Link to="/history" style={styles.quickLink}>
           📁 Job History
         </Link>
+        <Link to="/portal" style={styles.quickLink}>
+          📦 Customer Portal
+        </Link>
       </div>
 
       {/* Pod Grid */}

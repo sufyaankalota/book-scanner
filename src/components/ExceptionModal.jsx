@@ -43,7 +43,10 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     reader.readAsDataURL(file);
   };
 
+  const needsPhoto = !isbn.trim() && !title.trim();
+
   const handleSubmit = () => {
+    if (needsPhoto && !photoData) return; // blocked — photo required
     onSubmit({
       reason,
       isbn: isbn.trim() || null,
@@ -116,8 +119,8 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               style={styles.input}
             />
 
-            <p style={{ ...styles.fieldLabel, marginTop: 14 }}>
-              📸 Photo (optional):
+            <p style={{ ...styles.fieldLabel, marginTop: 14, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
+              📸 Photo {needsPhoto ? '(required — no ISBN or title entered)' : '(optional)'}:
             </p>
             <input
               ref={fileRef}
@@ -148,8 +151,16 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               </span>
             </div>
 
+            {needsPhoto && !photoData && (
+              <p style={{ color: '#F97316', fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+                ⚠️ Photo is required when no ISBN or title is provided
+              </p>
+            )}
+
             <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-              <button onClick={handleSubmit} style={styles.submitBtn}>
+              <button onClick={handleSubmit}
+                disabled={needsPhoto && !photoData}
+                style={{ ...styles.submitBtn, opacity: needsPhoto && !photoData ? 0.5 : 1, cursor: needsPhoto && !photoData ? 'not-allowed' : 'pointer' }}>
                 Log Exception
               </button>
               <button
