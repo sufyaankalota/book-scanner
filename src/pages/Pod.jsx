@@ -44,13 +44,7 @@ export default function Pod() {
   // Setup phases
   const [phase, setPhase] = useState(PHASE_OPERATOR);
   const [operatorName, setOperatorName] = useState('');
-  const [scanner1Name, setScanner1Name] = useState('');
-  const [scanner1Paired, setScanner1Paired] = useState(false);
-  const [scanner2Name, setScanner2Name] = useState('');
-  const [scanner2Paired, setScanner2Paired] = useState(false);
-  const [activeScanner, setActiveScanner] = useState(1);
-  const [pairTarget, setPairTarget] = useState(1); // which scanner we're pairing
-  const [showAddScanner2, setShowAddScanner2] = useState(false);
+  const [scannerPaired, setScannerPaired] = useState(false);
   const [showSwitchOperator, setShowSwitchOperator] = useState(false);
   const [switchName, setSwitchName] = useState('');
 
@@ -79,10 +73,10 @@ export default function Pod() {
 
   // Keep input focused at all times during scanning
   const refocusInput = useCallback(() => {
-    if (isScanning && inputRef.current && !showExceptionModal && !showAddScanner2 && !showSwitchOperator) {
+    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator) {
       inputRef.current.focus();
     }
-  }, [isScanning, showExceptionModal, showAddScanner2, showSwitchOperator]);
+  }, [isScanning, showExceptionModal, showSwitchOperator]);
 
   useEffect(() => {
     if (!isScanning) return;
@@ -99,13 +93,13 @@ export default function Pod() {
   useEffect(() => {
     if (!isScanning) return;
     const handler = (e) => {
-      if (!showExceptionModal && !showAddScanner2 && !showSwitchOperator) {
+      if (!showExceptionModal && !showSwitchOperator) {
         refocusInput();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isScanning, showExceptionModal, showAddScanner2, showSwitchOperator, refocusInput]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, refocusInput]);
 
   // Load active job
   useEffect(() => {
@@ -135,15 +129,11 @@ export default function Pod() {
     if (phase === PHASE_OPERATOR) return;
 
     const presenceRef = doc(db, 'presence', podId);
-    const scanners = [
-      scanner1Paired ? scanner1Name : null,
-      scanner2Paired ? scanner2Name : null,
-    ].filter(Boolean);
 
     const writePresence = () => {
       setDoc(presenceRef, {
         podId,
-        scanners,
+        scanners: scannerPaired ? [operatorName] : [],
         operator: operatorName,
         status: phase,
         online: true,
@@ -155,9 +145,9 @@ export default function Pod() {
     const interval = setInterval(writePresence, 30000);
     return () => {
       clearInterval(interval);
-      setDoc(presenceRef, { podId, scanners, operator: operatorName, status: 'offline', online: false, lastSeen: serverTimestamp() });
+      setDoc(presenceRef, { podId, scanners: [], operator: operatorName, status: 'offline', online: false, lastSeen: serverTimestamp() });
     };
-  }, [phase, podId, operatorName, scanner1Name, scanner1Paired, scanner2Name, scanner2Paired]);
+  }, [phase, podId, operatorName, scannerPaired]);
 
   // Listen for scan count for this pod (Firestore sync)
   useEffect(() => {
@@ -211,10 +201,7 @@ export default function Pod() {
     setTimeout(() => { setFlashColor(null); setFlashText(''); }, duration);
   };
 
-  const getCurrentScannerName = () => {
-    if (activeScanner === 2 && scanner2Paired) return scanner2Name;
-    return scanner1Name;
-  };
+  const getCurrentScannerName = () => operatorName;
 
   const handleScan = (raw) => {
     const isbn = cleanISBN(raw);
@@ -290,15 +277,8 @@ export default function Pod() {
       const val = e.target.value.trim();
       e.target.value = '';
       if (val) {
-        if (pairTarget === 1) {
-          setScanner1Paired(true);
-          setPhase(PHASE_READY);
-        } else {
-          setScanner2Paired(true);
-          setShowAddScanner2(false);
-          setPhase(PHASE_SCANNING);
-          setTimeout(refocusInput, 100);
-        }
+        setScannerPaired(true);
+        setPhase(PHASE_READY);
       }
     }
   };
@@ -326,8 +306,6 @@ export default function Pod() {
             onChange={(e) => setOperatorName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && operatorName.trim()) {
-                setScanner1Name(operatorName.trim());
-                setPairTarget(1);
                 setPhase(PHASE_PAIR_SCANNER);
               }
             }}
@@ -338,8 +316,6 @@ export default function Pod() {
           <button
             onClick={() => {
               if (operatorName.trim()) {
-                setScanner1Name(operatorName.trim());
-                setPairTarget(1);
                 setPhase(PHASE_PAIR_SCANNER);
               }
             }}
@@ -381,14 +357,14 @@ export default function Pod() {
 
           <div style={styles.scannerStatus}>
             <div style={styles.scannerStatusRow}>
-              <div style={{ ...styles.dot, backgroundColor: scanner1Paired ? '#22C55E' : '#555' }} />
+              <div style={{ ...styles.dot, backgroundColor: scannerPaired ? '#22C55E' : '#555' }} />
               <span style={styles.scannerStatusText}>
-                Scanner 1 ({scanner1Name}): {scanner1Paired ? '✓ Paired' : 'Not paired'}
+                Scanner ({operatorName}): {scannerPaired ? '✓ Paired' : 'Waiting...'}
               </span>
             </div>
           </div>
 
-          {scanner1Paired && (
+          {scannerPaired && (
             <button
               onClick={() => setPhase(PHASE_READY)}
               style={{ ...styles.primaryBtn, marginTop: 16 }}
@@ -416,19 +392,11 @@ export default function Pod() {
               <span style={styles.readyValue}>{operatorName}</span>
             </div>
             <div style={styles.readyRow}>
-              <span style={styles.readyLabel}>Scanner 1:</span>
+              <span style={styles.readyLabel}>Scanner:</span>
               <span style={{ ...styles.readyValue, color: '#22C55E' }}>
-                {scanner1Name} — Paired ✓
+                Paired ✓
               </span>
             </div>
-            {scanner2Paired && (
-              <div style={styles.readyRow}>
-                <span style={styles.readyLabel}>Scanner 2:</span>
-                <span style={{ ...styles.readyValue, color: '#22C55E' }}>
-                  {scanner2Name} — Paired ✓
-                </span>
-              </div>
-            )}
             <div style={styles.readyRow}>
               <span style={styles.readyLabel}>Job:</span>
               <span style={styles.readyValue}>{job?.meta?.name || 'No active job'}</span>
@@ -444,63 +412,7 @@ export default function Pod() {
           >
             ▶ Start Scanning
           </button>
-
-          {!scanner2Paired && (
-            <button
-              onClick={() => {
-                setShowAddScanner2(true);
-              }}
-              style={{ ...styles.secondaryBtn, marginTop: 12 }}
-            >
-              + Add Scanner 2
-            </button>
-          )}
         </div>
-
-        {showAddScanner2 && (
-          <div style={styles.modalOverlay}>
-            <div style={styles.miniModal}>
-              <h3 style={{ color: '#fff', marginBottom: 8 }}>Add Scanner 2</h3>
-              <p style={{ color: '#999', fontSize: 14, marginBottom: 12 }}>
-                Enter the operator name, then scan any barcode to pair.
-              </p>
-              <input
-                type="text"
-                value={scanner2Name}
-                onChange={(e) => setScanner2Name(e.target.value)}
-                placeholder="Scanner 2 operator name..."
-                style={styles.setupInput}
-                autoFocus
-              />
-              {scanner2Name.trim() && (
-                <div style={{ marginTop: 12 }}>
-                  <p style={{ color: '#EAB308', fontSize: 14, marginBottom: 6 }}>
-                    Now scan any barcode to pair Scanner 2:
-                  </p>
-                  <input
-                    type="text"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.target.value.trim()) {
-                        e.target.value = '';
-                        setScanner2Paired(true);
-                        setShowAddScanner2(false);
-                      }
-                    }}
-                    style={styles.setupInput}
-                    placeholder="Scan here..."
-                    autoFocus
-                  />
-                </div>
-              )}
-              <button
-                onClick={() => { setShowAddScanner2(false); setScanner2Name(''); }}
-                style={{ ...styles.secondaryBtn, marginTop: 12 }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -553,7 +465,7 @@ export default function Pod() {
             <div style={styles.miniModal}>
               <h3 style={{ color: '#fff', marginBottom: 12 }}>Switch Operator</h3>
               <p style={{ color: '#999', fontSize: 14, marginBottom: 8 }}>
-                The new operator will use the same paired scanner(s).
+                The new operator will use the same paired scanner.
               </p>
               <input
                 type="text"
@@ -562,7 +474,6 @@ export default function Pod() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && switchName.trim()) {
                     setOperatorName(switchName.trim());
-                    setScanner1Name(switchName.trim());
                     setSwitchName('');
                     setShowSwitchOperator(false);
                     setPhase(PHASE_SCANNING);
@@ -578,7 +489,6 @@ export default function Pod() {
                   onClick={() => {
                     if (switchName.trim()) {
                       setOperatorName(switchName.trim());
-                      setScanner1Name(switchName.trim());
                       setSwitchName('');
                       setShowSwitchOperator(false);
                       setPhase(PHASE_SCANNING);
@@ -607,24 +517,10 @@ export default function Pod() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {/* Active scanner toggle */}
-          <div style={styles.scannerToggle}>
-            <button
-              onClick={() => setActiveScanner(1)}
-              style={activeScanner === 1 ? styles.scannerActive : styles.scannerInactive}
-            >
-              <div style={{ ...styles.dot, backgroundColor: scanner1Paired ? '#22C55E' : '#555' }} />
-              {scanner1Name}
-            </button>
-            {scanner2Paired && (
-              <button
-                onClick={() => setActiveScanner(2)}
-                style={activeScanner === 2 ? styles.scannerActive : styles.scannerInactive}
-              >
-                <div style={{ ...styles.dot, backgroundColor: '#22C55E' }} />
-                {scanner2Name}
-              </button>
-            )}
+          {/* Scanner status badge */}
+          <div style={styles.scannerBadge}>
+            <div style={{ ...styles.dot, backgroundColor: '#22C55E' }} />
+            {operatorName} — Paired ✓
           </div>
 
           <button
@@ -727,19 +623,12 @@ const styles = {
   },
   podTitle: { fontSize: 48, fontWeight: 800, margin: 0 },
 
-  // Scanner toggle
-  scannerToggle: { display: 'flex', gap: 6 },
-  scannerActive: {
+  // Scanner badge
+  scannerBadge: {
     display: 'flex', alignItems: 'center', gap: 6,
     padding: '8px 14px', borderRadius: 6,
-    border: '2px solid #22C55E', backgroundColor: '#14532d',
-    color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-  },
-  scannerInactive: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    padding: '8px 14px', borderRadius: 6,
-    border: '1px solid #444', backgroundColor: '#222',
-    color: '#999', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    border: '1px solid #22C55E', backgroundColor: '#14532d',
+    color: '#fff', fontSize: 14, fontWeight: 600,
   },
   dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
 
