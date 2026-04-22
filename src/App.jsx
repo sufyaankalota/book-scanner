@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './pages/Home';
-import Setup from './pages/Setup';
 import Pod from './pages/Pod';
-import Dashboard from './pages/Dashboard';
-import JobHistory from './pages/JobHistory';
-import Kiosk from './pages/Kiosk';
-import CustomerPortal from './pages/CustomerPortal';
 import SupervisorGate from './components/SupervisorGate';
+
+// Lazy load non-critical pages
+const Setup = lazy(() => import('./pages/Setup'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const JobHistory = lazy(() => import('./pages/JobHistory'));
+const Kiosk = lazy(() => import('./pages/Kiosk'));
+const CustomerPortal = lazy(() => import('./pages/CustomerPortal'));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -50,20 +52,28 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+const Loading = () => (
+  <div style={{ minHeight: '100vh', backgroundColor: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontFamily: 'system-ui' }}>
+    Loading...
+  </div>
+);
+
 export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/setup" element={<SupervisorGate><Setup /></SupervisorGate>} />
-          <Route path="/pod" element={<Pod />} />
-          <Route path="/dashboard" element={<SupervisorGate><Dashboard /></SupervisorGate>} />
-          <Route path="/kiosk" element={<Kiosk />} />
-          <Route path="/portal" element={<CustomerPortal />} />
-          <Route path="/history" element={<SupervisorGate><JobHistory /></SupervisorGate>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/setup" element={<SupervisorGate><Setup /></SupervisorGate>} />
+            <Route path="/pod" element={<Pod />} />
+            <Route path="/dashboard" element={<SupervisorGate><Dashboard /></SupervisorGate>} />
+            <Route path="/kiosk" element={<Kiosk />} />
+            <Route path="/portal" element={<CustomerPortal />} />
+            <Route path="/history" element={<SupervisorGate><JobHistory /></SupervisorGate>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </ErrorBoundary>
   );

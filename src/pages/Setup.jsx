@@ -7,6 +7,7 @@ import {
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
 import { logAudit } from '../utils/audit';
+import { hashPassword } from '../utils/crypto';
 
 const DEFAULT_COLORS = [
   { name: 'Red', hex: '#EF4444' }, { name: 'Blue', hex: '#3B82F6' },
@@ -238,7 +239,8 @@ export default function Setup() {
   const handlePinChange = async () => {
     if (!pinValue || pinValue.length < 4) return alert('PIN must be at least 4 digits');
     try {
-      await setDoc(doc(db, 'config', 'supervisor'), { pin: pinValue });
+      const pinHash = await hashPassword(pinValue);
+      await setDoc(doc(db, 'config', 'supervisor'), { pinHash });
       logAudit('pin_changed', {}); setPinSaved(true); setPinValue('');
       setTimeout(() => setPinSaved(false), 3000);
     } catch (err) { alert('Failed to save PIN: ' + err.message); }
@@ -514,7 +516,8 @@ export default function Setup() {
               placeholder="Customer password..." style={s.input} />
             <button onClick={async () => {
               if (!customerPw.trim()) return;
-              await setDoc(doc(db, 'config', 'customer'), { password: customerPw.trim() }, { merge: true });
+              const pwHash = await hashPassword(customerPw.trim());
+              await setDoc(doc(db, 'config', 'customer'), { passwordHash: pwHash }, { merge: true });
               setCustomerPwSaved(true);
               setTimeout(() => setCustomerPwSaved(false), 2000);
             }} disabled={!customerPw.trim()}

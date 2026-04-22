@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
+import { verifyPassword } from '../utils/crypto';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -51,14 +52,23 @@ export default function CustomerPortal() {
     setAuthError('');
     try {
       const configDoc = await getDoc(doc(db, 'config', 'customer'));
-      const storedPassword = configDoc.exists() ? configDoc.data().password : null;
-      if (!storedPassword) {
+      if (!configDoc.exists()) {
         setAuthError('Customer access not configured. Contact the warehouse.');
-      } else if (password === storedPassword) {
-        setAuthenticated(true);
-        sessionStorage.setItem('customer-auth', 'true');
       } else {
-        setAuthError('Incorrect password.');
+        const data = configDoc.data();
+        let match = false;
+        // Support both hashed and legacy plaintext passwords
+        if (data.passwordHash) {
+          match = await verifyPassword(password, data.passwordHash);
+        } else if (data.password) {
+          match = password === data.password;
+        }
+        if (match) {
+          setAuthenticated(true);
+          sessionStorage.setItem('customer-auth', 'true');
+        } else {
+          setAuthError('Incorrect password.');
+        }
       }
     } catch {
       setAuthError('Login failed. Try again.');
@@ -215,6 +225,11 @@ export default function CustomerPortal() {
   const handleBOLFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 700 * 1024) {
+      alert('File too large. Maximum size is 700 KB. Please compress or reduce the file.');
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => setBolFile({ name: file.name, data: reader.result, size: file.size });
     reader.readAsDataURL(file);

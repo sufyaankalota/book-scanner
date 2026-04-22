@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { hashPassword, verifyPassword } from '../utils/crypto';
 
 const DEFAULT_PIN = '1234';
 
@@ -22,13 +23,33 @@ export default function SupervisorGate({ children }) {
     setError('');
     try {
       const configDoc = await getDoc(doc(db, 'config', 'supervisor'));
-      const storedPin = configDoc.exists() ? configDoc.data().pin : DEFAULT_PIN;
-      if (pin === storedPin) {
-        sessionStorage.setItem('supervisorAuth', 'true');
-        setAuthenticated(true);
+      if (configDoc.exists()) {
+        const data = configDoc.data();
+        // Support both hashed and legacy plaintext PINs
+        let match = false;
+        if (data.pinHash) {
+          match = await verifyPassword(pin, data.pinHash);
+        } else if (data.pin) {
+          match = pin === data.pin;
+        } else {
+          match = pin === DEFAULT_PIN;
+        }
+        if (match) {
+          sessionStorage.setItem('supervisorAuth', 'true');
+          setAuthenticated(true);
+        } else {
+          setError('Incorrect PIN');
+          setPin('');
+        }
       } else {
-        setError('Incorrect PIN');
-        setPin('');
+        // No config doc — accept default
+        if (pin === DEFAULT_PIN) {
+          sessionStorage.setItem('supervisorAuth', 'true');
+          setAuthenticated(true);
+        } else {
+          setError('Incorrect PIN');
+          setPin('');
+        }
       }
     } catch {
       // Offline fallback — accept default PIN
