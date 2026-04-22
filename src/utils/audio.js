@@ -1,9 +1,18 @@
 /**
  * Web Audio API sounds for scan feedback.
  * Success chirp, error beep, and per-color tones for Multi-PO.
+ * Volume control via localStorage.
  */
 
 let audioCtx = null;
+
+export function getVolume() {
+  return parseInt(localStorage.getItem('app-volume') || '70', 10);
+}
+
+export function setVolume(v) {
+  localStorage.setItem('app-volume', String(Math.max(0, Math.min(100, v))));
+}
 
 function getAudioContext() {
   if (!audioCtx) {
@@ -18,12 +27,14 @@ function getAudioContext() {
 
 function playTone(frequency, duration, volume = 0.3) {
   try {
+    const vol = getVolume() / 100;
+    if (vol === 0) return;
     const ctx = getAudioContext();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(frequency, ctx.currentTime);
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.setValueAtTime(volume * vol, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
     osc.connect(gain);
     gain.connect(ctx.destination);

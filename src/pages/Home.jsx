@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../firebase';
 import {
-  collection,
+  collection, doc, getDoc,
   query,
   where,
   onSnapshot,
@@ -12,6 +12,8 @@ export default function Home() {
   const [job, setJob] = useState(null);
   const [presence, setPresence] = useState({});
   const [loading, setLoading] = useState(true);
+  const [branding, setBranding] = useState({ name: '', subtitle: '' });
+  const [canInstall, setCanInstall] = useState(false);
 
   // Load active job
   useEffect(() => {
@@ -47,6 +49,31 @@ export default function Home() {
     return unsub;
   }, []);
 
+  // Load branding
+  useEffect(() => {
+    getDoc(doc(db, 'config', 'branding')).then((snap) => {
+      if (snap.exists()) setBranding(snap.data());
+    }).catch(() => {});
+  }, []);
+
+  // PWA install prompt
+  useEffect(() => {
+    const check = () => setCanInstall(!!window.__pwaInstallPrompt);
+    check();
+    window.addEventListener('appinstalled', () => setCanInstall(false));
+    const t = setTimeout(check, 2000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleInstall = async () => {
+    const prompt = window.__pwaInstallPrompt;
+    if (!prompt) return;
+    prompt.prompt();
+    await prompt.userChoice;
+    window.__pwaInstallPrompt = null;
+    setCanInstall(false);
+  };
+
   const pods = job?.meta?.pods || ['A', 'B', 'C', 'D', 'E'];
 
   if (loading) {
@@ -61,9 +88,16 @@ export default function Home() {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <h1 style={styles.title}>📦 Book Scanner</h1>
-        <p style={styles.subtitle}>Warehouse Scanning System</p>
+        <h1 style={styles.title}>{branding.name || '📦 Book Scanner'}</h1>
+        <p style={styles.subtitle}>{branding.subtitle || 'Warehouse Scanning System'}</p>
       </div>
+
+      {/* PWA Install */}
+      {canInstall && (
+        <button onClick={handleInstall} style={styles.installBtn}>
+          📲 Install App
+        </button>
+      )}
 
       {/* Job status banner */}
       {job ? (
@@ -93,6 +127,12 @@ export default function Home() {
         </Link>
         <Link to="/dashboard" style={styles.quickLink}>
           📊 Dashboard
+        </Link>
+        <Link to="/kiosk" style={styles.quickLink}>
+          📺 Kiosk
+        </Link>
+        <Link to="/history" style={styles.quickLink}>
+          📁 Job History
         </Link>
       </div>
 
@@ -261,6 +301,19 @@ const styles = {
     fontSize: 18,
     color: '#888',
     marginTop: 4,
+  },
+  installBtn: {
+    display: 'block',
+    margin: '0 auto 24px',
+    padding: '10px 24px',
+    borderRadius: 8,
+    border: '1px solid #3B82F6',
+    backgroundColor: '#1e3a5f',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+    textAlign: 'center',
   },
   jobBanner: {
     display: 'flex',

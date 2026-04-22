@@ -1,6 +1,6 @@
 import React from 'react';
 
-function PodCard({ pod, presence, operatorStats }) {
+function PodCard({ pod, presence, operatorStats, notes, onNotesChange }) {
   const paceRatio = pod.targetPerHour > 0 ? pod.pace / pod.targetPerHour : 1;
   const paceColor =
     paceRatio >= 1 ? '#22C55E' : paceRatio >= 0.8 ? '#EAB308' : '#EF4444';
@@ -66,6 +66,18 @@ function PodCard({ pod, presence, operatorStats }) {
           {pod.scanners.map((s, i) => (
             <span key={i} style={styles.scannerBadge}>{s}</span>
           ))}
+        </div>
+      )}
+
+      {onNotesChange && (
+        <div style={{ marginTop: 10 }}>
+          <input
+            type="text"
+            value={notes || ''}
+            onChange={(e) => onNotesChange(e.target.value)}
+            placeholder="Pod notes..."
+            style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #333', backgroundColor: '#111', color: '#ccc', fontSize: 12, boxSizing: 'border-box' }}
+          />
         </div>
       )}
     </div>

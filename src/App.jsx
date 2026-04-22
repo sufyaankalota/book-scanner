@@ -4,6 +4,8 @@ import Home from './pages/Home';
 import Setup from './pages/Setup';
 import Pod from './pages/Pod';
 import Dashboard from './pages/Dashboard';
+import JobHistory from './pages/JobHistory';
+import Kiosk from './pages/Kiosk';
 import SupervisorGate from './components/SupervisorGate';
 
 class ErrorBoundary extends React.Component {
@@ -56,6 +58,8 @@ export default function App() {
           <Route path="/setup" element={<SupervisorGate><Setup /></SupervisorGate>} />
           <Route path="/pod" element={<Pod />} />
           <Route path="/dashboard" element={<SupervisorGate><Dashboard /></SupervisorGate>} />
+          <Route path="/kiosk" element={<Kiosk />} />
+          <Route path="/history" element={<SupervisorGate><JobHistory /></SupervisorGate>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
