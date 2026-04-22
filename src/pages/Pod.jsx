@@ -91,10 +91,11 @@ export default function Pod() {
   const isScanning = phase === PHASE_SCANNING;
   const isPaused = phase === PHASE_PAUSED;
 
-  // ─── Font size CSS variable ───
+  // ─── Font size ───
   useEffect(() => {
-    document.documentElement.style.setProperty('--pod-scale', fontSize / 100);
+    document.documentElement.style.fontSize = `${fontSize}%`;
     localStorage.setItem('pod-fontsize', String(fontSize));
+    return () => { document.documentElement.style.fontSize = ''; };
   }, [fontSize]);
 
   // ─── Persist state ───
@@ -284,11 +285,11 @@ export default function Pod() {
   // ─── Break timer countdown ───
   useEffect(() => {
     if (breakTimer === null) { clearInterval(breakIntervalRef.current); return; }
+    clearInterval(breakIntervalRef.current);
     breakIntervalRef.current = setInterval(() => {
       setBreakTimer((prev) => {
         if (prev <= 1) {
           clearInterval(breakIntervalRef.current);
-          // Alert when break ends
           playErrorBeep();
           flash('#EAB308', t('breakDone'), 3000);
           try { new Notification('Break Over!', { body: 'Time to get back to scanning!' }); } catch {}
@@ -298,7 +299,7 @@ export default function Pod() {
       });
     }, 1000);
     return () => clearInterval(breakIntervalRef.current);
-  }, [breakTimer !== null]); // eslint-disable-line
+  }, [breakTimer]); // eslint-disable-line
 
   // ─── Shift tracking ───
   const startShift = async () => {
@@ -445,7 +446,7 @@ export default function Pod() {
       e.preventDefault();
       const val = scanInput.trim(); setScanInput('');
       if (val) handleScan(val);
-    } else if (e.key.length === 1) {
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
       setScanInput((prev) => prev + e.key);
     }
   };
@@ -510,7 +511,7 @@ export default function Pod() {
   const dailyPct = dailyPodTarget > 0 ? Math.min(100, Math.round((totalScans / dailyPodTarget) * 100)) : 0;
   const goalPct = dailyPodTarget > 0 ? Math.min(100, Math.round((targetPerHour * (job?.meta?.workingHours || 8) / dailyPodTarget) * 100)) : 50;
 
-  const scaleStyle = fontSize !== 100 ? { transform: `scale(${fontSize / 100})`, transformOrigin: 'top center', width: `${10000 / fontSize}%`, marginLeft: 'auto', marginRight: 'auto' } : {};
+  const scaleStyle = {};
 
   // ═══════════════════════════════════════════
   // PHASE: Enter Operator Name

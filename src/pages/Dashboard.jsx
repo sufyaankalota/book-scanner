@@ -111,7 +111,7 @@ export default function Dashboard() {
       }
     });
     return unsub;
-  }, [job, notificationsEnabled]); // eslint-disable-line
+  }, [job, notificationsEnabled, presence]);
 
   // Exceptions
   useEffect(() => {

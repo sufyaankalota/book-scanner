@@ -6,12 +6,19 @@
 const MILESTONES = [500, 1000, 2000, 3000, 5000, 10000, 15000, 20000];
 const COLORS = ['#EF4444', '#3B82F6', '#EAB308', '#22C55E', '#F97316', '#A855F7', '#EC4899', '#14B8A6'];
 
-let lastTriggered = 0;
+function getLastTriggered() {
+  return parseInt(sessionStorage.getItem('confetti-last') || '0', 10);
+}
+
+function setLastTriggered(val) {
+  sessionStorage.setItem('confetti-last', String(val));
+}
 
 export function checkMilestone(count) {
-  const milestone = MILESTONES.find((m) => count >= m && m > lastTriggered);
+  const last = getLastTriggered();
+  const milestone = MILESTONES.find((m) => count >= m && m > last);
   if (milestone) {
-    lastTriggered = milestone;
+    setLastTriggered(milestone);
     return milestone;
   }
   return null;
