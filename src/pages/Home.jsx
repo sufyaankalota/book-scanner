@@ -99,8 +99,11 @@ export default function Home() {
     <div style={styles.container}>
       {/* Header */}
       <div style={styles.header}>
-        <h1 style={styles.title}>{branding.name || '📦 Book Scanner'}</h1>
-        <p style={styles.subtitle}>{branding.subtitle || 'Warehouse Scanning System'}</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 4 }}>
+          <img src="/icon.svg" alt="BookFlow" style={{ width: 44, height: 44, borderRadius: 10 }} />
+          <h1 style={{ ...styles.title, marginBottom: 0 }}>{branding.name || 'BookFlow'}</h1>
+        </div>
+        <p style={styles.subtitle}>{branding.subtitle || 'by PrepFort'}</p>
       </div>
 
       {/* PWA Install */}

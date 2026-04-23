@@ -1,5 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="64" fill="#111827"/>
-  <text x="256" y="300" text-anchor="middle" font-size="240" font-family="system-ui, sans-serif" font-weight="800" fill="#22C55E">📦</text>
-  <text x="256" y="440" text-anchor="middle" font-size="72" font-family="system-ui, sans-serif" font-weight="700" fill="#ffffff">SCAN</text>
+  <defs>
+    <linearGradient id="og" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F7941D"/>
+      <stop offset="100%" stop-color="#F9B44B"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="256" fill="#2D2B6B"/>
+  <!-- White vertical bar (door/page) -->
+  <rect x="148" y="158" width="88" height="230" rx="4" fill="#ffffff"/>
+  <!-- Orange 3D fold - top face -->
+  <polygon points="236,158 324,108 412,158 324,208" fill="url(#og)"/>
+  <!-- Orange 3D fold - right face -->
+  <polygon points="324,208 412,158 412,310 324,360" fill="#E8820F"/>
+  <!-- Orange 3D fold - front face darker -->
+  <polygon points="236,158 324,208 324,360 236,310" fill="url(#og)" opacity="0.85"/>
 </svg>

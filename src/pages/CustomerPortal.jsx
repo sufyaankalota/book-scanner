@@ -324,9 +324,9 @@ export default function CustomerPortal() {
       <div style={st.loginContainer}>
         <div style={st.loginCard}>
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 48, marginBottom: 8 }}>&#128230;</div>
-            <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>Customer Portal</h1>
-            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>Enter your access password to continue</p>
+            <img src="/icon.svg" alt="BookFlow" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8 }} />
+            <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
+            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort — Enter your access password</p>
           </div>
           <input type="password" value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -347,7 +347,7 @@ export default function CustomerPortal() {
   if (!job) return (
     <div style={st.container}>
       <div style={st.topBar}>
-        <span style={{ color: '#888', fontSize: 14 }}>&#128230; Customer Portal</span>
+        <span style={{ color: '#888', fontSize: 14 }}>BookFlow Portal</span>
         <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
       </div>
       <div style={{ textAlign: 'center', padding: '60px 20px' }}>
@@ -363,7 +363,7 @@ export default function CustomerPortal() {
     <div style={st.container}>
       <div style={st.topBar}>
         <div>
-          <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>&#128230; Customer Portal</span>
+          <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>BookFlow Portal</span>
           <span style={{ color: '#666', fontSize: 14, marginLeft: 12 }}>{job.meta.name}</span>
         </div>
         <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
@@ -482,6 +482,37 @@ export default function CustomerPortal() {
 
       {activeTab === 'billing' && (
         <div>
+          {/* Invoice Total Summary */}
+          {(() => {
+            const active = billingReports.filter((r) => !r.archived);
+            const totalStandard = active.reduce((s, r) => s + (r.standardCount || 0), 0);
+            const totalExc = active.reduce((s, r) => s + (r.exceptionCount || 0), 0);
+            const totalAmt = totalStandard * 0.40 + totalExc * 0.60;
+            return active.length > 0 ? (
+              <div style={{ ...st.card, border: '1px solid #2D2B6B', background: 'linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 100%)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <div style={{ color: '#aaa', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Estimated Invoice Total</div>
+                    <div style={{ color: '#EAB308', fontSize: 36, fontWeight: 900, fontFamily: 'monospace', marginTop: 4 }}>${totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    <div style={{ color: '#666', fontSize: 12, marginTop: 4 }}>Across {active.length} billing report{active.length !== 1 ? 's' : ''}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ color: '#22C55E', fontSize: 20, fontWeight: 800 }}>{totalStandard.toLocaleString()}</div>
+                      <div style={{ color: '#888', fontSize: 11 }}>Regular @ $0.40</div>
+                      <div style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>${(totalStandard * 0.40).toFixed(2)}</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ color: '#F97316', fontSize: 20, fontWeight: 800 }}>{totalExc.toLocaleString()}</div>
+                      <div style={{ color: '#888', fontSize: 11 }}>Exceptions @ $0.60</div>
+                      <div style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>${(totalExc * 0.60).toFixed(2)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null;
+          })()}
+
           <div style={st.card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={st.cardTitle}>💰 Weekly Billing Reports</h3>

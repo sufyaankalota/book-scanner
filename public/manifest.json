@@ -1,11 +1,11 @@
 {
-  "name": "Book Scanner",
-  "short_name": "Scanner",
-  "description": "Warehouse book scanning system",
+  "name": "BookFlow by PrepFort",
+  "short_name": "BookFlow",
+  "description": "BookFlow — Warehouse book scanning by PrepFort",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#111111",
-  "theme_color": "#111111",
+  "background_color": "#0a0a0a",
+  "theme_color": "#2D2B6B",
   "orientation": "any",
   "icons": [
     {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'book-scanner-v1';
+const CACHE_NAME = 'bookflow-v2';
 const PRECACHE = ['/', '/index.html'];
 
 self.addEventListener('install', (e) => {
