@@ -961,26 +961,30 @@ export default function Pod() {
 
       {/* Inline settings panel */}
       {showSettings && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10, padding: 14, border: '1px solid var(--border, #333)', marginBottom: 10 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 14, fontWeight: 600 }}>{t('volume')}:</span>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10, padding: '12px 16px', border: '1px solid var(--border, #333)', marginBottom: 10, maxWidth: 480, alignSelf: 'center', width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, minWidth: 60 }}>{t('volume')}</span>
               <input type="range" min={0} max={100} value={volLevel}
-                onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ width: 90 }} />
+                onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ flex: 1 }} />
+              <span style={{ color: '#888', fontSize: 12, fontWeight: 600, minWidth: 32 }}>{volLevel}%</span>
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 14, fontWeight: 600 }}>{t('fontSize')}:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, minWidth: 60 }}>{t('fontSize')}</span>
               <input type="range" min={80} max={140} value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))} style={{ width: 90 }} />
+                onChange={(e) => setFontSize(Number(e.target.value))} style={{ flex: 1 }} />
+              <span style={{ color: '#888', fontSize: 12, fontWeight: 600, minWidth: 32 }}>{fontSize}%</span>
             </label>
-            <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              {theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🌑'} {t('theme')}
-            </button>
-            <button onClick={() => { const next = lang === 'en' ? 'es' : 'en'; setLang(next); setLangState(next); }}
-              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              {lang === 'en' ? '🇺🇸 EN' : '🇲🇽 ES'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
+                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 1 }}>
+                {theme === 'light' ? '☀️ Light' : theme === 'dark' ? '🌙 Dark' : '🌑 Dim'}
+              </button>
+              <button onClick={() => { const next = lang === 'en' ? 'es' : 'en'; setLang(next); setLangState(next); }}
+                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 1 }}>
+                {lang === 'en' ? '🇺🇸 English' : '🇲🇽 Español'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1029,8 +1033,8 @@ export default function Pod() {
           <div style={{ ...styles.statValue, color: paceColor }}>{pace}</div>
           <div style={styles.statLabel}>{t('pacePerHour')} ({t('goal')}: {targetPerHour})</div>
         </div>
-        <div style={styles.stat}>
-          <div style={{ ...styles.statValue, color: exceptionCount > 0 ? '#F97316' : '#fff' }}>
+        <div style={{ ...styles.stat, cursor: 'pointer' }} onClick={() => setShowExceptionModal(true)}>
+          <div style={{ ...styles.statValue, color: exceptionCount > 0 ? '#F97316' : 'var(--text-secondary, #666)' }}>
             {exceptionCount}
           </div>
           <div style={styles.statLabel}>{t('exceptions')}</div>
@@ -1080,7 +1084,7 @@ export default function Pod() {
 
       {/* Manual ISBN Entry */}
       {showManualEntry && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #F97316', borderRadius: 10, padding: 16, marginBottom: 12 }}>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #F97316', borderRadius: 10, padding: 16, marginBottom: 12, maxWidth: 480, alignSelf: 'center', width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ color: '#fdba74', fontWeight: 800, fontSize: 17 }}>⌨️ {t('manualIsbnEntry')}</span>
             <button onClick={() => { setShowManualEntry(false); setManualIsbn(''); setTimeout(refocusInput, 100); }}
@@ -1133,14 +1137,14 @@ export default function Pod() {
       )}
 
       {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 12, maxWidth: 480, alignSelf: 'center', width: '100%' }}>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15 }}>
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 14, padding: '12px 16px' }}>
           ⌨️ {t('manualEntry')}
         </button>
         <button onClick={() => setShowExceptionModal(true)}
-          style={{ ...styles.exceptionBtn, margin: 0, flex: 1 }}>
-          ⚠️ {t('exceptions').toUpperCase()}
+          style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '12px 16px', fontSize: 14 }}>
+          ⚠️ Log Exception
         </button>
       </div>
 
@@ -1214,8 +1218,8 @@ export default function Pod() {
 const styles = {
   container: {
     minHeight: '100vh', color: 'var(--text, #fff)', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
-    padding: '14px 12px', display: 'flex', flexDirection: 'column', position: 'relative',
-    backgroundColor: 'var(--bg, #111)',
+    padding: '14px 20px', display: 'flex', flexDirection: 'column', position: 'relative',
+    backgroundColor: 'var(--bg, #111)', maxWidth: 960, margin: '0 auto', width: '100%', boxSizing: 'border-box',
   },
   backLink: { color: '#888', textDecoration: 'none', fontSize: 14, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
   header: {
@@ -1244,13 +1248,13 @@ const styles = {
     color: '#EAB308', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0, top: -100, left: -100 },
-  statsRow: { display: 'flex', gap: 16, justifyContent: 'center', marginTop: 24, flexWrap: 'wrap' },
-  stat: { textAlign: 'center', minWidth: 120 },
+  statsRow: { display: 'flex', gap: 16, justifyContent: 'center', marginTop: 24, flexWrap: 'wrap', maxWidth: 520, alignSelf: 'center', width: '100%' },
+  stat: { textAlign: 'center', minWidth: 100, flex: 1 },
   statValue: { fontSize: 'clamp(40px, 8vw, 60px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-1px' },
   statLabel: { fontSize: 'clamp(13px, 2vw, 16px)', color: 'var(--text-secondary, #999)', marginTop: 6, fontWeight: 600 },
   paceBarContainer: {
-    marginTop: 20, height: 10, backgroundColor: 'var(--bg-input, #333)', borderRadius: 5,
-    overflow: 'visible', maxWidth: 540, alignSelf: 'center', width: '100%', position: 'relative',
+    marginTop: 16, height: 8, backgroundColor: 'var(--bg-input, #333)', borderRadius: 4,
+    overflow: 'visible', maxWidth: 480, alignSelf: 'center', width: '100%', position: 'relative',
   },
   paceBar: { height: '100%', borderRadius: 5, transition: 'width 0.5s ease, background-color 0.5s ease' },
   exceptionBtn: {
