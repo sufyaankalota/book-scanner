@@ -5,10 +5,9 @@
 
 export function isValidISBN(code) {
   const cleaned = code.replace(/[-\s]/g, '');
-  if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) return true;
-  if (cleaned.length === 10 && /^\d{9}[\dXx]$/.test(cleaned)) return true;
-  // Accept UPC-A (12 digits) — common on books, scanner validates check digit
-  if (cleaned.length === 12 && /^\d{12}$/.test(cleaned)) return true;
+  if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) return isValidISBN13(cleaned);
+  if (cleaned.length === 10 && /^\d{9}[\dXx]$/.test(cleaned)) return isValidISBN10(cleaned);
+  if (cleaned.length === 12 && /^\d{12}$/.test(cleaned)) return isValidUPCA(cleaned);
   return false;
 }
 
@@ -28,6 +27,16 @@ function isValidISBN13(isbn) {
   let sum = 0;
   for (let i = 0; i < 13; i++) {
     sum += parseInt(isbn[i], 10) * (i % 2 === 0 ? 1 : 3);
+  }
+  return sum % 10 === 0;
+}
+
+/** UPC-A check digit: same algorithm as EAN-13 (odd×1, even×3) */
+function isValidUPCA(upc) {
+  if (!/^\d{12}$/.test(upc)) return false;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(upc[i], 10) * (i % 2 === 0 ? 1 : 3);
   }
   return sum % 10 === 0;
 }

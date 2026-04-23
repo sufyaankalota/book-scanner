@@ -144,7 +144,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
           <div>
             <div style={styles.reasonTag}>{t(reason)}</div>
 
-            <div style={{ backgroundColor: '#1e3a5f', border: '1px solid #3B82F6', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#93c5fd', fontSize: 13 }}>
+            <div style={{ backgroundColor: '#1e3a5f', border: '2px solid #3B82F6', borderRadius: 10, padding: '14px 18px', marginBottom: 16, color: '#93c5fd', fontSize: 17 }}>
               💡 {t('manualEntryHintModal')}
             </div>
 
@@ -153,7 +153,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               onChange={(e) => setTitle(e.target.value)} onKeyDown={handleKeyDown}
               placeholder={t('bookTitlePlaceholder')} style={styles.input} />
 
-            <p style={{ ...styles.fieldLabel, marginTop: 14, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
+            <p style={{ ...styles.fieldLabel, marginTop: 16, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
               📸 {t('photo')} {needsPhoto ? t('photoRequired') : t('photoOptional')}:
             </p>
 
@@ -161,10 +161,10 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             {photoData && !photoMode && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <img src={photoData} alt="Exception photo"
-                  style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', border: '1px solid #555' }} />
-                <span style={{ color: '#22C55E', fontSize: 14, fontWeight: 600 }}>✓ {t('photoCaptured')}</span>
+                  style={{ width: 80, height: 80, borderRadius: 10, objectFit: 'cover', border: '2px solid #555' }} />
+                <span style={{ color: '#22C55E', fontSize: 20, fontWeight: 700 }}>✓ {t('photoCaptured')}</span>
                 <button onClick={() => setPhotoData(null)}
-                  style={{ background: 'none', border: 'none', color: '#888', fontSize: 16, cursor: 'pointer', padding: 4 }}>✕</button>
+                  style={{ background: 'none', border: 'none', color: '#888', fontSize: 22, cursor: 'pointer', padding: 6 }}>✕</button>
               </div>
             )}
 
@@ -188,15 +188,15 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             {/* Phone QR upload */}
             {photoMode === 'phone' && (
               <div style={styles.phoneBox}>
-                <p style={{ color: '#ccc', fontSize: 14, marginBottom: 8, textAlign: 'center' }}>
+                <p style={{ color: '#ccc', fontSize: 18, marginBottom: 10, textAlign: 'center' }}>
                   {t('scanQrHint')}
                 </p>
                 <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <img src={getQrUrl()} alt="Upload QR Code"
-                    style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
+                    style={{ width: 220, height: 220, borderRadius: 10, background: '#fff', padding: 10 }} />
                 </div>
                 {phoneWaiting && (
-                  <p style={{ color: '#EAB308', fontSize: 13, textAlign: 'center' }}>
+                  <p style={{ color: '#EAB308', fontSize: 18, textAlign: 'center', fontWeight: 600 }}>
                     ⏳ {t('waitingForPhoto')}
                   </p>
                 )}
@@ -213,12 +213,12 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             </div>
 
             {needsPhoto && !photoData && (
-              <p style={{ color: '#F97316', fontSize: 13, marginTop: 8, marginBottom: 0 }}>
+              <p style={{ color: '#F97316', fontSize: 18, fontWeight: 600, marginTop: 10, marginBottom: 0 }}>
                 ⚠️ {t('photoRequiredWarning')}
               </p>
             )}
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 14, marginTop: 20 }}>
               <button onClick={handleSubmit}
                 disabled={needsPhoto && !photoData}
                 style={{ ...styles.submitBtn, opacity: (needsPhoto && !photoData) ? 0.5 : 1, cursor: (needsPhoto && !photoData) ? 'not-allowed' : 'pointer' }}>
@@ -245,39 +245,39 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
-    padding: 16,
+    padding: 12,
   },
   modal: {
     backgroundColor: 'var(--bg-card, #1a1a1a)',
-    borderRadius: 16,
-    padding: 32,
+    borderRadius: 20,
+    padding: '36px 28px',
     width: '100%',
-    maxWidth: 520,
-    border: '2px solid #F97316',
+    maxWidth: 600,
+    border: '3px solid #F97316',
     position: 'relative',
-    maxHeight: '90vh',
+    maxHeight: '92vh',
     overflowY: 'auto',
   },
   titleRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 700,
+    fontSize: 34,
+    fontWeight: 800,
     color: '#fff',
     margin: 0,
   },
   closeX: {
     background: 'none',
-    border: '1px solid #555',
-    borderRadius: 8,
+    border: '2px solid #555',
+    borderRadius: 10,
     color: '#888',
-    fontSize: 20,
-    width: 40,
-    height: 40,
+    fontSize: 26,
+    width: 52,
+    height: 52,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
@@ -285,97 +285,98 @@ const styles = {
     flexShrink: 0,
   },
   subtitle: {
-    fontSize: 20,
+    fontSize: 24,
     color: '#ccc',
-    marginBottom: 12,
+    marginBottom: 16,
+    fontWeight: 600,
   },
   reasonTag: {
     display: 'inline-block',
-    padding: '6px 14px',
-    borderRadius: 6,
+    padding: '10px 18px',
+    borderRadius: 8,
     backgroundColor: '#7f1d1d',
     color: '#fca5a5',
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 700,
-    marginBottom: 16,
+    marginBottom: 18,
   },
   fieldLabel: {
-    fontSize: 15,
+    fontSize: 20,
     color: '#aaa',
-    marginBottom: 6,
+    marginBottom: 8,
     fontWeight: 600,
   },
   reasonBtn: {
     display: 'block',
     width: '100%',
-    padding: '18px 20px',
-    marginBottom: 8,
-    borderRadius: 8,
+    padding: '24px 24px',
+    marginBottom: 10,
+    borderRadius: 12,
     border: '2px solid var(--border, #444)',
     backgroundColor: 'var(--bg-input, #222)',
     color: 'var(--text, #fff)',
-    fontSize: 20,
-    fontWeight: 600,
+    fontSize: 24,
+    fontWeight: 700,
     cursor: 'pointer',
     textAlign: 'left',
   },
   input: {
     width: '100%',
-    padding: '14px 16px',
-    borderRadius: 8,
-    border: '1px solid var(--border, #444)',
+    padding: '18px 20px',
+    borderRadius: 10,
+    border: '2px solid var(--border, #444)',
     backgroundColor: 'var(--bg-input, #222)',
     color: 'var(--text, #fff)',
-    fontSize: 18,
+    fontSize: 22,
     boxSizing: 'border-box',
   },
   instructionBanner: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 16,
-    padding: '14px 16px',
-    borderRadius: 8,
+    gap: 12,
+    marginTop: 18,
+    padding: '18px 20px',
+    borderRadius: 10,
     backgroundColor: '#422006',
-    border: '1px solid #F97316',
+    border: '2px solid #F97316',
   },
-  instructionIcon: { fontSize: 24 },
-  instructionText: { color: '#fdba74', fontSize: 15, lineHeight: 1.4 },
+  instructionIcon: { fontSize: 32 },
+  instructionText: { color: '#fdba74', fontSize: 20, lineHeight: 1.4, fontWeight: 600 },
   submitBtn: {
     flex: 1,
-    padding: '14px 20px',
-    borderRadius: 8,
+    padding: '20px 24px',
+    borderRadius: 12,
     border: 'none',
     backgroundColor: '#F97316',
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 700,
+    fontSize: 22,
+    fontWeight: 800,
     cursor: 'pointer',
   },
   backBtn: {
-    padding: '14px 20px',
-    borderRadius: 8,
-    border: '1px solid #555',
+    padding: '20px 24px',
+    borderRadius: 12,
+    border: '2px solid #555',
     backgroundColor: '#333',
     color: '#ccc',
-    fontSize: 16,
-    fontWeight: 600,
+    fontSize: 20,
+    fontWeight: 700,
     cursor: 'pointer',
   },
   photoBtn: {
-    padding: '10px 16px', borderRadius: 8, border: '1px solid #555',
-    backgroundColor: '#222', color: '#ccc', fontSize: 14, cursor: 'pointer', fontWeight: 600,
+    padding: '16px 22px', borderRadius: 10, border: '2px solid #555',
+    backgroundColor: '#222', color: '#ccc', fontSize: 18, cursor: 'pointer', fontWeight: 700,
   },
   photoBtnSmall: {
-    padding: '8px 14px', borderRadius: 6, border: '1px solid #555',
-    backgroundColor: '#333', color: '#aaa', fontSize: 13, cursor: 'pointer',
+    padding: '14px 18px', borderRadius: 8, border: '2px solid #555',
+    backgroundColor: '#333', color: '#aaa', fontSize: 16, cursor: 'pointer', fontWeight: 600,
   },
   phoneBox: {
-    marginBottom: 12, padding: 16, borderRadius: 10,
-    border: '1px solid #A855F7', backgroundColor: '#1e1033',
+    marginBottom: 14, padding: 20, borderRadius: 12,
+    border: '2px solid #A855F7', backgroundColor: '#1e1033',
   },
   cancelBtn: {
-    width: '100%', marginTop: 12, padding: '12px', borderRadius: 8,
-    border: '1px solid #444', backgroundColor: 'transparent', color: '#888', fontSize: 14, cursor: 'pointer',
+    width: '100%', marginTop: 14, padding: '18px', borderRadius: 10,
+    border: '2px solid #444', backgroundColor: 'transparent', color: '#999', fontSize: 18, fontWeight: 600, cursor: 'pointer',
   },
 };
