@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
-import { isValidISBN, cleanISBN } from '../utils/isbn';
 
 const EXCEPTION_REASONS = [
   'Damaged / Unsellable',
@@ -16,15 +15,13 @@ function generateToken() {
 
 export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) {
   const [reason, setReason] = useState('');
-  const [isbn, setIsbn] = useState('');
   const [title, setTitle] = useState('');
   const [step, setStep] = useState('reason');
   const [photoData, setPhotoData] = useState(null);
-  const [isbnError, setIsbnError] = useState('');
   const [photoMode, setPhotoMode] = useState(null); // 'phone' | null
   const [uploadToken, setUploadToken] = useState('');
   const [phoneWaiting, setPhoneWaiting] = useState(false);
-  const isbnRef = useRef(null);
+  const titleRef = useRef(null);
   const fileRef = useRef(null);
 
   // Listen for phone upload
@@ -44,7 +41,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   const handleReasonSelect = (r) => {
     setReason(r);
     setStep('details');
-    setTimeout(() => isbnRef.current?.focus(), 100);
+    setTimeout(() => titleRef.current?.focus(), 100);
   };
 
   // ─── Phone QR upload ───
@@ -86,17 +83,13 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     reader.readAsDataURL(file);
   };
 
-  const isbnTrimmed = isbn.trim();
-  const isbnCleaned = isbnTrimmed ? cleanISBN(isbnTrimmed) : '';
-  const isbnValid = !isbnCleaned || isValidISBN(isbnCleaned);
-  const needsPhoto = !isbnTrimmed && !title.trim();
+  const needsPhoto = !title.trim();
 
   const handleSubmit = () => {
     if (needsPhoto && !photoData) return;
-    if (isbnCleaned && !isValidISBN(isbnCleaned)) return;
     onSubmit({
       reason,
-      isbn: isbnCleaned || null,
+      isbn: null,
       title: title.trim() || null,
       photo: photoData || null,
       podId,
@@ -148,20 +141,17 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
           <div>
             <div style={styles.reasonTag}>{reason}</div>
 
-            <p style={styles.fieldLabel}>ISBN (scan or type):</p>
-            <input ref={isbnRef} type="text" value={isbn}
-              onChange={(e) => { setIsbn(e.target.value); setIsbnError(''); }} onKeyDown={handleKeyDown}
-              onBlur={() => { if (isbnCleaned && !isValidISBN(isbnCleaned)) setIsbnError('Invalid ISBN — check the number and try again'); else setIsbnError(''); }}
-              placeholder="Scan barcode or type ISBN..." style={{ ...styles.input, ...(isbnError ? { borderColor: '#EF4444' } : {}) }} />
-            {isbnError && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 4, marginBottom: 0 }}>{isbnError}</p>}
+            <div style={{ backgroundColor: '#1e3a5f', border: '1px solid #3B82F6', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#93c5fd', fontSize: 13 }}>
+              💡 If this item has a readable ISBN, use the <strong>Manual Entry</strong> button on the scan screen instead — it will go through the regular scan flow.
+            </div>
 
-            <p style={{ ...styles.fieldLabel, marginTop: 14 }}>Or Book Title (if no ISBN):</p>
-            <input type="text" value={title}
+            <p style={styles.fieldLabel}>Book Title (for identification):</p>
+            <input ref={titleRef} type="text" value={title}
               onChange={(e) => setTitle(e.target.value)} onKeyDown={handleKeyDown}
               placeholder="e.g. Harry Potter..." style={styles.input} />
 
             <p style={{ ...styles.fieldLabel, marginTop: 14, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
-              📸 Photo {needsPhoto ? '(required — no ISBN or title entered)' : '(optional)'}:
+              📸 Photo {needsPhoto ? '(required — no title entered)' : '(optional)'}:
             </p>
 
             {/* Photo preview */}
@@ -221,17 +211,17 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
 
             {needsPhoto && !photoData && (
               <p style={{ color: '#F97316', fontSize: 13, marginTop: 8, marginBottom: 0 }}>
-                ⚠️ Photo is required when no ISBN or title is provided
+                ⚠️ Photo is required when no title is provided
               </p>
             )}
 
             <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
               <button onClick={handleSubmit}
-                disabled={(needsPhoto && !photoData) || (isbnCleaned && !isbnValid)}
-                style={{ ...styles.submitBtn, opacity: (needsPhoto && !photoData) || (isbnCleaned && !isbnValid) ? 0.5 : 1, cursor: (needsPhoto && !photoData) || (isbnCleaned && !isbnValid) ? 'not-allowed' : 'pointer' }}>
+                disabled={needsPhoto && !photoData}
+                style={{ ...styles.submitBtn, opacity: (needsPhoto && !photoData) ? 0.5 : 1, cursor: (needsPhoto && !photoData) ? 'not-allowed' : 'pointer' }}>
                 Log Exception
               </button>
-              <button onClick={() => { setStep('reason'); setIsbn(''); setTitle(''); setReason(''); setPhotoData(null); setIsbnError(''); }}
+              <button onClick={() => { setStep('reason'); setTitle(''); setReason(''); setPhotoData(null); }}
                 style={styles.backBtn}>← Back</button>
             </div>
           </div>

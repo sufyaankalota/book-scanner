@@ -58,6 +58,8 @@ export default function Pod() {
   const [flashColor, setFlashColor] = useState(null);
   const [flashText, setFlashText] = useState('');
   const [showExceptionModal, setShowExceptionModal] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualIsbn, setManualIsbn] = useState('');
   const [lastScanTime, setLastScanTime] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -91,6 +93,7 @@ export default function Pod() {
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
   const inputRef = useRef(null);
+  const manualInputRef = useRef(null);
   const pairInputRef = useRef(null);
   const barcodeTimeoutRef = useRef(null);
   const scanStartTimeRef = useRef(null);
@@ -181,10 +184,10 @@ export default function Pod() {
 
   // ─── Keep input focused ───
   const refocusInput = useCallback(() => {
-    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift) {
+    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift && !showManualEntry) {
       inputRef.current.focus();
     }
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift, showManualEntry]);
 
   useEffect(() => {
     if (!isScanning) return;
@@ -1035,11 +1038,71 @@ export default function Pod() {
         </div>
       )}
 
-      {/* Exception button */}
-      <button onClick={() => setShowExceptionModal(true)} style={styles.exceptionBtn}>
-        ⚠️ {t('exceptions').toUpperCase()}
-      </button>
-      <p style={{ textAlign: 'center', color: '#555', fontSize: 12, marginTop: 4 }}>or press Esc</p>
+      {/* Manual ISBN Entry */}
+      {showManualEntry && (
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #3B82F6', borderRadius: 12, padding: 16, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ color: '#93c5fd', fontWeight: 700, fontSize: 15 }}>⌨️ Manual ISBN Entry</span>
+            <button onClick={() => { setShowManualEntry(false); setManualIsbn(''); setTimeout(refocusInput, 100); }}
+              style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 16, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+          <p style={{ color: '#888', fontSize: 13, margin: '0 0 8px' }}>Type the ISBN if the barcode can't be scanned.</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              ref={manualInputRef}
+              type="text"
+              inputMode="numeric"
+              value={manualIsbn}
+              onChange={(e) => setManualIsbn(e.target.value.replace(/[^0-9Xx-]/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && manualIsbn.trim()) {
+                  e.preventDefault();
+                  const val = manualIsbn.trim();
+                  setManualIsbn('');
+                  setShowManualEntry(false);
+                  handleScan(val);
+                  setTimeout(refocusInput, 100);
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setShowManualEntry(false);
+                  setManualIsbn('');
+                  setTimeout(refocusInput, 100);
+                }
+              }}
+              placeholder="e.g. 978-0-13-468599-1"
+              style={{ flex: 1, padding: '12px 14px', borderRadius: 8, border: '2px solid #3B82F6', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', outline: 'none' }}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                if (manualIsbn.trim()) {
+                  const val = manualIsbn.trim();
+                  setManualIsbn('');
+                  setShowManualEntry(false);
+                  handleScan(val);
+                  setTimeout(refocusInput, 100);
+                }
+              }}
+              disabled={!manualIsbn.trim()}
+              style={{ padding: '12px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#3B82F6' : '#333', color: '#fff', fontSize: 16, fontWeight: 700, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
+            >Scan ↵</button>
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
+        <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 14 }}>
+          ⌨️ Manual Entry
+        </button>
+        <button onClick={() => setShowExceptionModal(true)}
+          style={{ ...styles.exceptionBtn, margin: 0, flex: 1 }}>
+          ⚠️ {t('exceptions').toUpperCase()}
+        </button>
+      </div>
+      <p style={{ textAlign: 'center', color: '#555', fontSize: 12, marginTop: 4 }}>Esc = Exception · Type ISBN for manual entry</p>
 
       {!job && (
         <div style={styles.warning}>
