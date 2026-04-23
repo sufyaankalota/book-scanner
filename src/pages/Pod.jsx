@@ -774,7 +774,11 @@ export default function Pod() {
   // PHASE: Scanning / Paused
   // ═══════════════════════════════════════════
   return (
-    <div style={{ ...styles.container, backgroundColor: flashColor || 'var(--bg, #111)', transition: 'background-color 0.15s ease-in', ...scaleStyle }}>
+    <div style={{ ...styles.container, ...scaleStyle }}>
+      {/* Full-screen flash overlay */}
+      {flashColor && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: flashColor, transition: 'opacity 0.15s ease-in', zIndex: 400, pointerEvents: 'none' }} />
+      )}
 
       {/* Training mode banner */}
       {trainingMode && (
@@ -1084,7 +1088,7 @@ export default function Pod() {
 
       {/* Manual ISBN Entry */}
       {showManualEntry && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #F97316', borderRadius: 10, padding: 16, marginBottom: 12, maxWidth: 480, alignSelf: 'center', width: '100%' }}>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #F97316', borderRadius: 10, padding: 16, marginBottom: 12, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ color: '#fdba74', fontWeight: 800, fontSize: 17 }}>⌨️ {t('manualIsbnEntry')}</span>
             <button onClick={() => { setShowManualEntry(false); setManualIsbn(''); setTimeout(refocusInput, 100); }}
@@ -1137,13 +1141,13 @@ export default function Pod() {
       )}
 
       {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 12, maxWidth: 480, alignSelf: 'center', width: '100%' }}>
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 14, padding: '12px 16px' }}>
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15, padding: '14px 20px' }}>
           ⌨️ {t('manualEntry')}
         </button>
         <button onClick={() => setShowExceptionModal(true)}
-          style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '12px 16px', fontSize: 14 }}>
+          style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '14px 20px', fontSize: 15 }}>
           ⚠️ Log Exception
         </button>
       </div>
@@ -1218,8 +1222,8 @@ export default function Pod() {
 const styles = {
   container: {
     minHeight: '100vh', color: 'var(--text, #fff)', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
-    padding: '14px 20px', display: 'flex', flexDirection: 'column', position: 'relative',
-    backgroundColor: 'var(--bg, #111)', maxWidth: 960, margin: '0 auto', width: '100%', boxSizing: 'border-box',
+    padding: '16px 24px', display: 'flex', flexDirection: 'column', position: 'relative',
+    backgroundColor: 'var(--bg, #111)', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box',
   },
   backLink: { color: '#888', textDecoration: 'none', fontSize: 14, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
   header: {
@@ -1248,30 +1252,30 @@ const styles = {
     color: '#EAB308', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0, top: -100, left: -100 },
-  statsRow: { display: 'flex', gap: 16, justifyContent: 'center', marginTop: 24, flexWrap: 'wrap', maxWidth: 520, alignSelf: 'center', width: '100%' },
-  stat: { textAlign: 'center', minWidth: 100, flex: 1 },
-  statValue: { fontSize: 'clamp(40px, 8vw, 60px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-1px' },
-  statLabel: { fontSize: 'clamp(13px, 2vw, 16px)', color: 'var(--text-secondary, #999)', marginTop: 6, fontWeight: 600 },
+  statsRow: { display: 'flex', gap: 24, justifyContent: 'center', marginTop: 32, flexWrap: 'wrap', maxWidth: 700, alignSelf: 'center', width: '100%' },
+  stat: { textAlign: 'center', minWidth: 120, flex: 1 },
+  statValue: { fontSize: 'clamp(52px, 10vw, 80px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-2px' },
+  statLabel: { fontSize: 'clamp(14px, 2.2vw, 17px)', color: 'var(--text-secondary, #999)', marginTop: 8, fontWeight: 600 },
   paceBarContainer: {
-    marginTop: 16, height: 8, backgroundColor: 'var(--bg-input, #333)', borderRadius: 4,
-    overflow: 'visible', maxWidth: 480, alignSelf: 'center', width: '100%', position: 'relative',
+    marginTop: 20, height: 10, backgroundColor: 'var(--bg-input, #333)', borderRadius: 5,
+    overflow: 'visible', maxWidth: 640, alignSelf: 'center', width: '100%', position: 'relative',
   },
   paceBar: { height: '100%', borderRadius: 5, transition: 'width 0.5s ease, background-color 0.5s ease' },
   exceptionBtn: {
-    marginTop: 18, alignSelf: 'center', padding: '14px 28px', borderRadius: 10,
+    marginTop: 18, alignSelf: 'center', padding: '16px 32px', borderRadius: 10,
     border: '2px solid #F97316', backgroundColor: 'rgba(249,115,22,0.15)',
-    color: '#F97316', fontSize: 'clamp(15px, 2.5vw, 20px)', fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
+    color: '#F97316', fontSize: 16, fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
   },
   flashOverlay: { position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, pointerEvents: 'none' },
-  flashText: { fontSize: 'clamp(40px, 8vw, 60px)', fontWeight: 900, textAlign: 'center', color: '#fff', textShadow: '2px 2px 8px rgba(0,0,0,0.7)', padding: 16 },
+  flashText: { fontSize: 'clamp(48px, 10vw, 72px)', fontWeight: 900, textAlign: 'center', color: '#fff', textShadow: '2px 2px 12px rgba(0,0,0,0.8)', padding: 20 },
   offlineBanner: { backgroundColor: '#7f1d1d', border: '1px solid #EF4444', borderRadius: 8, padding: '10px 16px', textAlign: 'center', color: '#fca5a5', fontSize: 14, fontWeight: 700, marginBottom: 10 },
   idleWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '10px 16px', textAlign: 'center', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 10 },
   lockWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '12px 16px', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 14, lineHeight: 1.5 },
   warning: { marginTop: 24, padding: 16, backgroundColor: '#7f1d1d', borderRadius: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 },
   recentScans: {
-    marginTop: 18, backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10,
-    border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 260,
-    overflowY: 'auto', alignSelf: 'center', width: '100%', maxWidth: 580,
+    marginTop: 20, backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10,
+    border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 280,
+    overflowY: 'auto', alignSelf: 'center', width: '100%', maxWidth: 700,
   },
   recentTitle: { padding: '10px 14px', borderBottom: '1px solid var(--border, #333)', color: '#999', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
   recentRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid #222' },
