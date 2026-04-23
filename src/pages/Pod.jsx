@@ -623,12 +623,12 @@ export default function Pod() {
 
           {/* Recent operators quick-select */}
           {operatorHistory.length > 0 && !operatorName.trim() && (
-            <div style={{ marginTop: 16 }}>
-              <p style={{ color: '#888', fontSize: 16, marginBottom: 8, fontWeight: 600 }}>Recent operators:</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ marginTop: 14 }}>
+              <p style={{ color: '#888', fontSize: 14, marginBottom: 6, fontWeight: 600 }}>Recent operators:</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {operatorHistory.slice(0, 6).map((name) => (
                   <button key={name} onClick={() => { setOperatorName(name); }}
-                    style={{ padding: '12px 20px', borderRadius: 10, border: '2px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #ccc)', fontSize: 18, fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #ccc)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
                     {name}
                   </button>
                 ))}
@@ -707,56 +707,56 @@ export default function Pod() {
           </div>
 
           {/* Settings panel in Ready phase */}
-          <div style={{ backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-            <h3 style={{ color: 'var(--text-secondary, #aaa)', fontSize: 18, fontWeight: 700, marginTop: 0, marginBottom: 16 }}>{t('settings')}</h3>
+          <div style={{ backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <h3 style={{ color: 'var(--text-secondary, #aaa)', fontSize: 15, fontWeight: 700, marginTop: 0, marginBottom: 12 }}>{t('settings')}</h3>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 18, minWidth: 110, fontWeight: 600 }}>{t('training')}:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 15, minWidth: 95, fontWeight: 600 }}>{t('training')}:</span>
               <button onClick={() => setTrainingMode(!trainingMode)}
-                style={{ padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                  backgroundColor: trainingMode ? '#818cf8' : 'var(--bg-input, #333)', color: 'var(--text, #fff)', fontSize: 16, fontWeight: 700 }}>
+                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  backgroundColor: trainingMode ? '#818cf8' : 'var(--bg-input, #333)', color: 'var(--text, #fff)', fontSize: 14, fontWeight: 700 }}>
                 {trainingMode ? 'ON' : 'OFF'}
               </button>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
-              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 18, minWidth: 110, fontWeight: 600 }}>{t('fontSize')}:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 15, minWidth: 95, fontWeight: 600 }}>{t('fontSize')}:</span>
               <input type="range" min={80} max={140} value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))} style={{ flex: 1, height: 8 }} />
-              <span style={{ color: 'var(--text-secondary, #888)', fontSize: 16, fontWeight: 600 }}>{fontSize}%</span>
+                onChange={(e) => setFontSize(Number(e.target.value))} style={{ flex: 1 }} />
+              <span style={{ color: 'var(--text-secondary, #888)', fontSize: 14, fontWeight: 600 }}>{fontSize}%</span>
             </label>
-            <div style={{ marginLeft: 124, marginBottom: 14, padding: '8px 14px', borderRadius: 8, backgroundColor: 'var(--bg-card, #1a1a1a)', border: '1px solid var(--border, #333)' }}>
+            <div style={{ marginLeft: 107, marginBottom: 12, padding: '6px 12px', borderRadius: 6, backgroundColor: 'var(--bg-card, #1a1a1a)', border: '1px solid var(--border, #333)' }}>
               <span style={{ fontSize: `${fontSize * 0.48}px`, fontWeight: 800, color: 'var(--text, #fff)' }}>1,234</span>
-              <span style={{ fontSize: `${fontSize * 0.15}px`, color: 'var(--text-secondary, #999)', marginLeft: 8 }}>Total Scans — preview</span>
+              <span style={{ fontSize: `${fontSize * 0.14}px`, color: 'var(--text-secondary, #999)', marginLeft: 8 }}>Total Scans — preview</span>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 18, minWidth: 110, fontWeight: 600 }}>{t('volume')}:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 15, minWidth: 95, fontWeight: 600 }}>{t('volume')}:</span>
               <input type="range" min={0} max={100} value={volLevel}
-                onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ flex: 1, height: 8 }} />
-              <span style={{ color: 'var(--text-secondary, #888)', fontSize: 16, fontWeight: 600 }}>{volLevel}%</span>
+                onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ flex: 1 }} />
+              <span style={{ color: 'var(--text-secondary, #888)', fontSize: 14, fontWeight: 600 }}>{volLevel}%</span>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 18, minWidth: 110, fontWeight: 600 }}>{t('language')}:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 15, minWidth: 95, fontWeight: 600 }}>{t('language')}:</span>
               <select value={lang} onChange={(e) => { setLang(e.target.value); setLangState(e.target.value); }}
-                style={{ padding: '10px 16px', borderRadius: 8, border: '2px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #fff)', fontSize: 18, fontWeight: 600 }}>
+                style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #fff)', fontSize: 15, fontWeight: 600 }}>
                 <option value="en">English</option>
                 <option value="es">Español</option>
               </select>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 18, minWidth: 110, fontWeight: 600 }}>{t('theme')}:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 15, minWidth: 95, fontWeight: 600 }}>{t('theme')}:</span>
               <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
-                style={{ padding: '10px 20px', borderRadius: 8, border: '2px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+                style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                 {theme === 'light' ? '☀️ Light' : theme === 'dark' ? '🌙 Dark' : '🌑 Dim'}
               </button>
             </label>
           </div>
 
           {trainingMode && (
-            <div style={{ backgroundColor: '#312e81', border: '2px solid #818cf8', borderRadius: 10, padding: '14px 18px', marginBottom: 20, color: '#c7d2fe', fontSize: 18, fontWeight: 700 }}>
+            <div style={{ backgroundColor: '#312e81', border: '1px solid #818cf8', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#c7d2fe', fontSize: 15, fontWeight: 700 }}>
               🎓 Training Mode — scans won't be saved to the database
             </div>
           )}
@@ -778,7 +778,7 @@ export default function Pod() {
 
       {/* Training mode banner */}
       {trainingMode && (
-        <div style={{ backgroundColor: '#312e81', border: '2px solid #818cf8', borderRadius: 10, padding: '12px 18px', textAlign: 'center', color: '#c7d2fe', fontSize: 18, fontWeight: 700, marginBottom: 10 }}>
+        <div style={{ backgroundColor: '#312e81', border: '1px solid #818cf8', borderRadius: 8, padding: '8px 14px', textAlign: 'center', color: '#c7d2fe', fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
           🎓 {t('trainingMode')} — scans not saved
         </div>
       )}
@@ -788,12 +788,12 @@ export default function Pod() {
 
       {/* Supervisor message */}
       {supervisorMessage && (
-        <div style={{ backgroundColor: '#1e3a5f', border: '2px solid #3B82F6', borderRadius: 10, padding: '16px 20px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={{ backgroundColor: '#1e3a5f', border: '2px solid #3B82F6', borderRadius: 8, padding: '12px 16px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 14, color: '#93c5fd', fontWeight: 700, marginBottom: 6 }}>📩 {t('messageFromSupervisor')}</div>
-            <div style={{ color: '#fff', fontSize: 20, fontWeight: 700 }}>{supervisorMessage}</div>
+            <div style={{ fontSize: 12, color: '#93c5fd', fontWeight: 700, marginBottom: 4 }}>📩 {t('messageFromSupervisor')}</div>
+            <div style={{ color: '#fff', fontSize: 17, fontWeight: 700 }}>{supervisorMessage}</div>
           </div>
-          <button onClick={dismissMessage} style={{ background: 'none', border: '2px solid #3B82F6', borderRadius: 8, color: '#93c5fd', padding: '10px 18px', cursor: 'pointer', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+          <button onClick={dismissMessage} style={{ background: 'none', border: '1px solid #3B82F6', borderRadius: 6, color: '#93c5fd', padding: '8px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
             {t('dismiss')}
           </button>
         </div>
@@ -871,7 +871,7 @@ export default function Pod() {
           {showSwitchOperator && (
             <div style={styles.miniModal}>
               <h3 style={{ color: '#fff', marginBottom: 12, marginTop: 0 }}>Switch Operator</h3>
-            <p style={{ color: '#999', fontSize: 18, marginBottom: 10, fontWeight: 500 }}>
+            <p style={{ color: '#999', fontSize: 14, marginBottom: 10, fontWeight: 500 }}>
                 The new operator will use the same paired scanner.
               </p>
               <input type="text" value={switchName}
@@ -928,7 +928,7 @@ export default function Pod() {
                 </div>
               ))}
             </div>
-            <p style={{ color: '#999', fontSize: 16, marginBottom: 14, fontWeight: 500 }}>📥 Shift report will download automatically</p>
+            <p style={{ color: '#999', fontSize: 14, marginBottom: 12, fontWeight: 500 }}>📥 Shift report will download automatically</p>
             <button onClick={confirmEndShift}
               style={{ ...styles.primaryBtn, backgroundColor: '#EF4444' }}>
               Confirm End Shift
@@ -941,7 +941,7 @@ export default function Pod() {
       <div style={styles.header}>
         <div>
           <h1 style={styles.podTitle}>Pod {podId}</h1>
-          <p style={{ color: '#888', fontSize: 16, margin: 0, fontWeight: 500 }}>
+          <p style={{ color: '#888', fontSize: 15, margin: 0, fontWeight: 500 }}>
             {operatorName} · {job?.meta?.name || 'No Job'}
             {trainingMode && <span style={{ color: '#818cf8', marginLeft: 8 }}>🎓 Training</span>}
           </p>
@@ -961,24 +961,24 @@ export default function Pod() {
 
       {/* Inline settings panel */}
       {showSettings && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, padding: 18, border: '2px solid var(--border, #333)', marginBottom: 12 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 16, fontWeight: 600 }}>{t('volume')}:</span>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10, padding: 14, border: '1px solid var(--border, #333)', marginBottom: 10 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 14, fontWeight: 600 }}>{t('volume')}:</span>
               <input type="range" min={0} max={100} value={volLevel}
-                onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ width: 100, height: 6 }} />
+                onChange={(e) => { const v = Number(e.target.value); setVolLevel(v); setVolume(v); }} style={{ width: 90 }} />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 16, fontWeight: 600 }}>{t('fontSize')}:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 14, fontWeight: 600 }}>{t('fontSize')}:</span>
               <input type="range" min={80} max={140} value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))} style={{ width: 100, height: 6 }} />
+                onChange={(e) => setFontSize(Number(e.target.value))} style={{ width: 90 }} />
             </label>
             <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
-              style={{ padding: '8px 16px', borderRadius: 8, border: '2px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               {theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🌑'} {t('theme')}
             </button>
             <button onClick={() => { const next = lang === 'en' ? 'es' : 'en'; setLang(next); setLangState(next); }}
-              style={{ padding: '8px 16px', borderRadius: 8, border: '2px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               {lang === 'en' ? '🇺🇸 EN' : '🇲🇽 ES'}
             </button>
           </div>
@@ -991,21 +991,21 @@ export default function Pod() {
 
       {/* Duplicate info */}
       {duplicateInfo && (
-        <div style={{ textAlign: 'center', color: '#EAB308', fontSize: 18, fontWeight: 700, marginBottom: 10 }}>
+        <div style={{ textAlign: 'center', color: '#EAB308', fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
           ⚠️ {duplicateInfo}
         </div>
       )}
 
       {/* Scan streak & barcode type */}
       {(scanStreak >= 5 || lastBarcodeType) && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginBottom: 8, flexWrap: 'wrap' }}>
           {scanStreak >= 5 && (
-            <span style={{ fontSize: 18, fontWeight: 700, color: '#22C55E' }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#22C55E' }}>
               🔥 {scanStreak} scan streak!{scanStreak >= bestStreak && scanStreak > 5 ? ' (NEW BEST!)' : ''}
             </span>
           )}
           {lastBarcodeType && (
-            <span style={{ fontSize: 14, color: '#999', padding: '4px 10px', borderRadius: 6, backgroundColor: 'var(--bg-card, #1a1a1a)', fontWeight: 600 }}>
+            <span style={{ fontSize: 12, color: '#999', padding: '3px 8px', borderRadius: 4, backgroundColor: 'var(--bg-card, #1a1a1a)', fontWeight: 600 }}>
               {lastBarcodeType}
             </span>
           )}
@@ -1014,7 +1014,7 @@ export default function Pod() {
 
       {/* Offline queue indicator */}
       {!isOnline && (
-        <div style={{ textAlign: 'center', color: '#fca5a5', fontSize: 16, fontWeight: 600, marginBottom: 10 }}>
+        <div style={{ textAlign: 'center', color: '#fca5a5', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
           📤 Scans will sync when back online
         </div>
       )}
@@ -1047,12 +1047,12 @@ export default function Pod() {
         }} />
         <div style={{
           position: 'absolute', left: `${Math.min(100, goalPct)}%`, top: -20,
-          fontSize: 14, color: '#999', transform: 'translateX(-50%)', fontWeight: 600,
+          fontSize: 12, color: '#999', transform: 'translateX(-50%)', fontWeight: 600,
         }}>{t('goal')}</div>
       </div>
 
       {lastScanTime && (
-        <p style={{ textAlign: 'center', color: '#666', fontSize: 16, marginTop: 14, fontWeight: 500 }}>
+        <p style={{ textAlign: 'center', color: '#666', fontSize: 14, marginTop: 12, fontWeight: 500 }}>
           Last scan: {lastScanTime.toLocaleTimeString()}
         </p>
       )}
@@ -1063,16 +1063,16 @@ export default function Pod() {
           <div style={styles.recentTitle}>{t('recentScans')}</div>
           {recentScans.slice(0, 8).map((s, i) => (
             <div key={s.id} style={{ ...styles.recentRow, opacity: i === 0 ? 1 : 0.5 + (0.5 / (i + 1)) }}>
-              <span style={{ fontFamily: 'monospace', fontSize: 17, fontWeight: 700, color: s.isException ? '#F97316' : s.poName === 'TRAINING' ? '#818cf8' : '#fff' }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: s.isException ? '#F97316' : s.poName === 'TRAINING' ? '#818cf8' : '#fff' }}>
                 {s.isbn}
               </span>
               {s.poName && s.poName !== 'EXCEPTIONS' && s.poName !== 'TRAINING' && (
-                <span style={{ fontSize: 15, fontWeight: 700, color: s.color || '#888' }}>{s.poName}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: s.color || '#888' }}>{s.poName}</span>
               )}
-              {s.poName === 'TRAINING' && <span style={{ fontSize: 14, padding: '3px 8px', borderRadius: 6, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 700 }}>TRAINING</span>}
-              {s.isException && <span style={{ fontSize: 14, padding: '3px 8px', borderRadius: 6, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 700 }}>EXCEPTION</span>}
-              {s.isManual && !s.isException && <span style={{ fontSize: 14, padding: '3px 8px', borderRadius: 6, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
-              <span style={{ marginLeft: 'auto', fontSize: 14, color: '#777', fontWeight: 500 }}>{s.time.toLocaleTimeString()}</span>
+              {s.poName === 'TRAINING' && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 700 }}>TRAINING</span>}
+              {s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 700 }}>EXCEPTION</span>}
+              {s.isManual && !s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#777', fontWeight: 500 }}>{s.time.toLocaleTimeString()}</span>
             </div>
           ))}
         </div>
@@ -1080,15 +1080,15 @@ export default function Pod() {
 
       {/* Manual ISBN Entry */}
       {showManualEntry && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '3px solid #F97316', borderRadius: 14, padding: 20, marginBottom: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ color: '#fdba74', fontWeight: 800, fontSize: 20 }}>⌨️ {t('manualIsbnEntry')}</span>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #F97316', borderRadius: 10, padding: 16, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ color: '#fdba74', fontWeight: 800, fontSize: 17 }}>⌨️ {t('manualIsbnEntry')}</span>
             <button onClick={() => { setShowManualEntry(false); setManualIsbn(''); setTimeout(refocusInput, 100); }}
-              style={{ background: 'none', border: '2px solid #555', borderRadius: 8, color: '#888', fontSize: 20, width: 42, height: 42, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
-          <p style={{ color: '#F97316', fontSize: 16, margin: '0 0 6px', fontWeight: 700 }}>⚠️ {t('manualBilled')}</p>
-          <p style={{ color: '#999', fontSize: 17, margin: '0 0 12px', lineHeight: 1.4 }}>{t('manualEntryHint')}</p>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <p style={{ color: '#F97316', fontSize: 14, margin: '0 0 4px', fontWeight: 700 }}>⚠️ {t('manualBilled')}</p>
+          <p style={{ color: '#999', fontSize: 14, margin: '0 0 8px', lineHeight: 1.4 }}>{t('manualEntryHint')}</p>
+          <div style={{ display: 'flex', gap: 8 }}>
             <input
               ref={manualInputRef}
               type="text"
@@ -1112,7 +1112,7 @@ export default function Pod() {
                 }
               }}
               placeholder="e.g. 978-0-13-468599-1"
-              style={{ flex: 1, padding: '16px 18px', borderRadius: 10, border: '3px solid #F97316', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 22, fontFamily: 'monospace', fontWeight: 600, outline: 'none' }}
+              style={{ flex: 1, padding: '14px 16px', borderRadius: 8, border: '2px solid #F97316', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', fontWeight: 600, outline: 'none' }}
               autoFocus
             />
             <button
@@ -1126,16 +1126,16 @@ export default function Pod() {
                 }
               }}
               disabled={!manualIsbn.trim()}
-              style={{ padding: '16px 24px', borderRadius: 10, border: 'none', backgroundColor: manualIsbn.trim() ? '#F97316' : '#333', color: '#fff', fontSize: 20, fontWeight: 800, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
+              style={{ padding: '14px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#F97316' : '#333', color: '#fff', fontSize: 17, fontWeight: 800, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
             >Scan ↵</button>
           </div>
         </div>
       )}
 
       {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 18 }}>
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15 }}>
           ⌨️ {t('manualEntry')}
         </button>
         <button onClick={() => setShowExceptionModal(true)}
@@ -1164,7 +1164,7 @@ export default function Pod() {
             <h2 style={{ color: '#EAB308', margin: '0 0 8px', fontSize: 24, fontWeight: 800 }}>{t('duplicateIsbn')}</h2>
             <p style={{ color: '#ccc', fontSize: 16, margin: '0 0 4px' }}>{t('duplicateJustScanned')}</p>
             <p style={{ color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', margin: '8px 0 20px', padding: '10px 16px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
-            <p style={{ color: '#999', fontSize: 18, margin: '0 0 24px', fontWeight: 500 }}>
+            <p style={{ color: '#999', fontSize: 15, margin: '0 0 24px', fontWeight: 500 }}>
               {t('duplicateDifferentCopy')}
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
@@ -1194,8 +1194,8 @@ export default function Pod() {
                 ['Space', 'Resume from pause'],
               ].map(([key, desc]) => (
                 <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #333' }}>
-                  <kbd style={{ backgroundColor: '#333', padding: '4px 12px', borderRadius: 6, fontFamily: 'monospace', fontSize: 16, color: '#fff', border: '1px solid #555', fontWeight: 600 }}>{key}</kbd>
-                  <span style={{ color: '#bbb', fontSize: 16, fontWeight: 500 }}>{desc}</span>
+                  <kbd style={{ backgroundColor: '#333', padding: '3px 10px', borderRadius: 4, fontFamily: 'monospace', fontSize: 14, color: '#fff', border: '1px solid #555', fontWeight: 600 }}>{key}</kbd>
+                  <span style={{ color: '#bbb', fontSize: 14, fontWeight: 500 }}>{desc}</span>
                 </div>
               ))}
             </div>
@@ -1214,106 +1214,106 @@ export default function Pod() {
 const styles = {
   container: {
     minHeight: '100vh', color: 'var(--text, #fff)', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
-    padding: '16px 14px', display: 'flex', flexDirection: 'column', position: 'relative',
+    padding: '14px 12px', display: 'flex', flexDirection: 'column', position: 'relative',
     backgroundColor: 'var(--bg, #111)',
   },
-  backLink: { color: '#888', textDecoration: 'none', fontSize: 16, marginBottom: 14, display: 'inline-block', fontWeight: 600 },
+  backLink: { color: '#888', textDecoration: 'none', fontSize: 14, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
   header: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 18, flexWrap: 'wrap', gap: 12,
+    marginBottom: 14, flexWrap: 'wrap', gap: 10,
   },
-  podTitle: { fontSize: 'clamp(32px, 6vw, 48px)', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' },
+  podTitle: { fontSize: 'clamp(26px, 5vw, 40px)', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' },
   scannerBadge: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    padding: '10px 16px', borderRadius: 8,
-    border: '2px solid #22C55E', backgroundColor: '#14532d',
-    color: '#fff', fontSize: 16, fontWeight: 700,
+    display: 'flex', alignItems: 'center', gap: 6,
+    padding: '7px 12px', borderRadius: 6,
+    border: '1px solid #22C55E', backgroundColor: '#14532d',
+    color: '#fff', fontSize: 13, fontWeight: 700,
   },
-  dot: { width: 10, height: 10, borderRadius: '50%', flexShrink: 0 },
+  dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
   undoBtn: {
-    padding: '10px 16px', borderRadius: 8, border: '2px solid var(--border, #666)',
-    backgroundColor: 'var(--bg-input, #333)', color: 'var(--text-secondary, #ccc)', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+    padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border, #666)',
+    backgroundColor: 'var(--bg-input, #333)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
   },
   settingsBtn: {
-    padding: '10px 14px', borderRadius: 8, border: '2px solid var(--border, #444)',
-    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 18, cursor: 'pointer',
+    padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border, #444)',
+    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 16, cursor: 'pointer',
   },
   pauseBtn: {
-    padding: '10px 18px', borderRadius: 8,
-    border: '2px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.1)',
-    color: '#EAB308', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+    padding: '8px 14px', borderRadius: 6,
+    border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.1)',
+    color: '#EAB308', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0, top: -100, left: -100 },
-  statsRow: { display: 'flex', gap: 20, justifyContent: 'center', marginTop: 32, flexWrap: 'wrap' },
-  stat: { textAlign: 'center', minWidth: 140 },
-  statValue: { fontSize: 'clamp(48px, 10vw, 72px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-1px' },
-  statLabel: { fontSize: 'clamp(15px, 2.5vw, 20px)', color: 'var(--text-secondary, #999)', marginTop: 8, fontWeight: 600 },
+  statsRow: { display: 'flex', gap: 16, justifyContent: 'center', marginTop: 24, flexWrap: 'wrap' },
+  stat: { textAlign: 'center', minWidth: 120 },
+  statValue: { fontSize: 'clamp(40px, 8vw, 60px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-1px' },
+  statLabel: { fontSize: 'clamp(13px, 2vw, 16px)', color: 'var(--text-secondary, #999)', marginTop: 6, fontWeight: 600 },
   paceBarContainer: {
-    marginTop: 28, height: 14, backgroundColor: 'var(--bg-input, #333)', borderRadius: 7,
-    overflow: 'visible', maxWidth: 600, alignSelf: 'center', width: '100%', position: 'relative',
+    marginTop: 20, height: 10, backgroundColor: 'var(--bg-input, #333)', borderRadius: 5,
+    overflow: 'visible', maxWidth: 540, alignSelf: 'center', width: '100%', position: 'relative',
   },
-  paceBar: { height: '100%', borderRadius: 7, transition: 'width 0.5s ease, background-color 0.5s ease' },
+  paceBar: { height: '100%', borderRadius: 5, transition: 'width 0.5s ease, background-color 0.5s ease' },
   exceptionBtn: {
-    marginTop: 24, alignSelf: 'center', padding: '18px 36px', borderRadius: 14,
-    border: '3px solid #F97316', backgroundColor: 'rgba(249,115,22,0.15)',
-    color: '#F97316', fontSize: 'clamp(18px, 3vw, 24px)', fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
+    marginTop: 18, alignSelf: 'center', padding: '14px 28px', borderRadius: 10,
+    border: '2px solid #F97316', backgroundColor: 'rgba(249,115,22,0.15)',
+    color: '#F97316', fontSize: 'clamp(15px, 2.5vw, 20px)', fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
   },
   flashOverlay: { position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, pointerEvents: 'none' },
-  flashText: { fontSize: 'clamp(48px, 10vw, 72px)', fontWeight: 900, textAlign: 'center', color: '#fff', textShadow: '2px 2px 8px rgba(0,0,0,0.7)', padding: 20 },
-  offlineBanner: { backgroundColor: '#7f1d1d', border: '2px solid #EF4444', borderRadius: 10, padding: '14px 20px', textAlign: 'center', color: '#fca5a5', fontSize: 18, fontWeight: 700, marginBottom: 12 },
-  idleWarning: { backgroundColor: '#422006', border: '2px solid #F97316', borderRadius: 10, padding: '14px 20px', textAlign: 'center', color: '#fdba74', fontSize: 18, fontWeight: 700, marginBottom: 12 },
-  lockWarning: { backgroundColor: '#422006', border: '2px solid #F97316', borderRadius: 10, padding: '16px 20px', color: '#fdba74', fontSize: 18, fontWeight: 700, marginBottom: 18, lineHeight: 1.5 },
-  warning: { marginTop: 32, padding: 20, backgroundColor: '#7f1d1d', borderRadius: 10, textAlign: 'center', fontSize: 20, fontWeight: 600 },
+  flashText: { fontSize: 'clamp(40px, 8vw, 60px)', fontWeight: 900, textAlign: 'center', color: '#fff', textShadow: '2px 2px 8px rgba(0,0,0,0.7)', padding: 16 },
+  offlineBanner: { backgroundColor: '#7f1d1d', border: '1px solid #EF4444', borderRadius: 8, padding: '10px 16px', textAlign: 'center', color: '#fca5a5', fontSize: 14, fontWeight: 700, marginBottom: 10 },
+  idleWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '10px 16px', textAlign: 'center', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 10 },
+  lockWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '12px 16px', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 14, lineHeight: 1.5 },
+  warning: { marginTop: 24, padding: 16, backgroundColor: '#7f1d1d', borderRadius: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 },
   recentScans: {
-    marginTop: 24, backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12,
-    border: '2px solid var(--border, #333)', overflow: 'hidden', maxHeight: 300,
-    overflowY: 'auto', alignSelf: 'center', width: '100%', maxWidth: 640,
+    marginTop: 18, backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10,
+    border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 260,
+    overflowY: 'auto', alignSelf: 'center', width: '100%', maxWidth: 580,
   },
-  recentTitle: { padding: '12px 18px', borderBottom: '2px solid var(--border, #333)', color: '#999', fontSize: 15, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
-  recentRow: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderBottom: '1px solid #222' },
+  recentTitle: { padding: '10px 14px', borderBottom: '1px solid var(--border, #333)', color: '#999', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
+  recentRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid #222' },
   pauseOverlay: {
     position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    zIndex: 900, gap: 16, padding: 24,
+    zIndex: 900, gap: 14, padding: 20,
   },
   pauseBox: { textAlign: 'center' },
   setupCard: {
-    backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 16, padding: '28px 24px',
-    maxWidth: 520, margin: '20px auto', width: '100%',
+    backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, padding: '22px 20px',
+    maxWidth: 480, margin: '16px auto', width: '100%',
   },
-  stepIndicator: { fontSize: 16, color: '#777', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
-  setupHeading: { color: 'var(--text, #fff)', fontSize: 'clamp(24px, 4vw, 32px)', fontWeight: 800, marginBottom: 10, marginTop: 0 },
-  setupHint: { color: '#999', fontSize: 18, marginBottom: 22, lineHeight: 1.5, fontWeight: 500 },
+  stepIndicator: { fontSize: 13, color: '#777', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 },
+  setupHeading: { color: 'var(--text, #fff)', fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 800, marginBottom: 8, marginTop: 0 },
+  setupHint: { color: '#999', fontSize: 15, marginBottom: 16, lineHeight: 1.5, fontWeight: 500 },
   setupInput: {
-    width: '100%', padding: '16px 18px', borderRadius: 10,
-    border: '2px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #fff)',
-    fontSize: 20, boxSizing: 'border-box', fontWeight: 600,
+    width: '100%', padding: '12px 14px', borderRadius: 8,
+    border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text, #fff)',
+    fontSize: 16, boxSizing: 'border-box', fontWeight: 600,
   },
   pairBox: {
-    textAlign: 'center', padding: '28px 20px', border: '2px dashed var(--border, #444)',
-    borderRadius: 14, backgroundColor: 'var(--bg-input, #0a0a0a)', marginBottom: 18,
+    textAlign: 'center', padding: '22px 16px', border: '2px dashed var(--border, #444)',
+    borderRadius: 10, backgroundColor: 'var(--bg-input, #0a0a0a)', marginBottom: 14,
   },
-  pairPulse: { width: 18, height: 18, borderRadius: '50%', backgroundColor: '#EAB308', margin: '0 auto 14px', animation: 'pulse 2s infinite' },
-  pairText: { color: '#EAB308', fontSize: 20, fontWeight: 700, marginBottom: 14 },
+  pairPulse: { width: 14, height: 14, borderRadius: '50%', backgroundColor: '#EAB308', margin: '0 auto 10px', animation: 'pulse 2s infinite' },
+  pairText: { color: '#EAB308', fontSize: 16, fontWeight: 700, marginBottom: 10 },
   pairInput: {
-    width: '80%', padding: '14px 16px', borderRadius: 10,
-    border: '2px solid var(--border, #555)', backgroundColor: 'var(--bg-card, #1a1a1a)', color: 'var(--text, #fff)',
-    fontSize: 18, textAlign: 'center', boxSizing: 'border-box', fontWeight: 600,
+    width: '80%', padding: '10px 14px', borderRadius: 8,
+    border: '1px solid var(--border, #555)', backgroundColor: 'var(--bg-card, #1a1a1a)', color: 'var(--text, #fff)',
+    fontSize: 15, textAlign: 'center', boxSizing: 'border-box', fontWeight: 600,
   },
-  scannerStatus: { marginTop: 14 },
-  scannerStatusRow: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 },
-  scannerStatusText: { color: '#ccc', fontSize: 18, fontWeight: 600 },
-  readySummary: { backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 10, padding: 18, marginBottom: 22 },
-  readyRow: { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border, #222)' },
-  readyLabel: { color: 'var(--text-secondary, #888)', fontSize: 18, fontWeight: 500 },
-  readyValue: { color: 'var(--text, #fff)', fontSize: 18, fontWeight: 700 },
+  scannerStatus: { marginTop: 10 },
+  scannerStatusRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 },
+  scannerStatusText: { color: '#ccc', fontSize: 15, fontWeight: 600 },
+  readySummary: { backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 8, padding: 14, marginBottom: 16 },
+  readyRow: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border, #222)' },
+  readyLabel: { color: 'var(--text-secondary, #888)', fontSize: 14, fontWeight: 500 },
+  readyValue: { color: 'var(--text, #fff)', fontSize: 14, fontWeight: 700 },
   primaryBtn: {
-    width: '100%', padding: '18px 28px', borderRadius: 12, border: 'none',
-    backgroundColor: '#22C55E', color: '#fff', fontSize: 20, fontWeight: 800, cursor: 'pointer',
+    width: '100%', padding: '14px 22px', borderRadius: 10, border: 'none',
+    backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer',
   },
   secondaryBtn: {
-    padding: '14px 22px', borderRadius: 10, border: '2px solid var(--border, #444)',
-    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+    padding: '10px 18px', borderRadius: 8, border: '1px solid var(--border, #444)',
+    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
-  miniModal: { backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 16, padding: 32, minWidth: 340, maxWidth: '90vw' },
+  miniModal: { backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, padding: 24, minWidth: 320, maxWidth: '90vw' },
 };

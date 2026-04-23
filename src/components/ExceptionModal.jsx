@@ -144,7 +144,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
           <div>
             <div style={styles.reasonTag}>{t(reason)}</div>
 
-            <div style={{ backgroundColor: '#1e3a5f', border: '2px solid #3B82F6', borderRadius: 12, padding: '16px 20px', marginBottom: 18, color: '#93c5fd', fontSize: 19, lineHeight: 1.5 }}>
+            <div style={{ backgroundColor: '#1e3a5f', border: '1px solid #3B82F6', borderRadius: 8, padding: '12px 14px', marginBottom: 14, color: '#93c5fd', fontSize: 14, lineHeight: 1.5 }}>
               💡 {t('manualEntryHintModal')}
             </div>
 
@@ -162,9 +162,9 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
                 <img src={photoData} alt="Exception photo"
                   style={{ width: 90, height: 90, borderRadius: 12, objectFit: 'cover', border: '2px solid #555' }} />
-                <span style={{ color: '#22C55E', fontSize: 22, fontWeight: 700 }}>✓ {t('photoCaptured')}</span>
+                <span style={{ color: '#22C55E', fontSize: 15, fontWeight: 700 }}>✓ {t('photoCaptured')}</span>
                 <button onClick={() => setPhotoData(null)}
-                  style={{ background: 'none', border: 'none', color: '#888', fontSize: 24, cursor: 'pointer', padding: 8 }}>✕</button>
+                  style={{ background: 'none', border: 'none', color: '#888', fontSize: 18, cursor: 'pointer', padding: 6 }}>✕</button>
               </div>
             )}
 
@@ -188,15 +188,15 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             {/* Phone QR upload */}
             {photoMode === 'phone' && (
               <div style={styles.phoneBox}>
-                <p style={{ color: '#ccc', fontSize: 20, marginBottom: 12, textAlign: 'center', fontWeight: 600 }}>
+                <p style={{ color: '#ccc', fontSize: 14, marginBottom: 10, textAlign: 'center', fontWeight: 600 }}>
                   {t('scanQrHint')}
                 </p>
                 <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <img src={getQrUrl()} alt="Upload QR Code"
-                    style={{ width: 220, height: 220, borderRadius: 10, background: '#fff', padding: 10 }} />
+                    style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
                 </div>
                 {phoneWaiting && (
-                  <p style={{ color: '#EAB308', fontSize: 20, textAlign: 'center', fontWeight: 700 }}>
+                  <p style={{ color: '#EAB308', fontSize: 14, textAlign: 'center', fontWeight: 700 }}>
                     ⏳ {t('waitingForPhoto')}
                   </p>
                 )}
@@ -213,12 +213,12 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             </div>
 
             {needsPhoto && !photoData && (
-              <p style={{ color: '#F97316', fontSize: 20, fontWeight: 700, marginTop: 12, marginBottom: 0 }}>
+              <p style={{ color: '#F97316', fontSize: 14, fontWeight: 700, marginTop: 10, marginBottom: 0 }}>
                 ⚠️ {t('photoRequiredWarning')}
               </p>
             )}
 
-            <div style={{ display: 'flex', gap: 16, marginTop: 22 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button onClick={handleSubmit}
                 disabled={needsPhoto && !photoData}
                 style={{ ...styles.submitBtn, opacity: (needsPhoto && !photoData) ? 0.5 : 1, cursor: (needsPhoto && !photoData) ? 'not-allowed' : 'pointer' }}>
@@ -249,11 +249,11 @@ const styles = {
   },
   modal: {
     backgroundColor: 'var(--bg-card, #1a1a1a)',
-    borderRadius: 20,
-    padding: '40px 32px',
+    borderRadius: 14,
+    padding: '28px 24px',
     width: '100%',
-    maxWidth: 720,
-    border: '3px solid #F97316',
+    maxWidth: 560,
+    border: '2px solid #F97316',
     position: 'relative',
     maxHeight: '92vh',
     overflowY: 'auto',
@@ -263,22 +263,22 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 14,
   },
   title: {
-    fontSize: 36,
+    fontSize: 24,
     fontWeight: 800,
     color: '#fff',
     margin: 0,
   },
   closeX: {
     background: 'none',
-    border: '2px solid #555',
-    borderRadius: 10,
+    border: '1px solid #555',
+    borderRadius: 6,
     color: '#888',
-    fontSize: 26,
-    width: 52,
-    height: 52,
+    fontSize: 18,
+    width: 36,
+    height: 36,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
@@ -286,99 +286,99 @@ const styles = {
     flexShrink: 0,
   },
   subtitle: {
-    fontSize: 26,
+    fontSize: 17,
     color: '#ccc',
-    marginBottom: 18,
+    marginBottom: 14,
     fontWeight: 700,
   },
   reasonTag: {
     display: 'inline-block',
-    padding: '12px 20px',
-    borderRadius: 10,
+    padding: '8px 14px',
+    borderRadius: 8,
     backgroundColor: '#7f1d1d',
     color: '#fca5a5',
-    fontSize: 22,
+    fontSize: 15,
     fontWeight: 700,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   fieldLabel: {
-    fontSize: 22,
+    fontSize: 15,
     color: '#aaa',
-    marginBottom: 10,
+    marginBottom: 8,
     fontWeight: 700,
   },
   reasonBtn: {
     display: 'block',
     width: '100%',
-    padding: '26px 28px',
-    marginBottom: 12,
-    borderRadius: 14,
-    border: '2px solid var(--border, #444)',
+    padding: '16px 18px',
+    marginBottom: 8,
+    borderRadius: 10,
+    border: '1px solid var(--border, #444)',
     backgroundColor: 'var(--bg-input, #222)',
     color: 'var(--text, #fff)',
-    fontSize: 26,
+    fontSize: 17,
     fontWeight: 700,
     cursor: 'pointer',
     textAlign: 'left',
   },
   input: {
     width: '100%',
-    padding: '20px 22px',
-    borderRadius: 12,
-    border: '2px solid var(--border, #444)',
+    padding: '14px 16px',
+    borderRadius: 8,
+    border: '1px solid var(--border, #444)',
     backgroundColor: 'var(--bg-input, #222)',
     color: 'var(--text, #fff)',
-    fontSize: 24,
+    fontSize: 16,
     boxSizing: 'border-box',
     fontWeight: 600,
   },
   instructionBanner: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 18,
-    padding: '18px 20px',
-    borderRadius: 10,
+    gap: 10,
+    marginTop: 14,
+    padding: '12px 14px',
+    borderRadius: 8,
     backgroundColor: '#422006',
-    border: '2px solid #F97316',
+    border: '1px solid #F97316',
   },
-  instructionIcon: { fontSize: 36 },
-  instructionText: { color: '#fdba74', fontSize: 22, lineHeight: 1.4, fontWeight: 700 },
+  instructionIcon: { fontSize: 24 },
+  instructionText: { color: '#fdba74', fontSize: 15, lineHeight: 1.4, fontWeight: 700 },
   submitBtn: {
     flex: 1,
-    padding: '22px 28px',
-    borderRadius: 14,
+    padding: '14px 20px',
+    borderRadius: 10,
     border: 'none',
     backgroundColor: '#F97316',
     color: '#fff',
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: 800,
     cursor: 'pointer',
   },
   backBtn: {
-    padding: '22px 28px',
-    borderRadius: 14,
-    border: '2px solid #555',
+    padding: '14px 20px',
+    borderRadius: 10,
+    border: '1px solid #555',
     backgroundColor: '#333',
     color: '#ccc',
-    fontSize: 22,
+    fontSize: 15,
     fontWeight: 700,
     cursor: 'pointer',
   },
   photoBtn: {
-    padding: '18px 24px', borderRadius: 12, border: '2px solid #555',
-    backgroundColor: '#222', color: '#ccc', fontSize: 20, cursor: 'pointer', fontWeight: 700,
+    padding: '12px 16px', borderRadius: 8, border: '1px solid #555',
+    backgroundColor: '#222', color: '#ccc', fontSize: 14, cursor: 'pointer', fontWeight: 700,
   },
   photoBtnSmall: {
-    padding: '16px 20px', borderRadius: 10, border: '2px solid #555',
-    backgroundColor: '#333', color: '#aaa', fontSize: 18, cursor: 'pointer', fontWeight: 600,
+    padding: '10px 14px', borderRadius: 8, border: '1px solid #555',
+    backgroundColor: '#333', color: '#aaa', fontSize: 13, cursor: 'pointer', fontWeight: 600,
   },
   phoneBox: {
-    marginBottom: 14, padding: 20, borderRadius: 12,
-    border: '2px solid #A855F7', backgroundColor: '#1e1033',
+    marginBottom: 12, padding: 16, borderRadius: 10,
+    border: '1px solid #A855F7', backgroundColor: '#1e1033',
   },
   cancelBtn: {
-    width: '100%', marginTop: 16, padding: '20px', borderRadius: 12,
-    border: '2px solid #444', backgroundColor: 'transparent', color: '#999', fontSize: 20, fontWeight: 700, cursor: 'pointer',
+    width: '100%', marginTop: 12, padding: '12px', borderRadius: 8,
+    border: '1px solid #444', backgroundColor: 'transparent', color: '#999', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
 };
