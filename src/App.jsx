@@ -70,9 +70,9 @@ export default function App() {
             <Routes>
               <Route path="/" element={<AuthGate><Home /></AuthGate>} />
               <Route path="/setup" element={<AuthGate requiredRole="admin"><Setup /></AuthGate>} />
-              <Route path="/pod" element={<AuthGate><Pod /></AuthGate>} />
+              <Route path="/pod" element={<Pod />} />
               <Route path="/dashboard" element={<AuthGate requiredRole="manager"><Dashboard /></AuthGate>} />
-              <Route path="/kiosk" element={<AuthGate><Kiosk /></AuthGate>} />
+              <Route path="/kiosk" element={<Kiosk />} />
               <Route path="/portal" element={<CustomerPortal />} />
               <Route path="/upload" element={<PhotoUpload />} />
               <Route path="/history" element={<AuthGate requiredRole="manager"><JobHistory /></AuthGate>} />
