@@ -106,14 +106,24 @@ export default function CustomerPortal() {
   // Data Loading (only when authenticated)
   useEffect(() => {
     if (!authenticated) return;
+    // Try active job first
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(q, async (snap) => {
       if (!snap.empty) {
         const d = snap.docs[0];
         setJob({ id: d.id, ...d.data() });
       } else {
-        setJob(null);
-        setActiveTab('upload');
+        // No active job — load most recently closed job for historical data
+        try {
+          const closedSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
+          if (!closedSnap.empty) {
+            const sorted = closedSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+              .sort((a, b) => (b.meta.closedAt?.toDate?.()?.getTime() || 0) - (a.meta.closedAt?.toDate?.()?.getTime() || 0));
+            setJob(sorted[0]);
+          } else {
+            setJob(null);
+          }
+        } catch { setJob(null); }
       }
       setLoading(false);
     });
@@ -413,7 +423,7 @@ export default function CustomerPortal() {
       <div style={st.topBar}>
         <div>
           <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>BookFlow Portal</span>
-          {job && <span style={{ color: '#666', fontSize: 14, marginLeft: 12 }}>{job.meta.name}</span>}
+          {job && <span style={{ color: '#666', fontSize: 14, marginLeft: 12 }}>{job.meta.name}{!job.meta.active ? ' (completed)' : ''}</span>}
         </div>
         <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
       </div>
@@ -441,17 +451,14 @@ export default function CustomerPortal() {
         </div>
       )}
 
-      {!job && (
-        <div style={{ ...st.card, textAlign: 'center', padding: '30px 20px', marginBottom: 16 }}>
-          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>No active job right now. You can still upload POs and BOLs.</p>
+      {!job?.meta?.active && (
+        <div style={{ ...st.card, textAlign: 'center', padding: '20px', marginBottom: 16 }}>
+          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>No active job right now. Showing data from the most recent job{job ? ` (${job.meta.name})` : ''}.</p>
         </div>
       )}
 
       <div style={st.tabBar}>
-        {(job
-          ? [['daily','Daily Volume'],['exceptions','Exceptions'],['billing','Billing'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']]
-          : [['upload','Upload POs'],['bols','BOLs']]
-        ).map(([key, label]) => (
+        {[['daily','Daily Volume'],['exceptions','Exceptions'],['billing','Billing'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']].map(([key, label]) => (
           <button key={key} onClick={() => setActiveTab(key)}
             style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}) }}>
             {label}
