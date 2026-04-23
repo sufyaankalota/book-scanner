@@ -250,21 +250,28 @@ export default function Pod() {
   }, [phase, podId]);
 
   // ─── Presence heartbeat (with supervisor message) ───
+  const operatorRef = useRef(operatorName);
+  const phaseRef = useRef(phase);
+  const scannerPairedRef = useRef(scannerPaired);
+  useEffect(() => { operatorRef.current = operatorName; }, [operatorName]);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { scannerPairedRef.current = scannerPaired; }, [scannerPaired]);
+
   useEffect(() => {
     if (phase === PHASE_OPERATOR) return;
-    const presenceRef = doc(db, 'presence', podId);
+    const presenceDocRef = doc(db, 'presence', podId);
     const write = () => {
-      setDoc(presenceRef, {
-        podId, scanners: scannerPaired ? [operatorName] : [],
-        operator: operatorName, status: phase, online: true,
+      setDoc(presenceDocRef, {
+        podId, scanners: scannerPairedRef.current ? [operatorRef.current] : [],
+        operator: operatorRef.current, status: phaseRef.current, online: true,
         lastSeen: serverTimestamp(),
       }, { merge: true });
     };
     write();
-    const interval = setInterval(write, 30000);
+    const interval = setInterval(write, 15000);
 
     // Listen for supervisor messages
-    const unsub = onSnapshot(presenceRef, (snap) => {
+    const unsub = onSnapshot(presenceDocRef, (snap) => {
       const data = snap.data();
       if (data?.message) setSupervisorMessage(data.message);
     });
@@ -272,9 +279,9 @@ export default function Pod() {
     return () => {
       clearInterval(interval);
       unsub();
-      setDoc(presenceRef, { podId, scanners: [], operator: '', status: 'offline', online: false, lastSeen: serverTimestamp() }, { merge: true });
+      setDoc(presenceDocRef, { podId, scanners: [], operator: '', status: 'offline', online: false, lastSeen: serverTimestamp() }, { merge: true });
     };
-  }, [phase, podId, operatorName, scannerPaired]);
+  }, [phase === PHASE_OPERATOR, podId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Firestore scan count ───
   useEffect(() => {

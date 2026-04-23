@@ -10,6 +10,7 @@ import {
 
 export default function Home() {
   const [job, setJob] = useState(null);
+  const [presenceRaw, setPresenceRaw] = useState({});
   const [presence, setPresence] = useState({});
   const [loading, setLoading] = useState(true);
   const [branding, setBranding] = useState({ name: '', subtitle: '' });
@@ -37,17 +38,27 @@ export default function Home() {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'presence'), (snap) => {
       const data = {};
-      snap.forEach((d) => {
-        const p = d.data();
-        // Consider online if lastSeen within 60 seconds
-        const lastSeen = p.lastSeen?.toDate?.();
-        const isRecent = lastSeen && Date.now() - lastSeen.getTime() < 60000;
-        data[d.id] = { ...p, online: p.online && isRecent };
-      });
-      setPresence(data);
+      snap.forEach((d) => { data[d.id] = d.data(); });
+      setPresenceRaw(data);
     });
     return unsub;
   }, []);
+
+  // Re-evaluate online status every 10 seconds
+  useEffect(() => {
+    const evaluate = () => {
+      const evaluated = {};
+      for (const [id, p] of Object.entries(presenceRaw)) {
+        const lastSeen = p.lastSeen?.toDate?.();
+        const isRecent = lastSeen && Date.now() - lastSeen.getTime() < 60000;
+        evaluated[id] = { ...p, online: p.online && isRecent };
+      }
+      setPresence(evaluated);
+    };
+    evaluate();
+    const interval = setInterval(evaluate, 10000);
+    return () => clearInterval(interval);
+  }, [presenceRaw]);
 
   // Load branding
   useEffect(() => {

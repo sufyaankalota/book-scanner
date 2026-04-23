@@ -27,6 +27,7 @@ import { logAudit } from '../utils/audit';
 export default function Dashboard() {
   const [job, setJob] = useState(null);
   const [podData, setPodData] = useState({});
+  const [presenceRaw, setPresenceRaw] = useState({});
   const [presence, setPresence] = useState({});
   const presenceRef = useRef({});
   const [operatorStats, setOperatorStats] = useState({});
@@ -76,21 +77,32 @@ export default function Dashboard() {
     return unsub;
   }, []);
 
-  // Presence
+  // Presence – store raw snapshots
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'presence'), (snap) => {
       const data = {};
-      snap.forEach((d) => {
-        const p = d.data();
-        const lastSeen = p.lastSeen?.toDate?.();
-        const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 60000);
-        data[d.id] = { ...p, online: p.online && isRecent };
-      });
-      setPresence(data);
-      presenceRef.current = data;
+      snap.forEach((d) => { data[d.id] = d.data(); });
+      setPresenceRaw(data);
     });
     return unsub;
   }, []);
+
+  // Re-evaluate presence online status every 10s
+  useEffect(() => {
+    const evaluate = () => {
+      const evaluated = {};
+      Object.entries(presenceRaw).forEach(([id, p]) => {
+        const lastSeen = p.lastSeen?.toDate?.();
+        const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 60000);
+        evaluated[id] = { ...p, online: p.online && isRecent };
+      });
+      setPresence(evaluated);
+      presenceRef.current = evaluated;
+    };
+    evaluate();
+    const interval = setInterval(evaluate, 10000);
+    return () => clearInterval(interval);
+  }, [presenceRaw]);
 
   // Today's scans
   useEffect(() => {
