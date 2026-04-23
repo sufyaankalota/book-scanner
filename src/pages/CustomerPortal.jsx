@@ -111,7 +111,10 @@ export default function CustomerPortal() {
       if (!snap.empty) {
         const d = snap.docs[0];
         setJob({ id: d.id, ...d.data() });
-      } else setJob(null);
+      } else {
+        setJob(null);
+        setActiveTab('upload');
+      }
       setLoading(false);
     });
     return unsub;
@@ -403,19 +406,6 @@ export default function CustomerPortal() {
 
   // LOADING / NO JOB
   if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;
-  if (!job) return (
-    <div style={st.container}>
-      <div style={st.topBar}>
-        <span style={{ color: '#888', fontSize: 14 }}>BookFlow Portal</span>
-        <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
-      </div>
-      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>&#128203;</div>
-        <h2 style={{ color: '#fff', marginBottom: 8 }}>No Active Job</h2>
-        <p style={{ color: '#888' }}>There is no active processing job at this time. Please check back later.</p>
-      </div>
-    </div>
-  );
 
   // MAIN PORTAL
   return (
@@ -423,34 +413,45 @@ export default function CustomerPortal() {
       <div style={st.topBar}>
         <div>
           <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>BookFlow Portal</span>
-          <span style={{ color: '#666', fontSize: 14, marginLeft: 12 }}>{job.meta.name}</span>
+          {job && <span style={{ color: '#666', fontSize: 14, marginLeft: 12 }}>{job.meta.name}</span>}
         </div>
         <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
       </div>
 
-      <div style={st.statsRow}>
-        <div style={st.statBox}>
-          <div style={st.statVal}>{(todayData?.standard || 0).toLocaleString()}</div>
-          <div style={st.statLbl}>Today's Units</div>
-        </div>
-        <div style={st.statBox}>
-          <div style={{ ...st.statVal, color: (todayData?.exceptions || 0) > 0 ? '#F97316' : '#888' }}>
-            {todayData?.exceptions || 0}
+      {job && (
+        <div style={st.statsRow}>
+          <div style={st.statBox}>
+            <div style={st.statVal}>{(todayData?.standard || 0).toLocaleString()}</div>
+            <div style={st.statLbl}>Today's Units</div>
           </div>
-          <div style={st.statLbl}>Today's Exceptions</div>
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: (todayData?.exceptions || 0) > 0 ? '#F97316' : '#888' }}>
+              {todayData?.exceptions || 0}
+            </div>
+            <div style={st.statLbl}>Today's Exceptions</div>
+          </div>
+          <div style={st.statBox}>
+            <div style={st.statVal}>{totalProcessed.toLocaleString()}</div>
+            <div style={st.statLbl}>Total Units Processed</div>
+          </div>
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: totalExcCount > 0 ? '#F97316' : '#888' }}>{totalExcCount}</div>
+            <div style={st.statLbl}>Total Exceptions</div>
+          </div>
         </div>
-        <div style={st.statBox}>
-          <div style={st.statVal}>{totalProcessed.toLocaleString()}</div>
-          <div style={st.statLbl}>Total Units Processed</div>
+      )}
+
+      {!job && (
+        <div style={{ ...st.card, textAlign: 'center', padding: '30px 20px', marginBottom: 16 }}>
+          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>No active job right now. You can still upload POs and BOLs.</p>
         </div>
-        <div style={st.statBox}>
-          <div style={{ ...st.statVal, color: totalExcCount > 0 ? '#F97316' : '#888' }}>{totalExcCount}</div>
-          <div style={st.statLbl}>Total Exceptions</div>
-        </div>
-      </div>
+      )}
 
       <div style={st.tabBar}>
-        {[['daily','Daily Volume'],['exceptions','Exceptions'],['billing','Billing'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']].map(([key, label]) => (
+        {(job
+          ? [['daily','Daily Volume'],['exceptions','Exceptions'],['billing','Billing'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']]
+          : [['upload','Upload POs'],['bols','BOLs']]
+        ).map(([key, label]) => (
           <button key={key} onClick={() => setActiveTab(key)}
             style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}) }}>
             {label}
