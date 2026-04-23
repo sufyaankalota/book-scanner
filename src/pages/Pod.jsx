@@ -28,7 +28,7 @@ const PHASE_READY = 'ready';
 const PHASE_SCANNING = 'scanning';
 const PHASE_PAUSED = 'paused';
 
-const DEBOUNCE_MS = 1500;
+const DEBOUNCE_MS = 5000;
 const BARCODE_TIMEOUT_MS = 3000;
 const IDLE_WARNING_MS = 120000;
 
@@ -368,21 +368,13 @@ export default function Pod() {
     const isbn = cleanISBN(raw);
     if (!isbn) return;
 
-    const now = Date.now();
-    // Within debounce window — definitely accidental double-tap
-    if (isbn === lastScannedRef.current.isbn && (now - lastScannedRef.current.time) < DEBOUNCE_MS) {
-      flash('#EAB308', t('duplicate') + ' — SKIPPED', 1500);
-      setDuplicateInfo(`"${isbn}" scanned before`);
-      setTimeout(() => setDuplicateInfo(''), 3000);
-      return;
-    }
-    // Same ISBN as last scan but outside debounce — ask for confirmation
+    // Same ISBN as last scan — always confirm
     if (isbn === lastScannedRef.current.isbn) {
       playErrorBeep();
       setDuplicateConfirm({ isbn });
       return;
     }
-    lastScannedRef.current = { isbn, time: now };
+    lastScannedRef.current = { isbn, time: Date.now() };
     processScan(isbn);
   };
 
