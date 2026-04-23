@@ -10,8 +10,11 @@ import { verifyPassword } from '../utils/crypto';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
-  '#EF4444', '#3B82F6', '#EAB308', '#22C55E', '#F97316',
-  '#A855F7', '#EC4899', '#14B8A6', '#6366F1', '#84CC16',
+  { name: 'Red', hex: '#EF4444' }, { name: 'Blue', hex: '#3B82F6' },
+  { name: 'Yellow', hex: '#EAB308' }, { name: 'Green', hex: '#22C55E' },
+  { name: 'Orange', hex: '#F97316' }, { name: 'Purple', hex: '#A855F7' },
+  { name: 'Pink', hex: '#EC4899' }, { name: 'Teal', hex: '#14B8A6' },
+  { name: 'Indigo', hex: '#6366F1' }, { name: 'Lime', hex: '#84CC16' },
 ];
 
 export default function CustomerPortal() {
@@ -37,6 +40,7 @@ export default function CustomerPortal() {
   const [uploadedPOs, setUploadedPOs] = useState([]);
   const [poLoading, setPOLoading] = useState(false);
   const [poDeleting, setPODeleting] = useState(null);
+  const [poColors, setPoColors] = useState({});
 
   // BOL Upload
   const [bolFile, setBolFile] = useState(null);
@@ -253,9 +257,13 @@ export default function CustomerPortal() {
       const result = await parseManifestFile(file);
       setManifest(result.manifest);
       setPoNames(result.poNames);
+      // Auto-assign colors
+      const colors = {};
+      result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
+      setPoColors(colors);
     } catch (err) {
       setFileError(err.message);
-      setManifest(null); setPoNames([]);
+      setManifest(null); setPoNames([]); setPoColors({});
     }
   };
 
@@ -267,7 +275,7 @@ export default function CustomerPortal() {
       const uploadId = `po_${Date.now()}`;
       // Create metadata doc
       await setDoc(doc(db, 'po-uploads', uploadId), {
-        poNames, isbnCount: entries.length,
+        poNames, isbnCount: entries.length, poColors,
         uploadedAt: serverTimestamp(), status: 'pending', jobId: null,
       });
       // Store ISBNs in subcollection
@@ -280,7 +288,7 @@ export default function CustomerPortal() {
         await batch.commit();
       }
       setUploadStatus('Uploaded ' + entries.length.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
-      setManifest(null); setPoNames([]);
+      setManifest(null); setPoNames([]); setPoColors({});
       await loadUploadedPOs();
     } catch (err) {
       setUploadStatus('Upload failed: ' + err.message);
@@ -701,13 +709,28 @@ export default function CustomerPortal() {
                 <p style={{ color: '#22C55E', fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
                   Parsed {Object.keys(manifest).length.toLocaleString()} ISBNs across {poNames.length} POs
                 </p>
-                <div style={{ maxHeight: 200, overflowY: 'auto', backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #333', marginBottom: 12 }}>
+                <div style={{ maxHeight: 300, overflowY: 'auto', backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #333', marginBottom: 12 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr><th style={st.th}>PO Name</th><th style={st.th}>ISBN Count</th></tr></thead>
+                    <thead><tr><th style={st.th}>PO Name</th><th style={st.th}>Color</th><th style={st.th}>ISBN Count</th></tr></thead>
                     <tbody>
                       {poNames.map((po) => {
                         const count = Object.values(manifest).filter((v) => v === po).length;
-                        return (<tr key={po}><td style={st.td}>{po}</td><td style={st.td}>{count.toLocaleString()}</td></tr>);
+                        return (
+                          <tr key={po}>
+                            <td style={st.td}>{po}</td>
+                            <td style={st.td}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: poColors[po] || DEFAULT_COLORS[0].hex, border: '1px solid #555', flexShrink: 0 }} />
+                                <select value={poColors[po] || DEFAULT_COLORS[0].hex}
+                                  onChange={(e) => setPoColors({ ...poColors, [po]: e.target.value })}
+                                  style={{ backgroundColor: '#1a1a1a', color: '#ccc', border: '1px solid #444', borderRadius: 4, padding: '2px 4px', fontSize: 12 }}>
+                                  {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                                </select>
+                              </div>
+                            </td>
+                            <td style={st.td}>{count.toLocaleString()}</td>
+                          </tr>
+                        );
                       })}
                     </tbody>
                   </table>

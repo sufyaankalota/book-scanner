@@ -150,8 +150,12 @@ export default function Setup() {
       setManifest(man);
       setPoNames(upload.poNames || []);
       setManifestPreview(Object.entries(man).slice(0, 50));
+      // Use customer-chosen colors if available, otherwise auto-assign
       const colors = {};
-      (upload.poNames || []).forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
+      const savedColors = upload.poColors || {};
+      (upload.poNames || []).forEach((po, i) => {
+        colors[po] = savedColors[po] || DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex;
+      });
       setPoColors(colors);
       setSelectedUploadId(upload.id);
     } catch (err) {
