@@ -21,7 +21,7 @@ import {
   query, where, onSnapshot, Timestamp, serverTimestamp,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
-import { exportTodayXLSX, exportAllXLSX, exportPerPO, downloadBlob, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
+import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
 
 export default function Dashboard() {
@@ -346,8 +346,7 @@ export default function Dashboard() {
       const excs = excSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       exportAllXLSX(scans, excs, job.meta);
       if (job.meta.mode === 'multi') {
-        const files = exportPerPO(scans, job.meta);
-        for (const f of files) downloadBlob(f.data, f.name);
+        exportPerPO(scans, excs, job.meta);
       }
     } catch (err) { alert('Export failed: ' + err.message); }
     setExporting(false);

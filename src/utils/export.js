@@ -29,7 +29,8 @@ export function exportAllXLSX(scans, exceptions, jobMeta) {
   return buildWorkbook(scans, exceptions, jobMeta, 'All');
 }
 
-export function exportPerPO(scans, jobMeta) {
+export function exportPerPO(scans, exceptions, jobMeta) {
+  const wb = XLSX.utils.book_new();
   const byPO = {};
   for (const s of scans) {
     const po = s.poName || 'UNASSIGNED';
@@ -37,24 +38,54 @@ export function exportPerPO(scans, jobMeta) {
     byPO[po].push(s);
   }
 
-  const files = [];
-  for (const [po, poScans] of Object.entries(byPO)) {
-    const wb = XLSX.utils.book_new();
+  // One tab per PO
+  for (const [po, poScans] of Object.entries(byPO).sort(([a], [b]) => a.localeCompare(b))) {
     const data = poScans.map((s) => ({
       ISBN: s.isbn,
+      Type: s.type === 'exception' ? 'Exception' : 'Standard',
       Pod: s.podId,
       Scanner: s.scannerId,
       Timestamp: toDateString(s.timestamp),
     }));
     const ws = XLSX.utils.json_to_sheet(data);
-    XLSX.utils.book_append_sheet(wb, ws, 'Scans');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    files.push({
-      name: `${jobMeta.name}_${po}.xlsx`,
-      data: buf,
-    });
+    // Sheet names max 31 chars
+    const sheetName = po.length > 31 ? po.slice(0, 31) : po;
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }
-  return files;
+
+  // Exceptions tab — consolidated from all POs
+  const exceptionScans = scans.filter((s) => s.type === 'exception');
+  const allExcs = [
+    ...exceptionScans.map((s) => ({
+      ISBN: s.isbn, Title: '', Reason: 'Not in Manifest', PO: s.poName || '',
+      Pod: s.podId, Scanner: s.scannerId, 'Has Photo': 'No',
+      Timestamp: toDateString(s.timestamp),
+    })),
+    ...exceptions.map((ex) => ({
+      ISBN: ex.isbn || '', Title: ex.title || '', Reason: ex.reason, PO: '',
+      Pod: ex.podId, Scanner: ex.scannerId, 'Has Photo': ex.photo ? 'Yes' : 'No',
+      Timestamp: toDateString(ex.timestamp),
+    })),
+  ];
+  if (allExcs.length > 0) {
+    const wsExc = XLSX.utils.json_to_sheet(allExcs);
+    XLSX.utils.book_append_sheet(wb, wsExc, 'Exceptions');
+  }
+
+  // Summary tab
+  const summaryRows = [
+    { Metric: 'Total POs', Value: Object.keys(byPO).length },
+    ...Object.entries(byPO).sort(([a], [b]) => a.localeCompare(b)).map(([po, s]) => ({
+      Metric: `${po} — Scans`, Value: s.filter((x) => x.type === 'standard').length,
+    })),
+    { Metric: 'Total Standard Scans', Value: scans.filter((s) => s.type === 'standard').length },
+    { Metric: 'Total Exceptions', Value: allExcs.length },
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const fileName = `${jobMeta.name || 'export'}_AllPOs_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  downloadBlob(buf, fileName);
 }
 
 function buildWorkbook(scans, exceptions, jobMeta, label) {
@@ -82,6 +113,7 @@ function buildWorkbook(scans, exceptions, jobMeta, label) {
       PO: s.poName || '',
       Pod: s.podId,
       Scanner: s.scannerId,
+      'Has Photo': 'No',
       Timestamp: toDateString(s.timestamp),
     })),
     ...exceptions.map((ex) => ({
@@ -91,6 +123,7 @@ function buildWorkbook(scans, exceptions, jobMeta, label) {
       PO: '',
       Pod: ex.podId,
       Scanner: ex.scannerId,
+      'Has Photo': ex.photo ? 'Yes' : 'No',
       Timestamp: toDateString(ex.timestamp),
     })),
   ];
@@ -180,12 +213,12 @@ export function exportExceptionsXLSX(scans, exceptions, jobMeta) {
   const allExceptions = [
     ...exceptionScans.map((s) => ({
       ISBN: s.isbn, Reason: 'Not in Manifest', Pod: s.podId,
-      Scanner: s.scannerId, Timestamp: toDateString(s.timestamp),
+      Scanner: s.scannerId, 'Has Photo': 'No', Timestamp: toDateString(s.timestamp),
     })),
     ...exceptions.map((ex) => ({
       ISBN: ex.isbn || '', Title: ex.title || '', Reason: ex.reason,
       Pod: ex.podId, Scanner: ex.scannerId, Resolved: ex.resolved ? 'Yes' : 'No',
-      Timestamp: toDateString(ex.timestamp),
+      'Has Photo': ex.photo ? 'Yes' : 'No', Timestamp: toDateString(ex.timestamp),
     })),
   ];
   const ws = XLSX.utils.json_to_sheet(allExceptions);

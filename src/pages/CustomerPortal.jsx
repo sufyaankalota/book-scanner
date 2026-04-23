@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import {
-  collection, doc, setDoc, getDoc, addDoc,
+  collection, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc,
   query, where, onSnapshot, orderBy, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
@@ -46,6 +46,7 @@ export default function CustomerPortal() {
   const [viewingPhoto, setViewingPhoto] = useState(null);
   // Billing reports
   const [billingReports, setBillingReports] = useState([]);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Customer Login
   const handleLogin = async () => {
@@ -480,36 +481,55 @@ export default function CustomerPortal() {
       {activeTab === 'billing' && (
         <div>
           <div style={st.card}>
-            <h3 style={st.cardTitle}>💰 Weekly Billing Reports</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={st.cardTitle}>💰 Weekly Billing Reports</h3>
+              <button onClick={() => setShowArchived(!showArchived)}
+                style={{ ...st.smallBtn, color: showArchived ? '#3B82F6' : '#666' }}>
+                {showArchived ? '📂 Hide Archived' : '📁 Show Archived'}
+              </button>
+            </div>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
               Billing reports are generated weekly by the warehouse. Each report contains unit counts broken down by day, pod, and operator.
             </p>
-            {billingReports.length === 0 && (
-              <p style={{ color: '#666', fontSize: 14, textAlign: 'center', padding: 20 }}>No billing reports available yet.</p>
+            {billingReports.filter((r) => showArchived || !r.archived).length === 0 && (
+              <p style={{ color: '#666', fontSize: 14, textAlign: 'center', padding: 20 }}>
+                {billingReports.length > 0 && !showArchived ? 'All reports are archived. Click "Show Archived" to view.' : 'No billing reports available yet.'}
+              </p>
             )}
-            {billingReports.map((report) => {
+            {billingReports.filter((r) => showArchived || !r.archived).map((report) => {
               const start = report.weekStart?.toDate?.();
               const end = report.weekEnd?.toDate?.();
               const created = report.createdAt?.toDate?.();
               return (
-                <div key={report.id} style={{ border: '1px solid #333', borderRadius: 12, padding: 16, marginBottom: 12, backgroundColor: 'var(--bg-input, #0a0a0a)' }}>
+                <div key={report.id} style={{ border: '1px solid #333', borderRadius: 12, padding: 16, marginBottom: 12, backgroundColor: 'var(--bg-input, #0a0a0a)', opacity: report.archived ? 0.6 : 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                     <div>
                       <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
                         {start ? start.toLocaleDateString() : '?'} – {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
+                        {report.archived && <span style={{ color: '#666', fontSize: 12, marginLeft: 8 }}>(Archived)</span>}
                       </div>
                       <div style={{ color: '#888', fontSize: 13 }}>
                         Generated: {created ? created.toLocaleDateString() + ' ' + created.toLocaleTimeString() : 'Unknown'}
                       </div>
                     </div>
-                    <button onClick={() => {
-                      try {
-                        const bytes = Uint8Array.from(atob(report.fileData), (c) => c.charCodeAt(0));
-                        downloadBlob(bytes, report.fileName);
-                      } catch { alert('Download failed'); }
-                    }} style={{ ...st.smallBtn, padding: '8px 20px' }}>
-                      📥 Download XLSX
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => {
+                        try {
+                          const bytes = Uint8Array.from(atob(report.fileData), (c) => c.charCodeAt(0));
+                          downloadBlob(bytes, report.fileName);
+                        } catch { alert('Download failed'); }
+                      }} style={{ ...st.smallBtn, padding: '8px 20px' }}>
+                        📥 Download
+                      </button>
+                      <button onClick={() => updateDoc(doc(db, 'billing-reports', report.id), { archived: !report.archived })}
+                        style={{ ...st.smallBtn, padding: '8px 12px' }}>
+                        {report.archived ? '📂 Unarchive' : '📁 Archive'}
+                      </button>
+                      <button onClick={() => { if (confirm('Delete this report permanently?')) deleteDoc(doc(db, 'billing-reports', report.id)); }}
+                        style={{ ...st.smallBtn, padding: '8px 12px', color: '#EF4444', borderColor: '#7f1d1d' }}>
+                        🗑
+                      </button>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>
                     <div style={{ textAlign: 'center' }}>
