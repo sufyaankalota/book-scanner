@@ -17,7 +17,7 @@ function AutoRefreshIndicator({ lastUpdated }) {
 }
 import { db } from '../firebase';
 import {
-  collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc,
+  collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc, deleteDoc,
   query, where, onSnapshot, Timestamp, serverTimestamp,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
@@ -238,24 +238,24 @@ export default function Dashboard() {
     try { await setDoc(doc(db, 'presence', podId), { notes: note }, { merge: true }); } catch {}
   };
 
-  // Resolve exception
-  const resolveException = async (exId) => {
+  // Delete exception
+  const removeException = async (exId) => {
+    if (!confirm('Remove this exception? It will be removed from customer view too.')) return;
     try {
-      await updateDoc(doc(db, 'exceptions', exId), { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: 'supervisor' });
-      logAudit('resolve_exception', { exceptionId: exId });
+      await deleteDoc(doc(db, 'exceptions', exId));
+      logAudit('delete_exception', { exceptionId: exId });
     } catch {}
   };
 
-  // Bulk resolve exceptions
-  const bulkResolve = async () => {
+  // Bulk delete exceptions
+  const bulkDelete = async () => {
     if (selectedExceptions.size === 0) return;
+    if (!confirm(`Remove ${selectedExceptions.size} exception(s)? They will be removed from customer view too.`)) return;
     const ids = [...selectedExceptions];
     for (const exId of ids) {
-      try {
-        await updateDoc(doc(db, 'exceptions', exId), { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: 'supervisor' });
-      } catch {}
+      try { await deleteDoc(doc(db, 'exceptions', exId)); } catch {}
     }
-    logAudit('bulk_resolve_exceptions', { count: ids.length });
+    logAudit('bulk_delete_exceptions', { count: ids.length });
     setSelectedExceptions(new Set());
   };
 
@@ -596,9 +596,9 @@ export default function Dashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #333' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {selectedExceptions.size > 0 && (
-                <button onClick={bulkResolve}
-                  style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                  ✓ Resolve Selected ({selectedExceptions.size})
+                <button onClick={bulkDelete}
+                  style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  🗑 Remove Selected ({selectedExceptions.size})
                 </button>
               )}
             </div>
@@ -615,12 +615,10 @@ export default function Dashboard() {
             </div>
           ))}
           {allExceptions.map((ex) => (
-            <div key={ex.id} style={{ ...st.exRow, opacity: ex.resolved ? 0.5 : 1 }}>
-              {!ex.resolved && (
-                <input type="checkbox" checked={selectedExceptions.has(ex.id)}
-                  onChange={() => toggleException(ex.id)}
-                  style={{ accentColor: '#3B82F6', cursor: 'pointer', width: 16, height: 16 }} />
-              )}
+            <div key={ex.id} style={st.exRow}>
+              <input type="checkbox" checked={selectedExceptions.has(ex.id)}
+                onChange={() => toggleException(ex.id)}
+                style={{ accentColor: '#3B82F6', cursor: 'pointer', width: 16, height: 16 }} />
               {ex.photo && (
                 <img src={ex.photo} alt="Exception"
                   onClick={() => setViewingPhoto(ex.photo)}
@@ -631,14 +629,10 @@ export default function Dashboard() {
                 {ex.isbn ? `ISBN: ${ex.isbn}` : ''}{ex.title ? ` "${ex.title}"` : ''} · Pod {ex.podId} · {ex.scannerId}
               </span>
               <span style={st.exTime}>{ex.timestamp?.toDate?.()?.toLocaleTimeString() || '—'}</span>
-              {!ex.resolved ? (
-                <button onClick={() => resolveException(ex.id)}
-                  style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}>
-                  ✓ Resolve
-                </button>
-              ) : (
-                <span style={{ fontSize: 11, color: '#22C55E', marginLeft: 8 }}>✓ Resolved</span>
-              )}
+              <button onClick={() => removeException(ex.id)}
+                style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}>
+                🗑 Remove
+              </button>
             </div>
           ))}
           {totalExceptions === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions today</p>}

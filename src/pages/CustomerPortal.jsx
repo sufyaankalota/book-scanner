@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import {
-  collection, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc,
+  collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
   query, where, onSnapshot, orderBy, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
@@ -34,6 +34,9 @@ export default function CustomerPortal() {
   const [poNames, setPoNames] = useState([]);
   const [fileError, setFileError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadedPOs, setUploadedPOs] = useState([]);
+  const [poLoading, setPOLoading] = useState(false);
+  const [poDeleting, setPODeleting] = useState(null);
 
   // BOL Upload
   const [bolFile, setBolFile] = useState(null);
@@ -206,6 +209,54 @@ export default function CustomerPortal() {
     return d.toLocaleString();
   };
 
+  // Load existing uploaded POs from manifest
+  const loadUploadedPOs = async () => {
+    if (!job) return;
+    setPOLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'jobs', job.id, 'manifest'));
+      const grouped = {};
+      snap.forEach((d) => {
+        const po = d.data().poName;
+        if (!grouped[po]) grouped[po] = 0;
+        grouped[po]++;
+      });
+      setUploadedPOs(Object.entries(grouped).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name)));
+    } catch { setUploadedPOs([]); }
+    setPOLoading(false);
+  };
+
+  useEffect(() => {
+    if (authenticated && job) loadUploadedPOs();
+  }, [authenticated, job]);
+
+  // Delete a PO (remove all its ISBNs from manifest)
+  const deletePO = async (poName) => {
+    if (!job) return;
+    if (!confirm(`Remove PO "${poName}" and all its ISBNs from the manifest?`)) return;
+    setPODeleting(poName);
+    try {
+      const snap = await getDocs(collection(db, 'jobs', job.id, 'manifest'));
+      const toDelete = snap.docs.filter((d) => d.data().poName === poName);
+      const BATCH_SIZE = 400;
+      for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        toDelete.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+      // Remove PO color if exists
+      if (job.poColors && job.poColors[poName]) {
+        const updated = { ...job.poColors };
+        delete updated[poName];
+        await setDoc(doc(db, 'jobs', job.id), { poColors: updated }, { merge: true });
+      }
+      await loadUploadedPOs();
+    } catch (err) {
+      alert('Failed to delete PO: ' + err.message);
+    }
+    setPODeleting(null);
+  };
+
   // PO Upload
   const handlePOUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -240,6 +291,7 @@ export default function CustomerPortal() {
       }
       setUploadStatus('Uploaded ' + entries.length.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
       setManifest(null); setPoNames([]);
+      await loadUploadedPOs();
     } catch (err) {
       setUploadStatus('Upload failed: ' + err.message);
     }
@@ -687,6 +739,47 @@ export default function CustomerPortal() {
               <li>PO column: Purchase Order identifier</li>
               <li>Supported formats: .csv, .xlsx, .xls</li>
             </ul>
+          </div>
+
+          {/* Uploaded POs List */}
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>Uploaded Purchase Orders</h3>
+            {poLoading ? (
+              <p style={{ color: '#888', fontSize: 14 }}>Loading...</p>
+            ) : uploadedPOs.length === 0 ? (
+              <p style={{ color: '#888', fontSize: 14 }}>No POs uploaded yet.</p>
+            ) : (
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={st.th}>PO Name</th>
+                      <th style={st.th}>ISBNs</th>
+                      <th style={{ ...st.th, textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uploadedPOs.map((po) => (
+                      <tr key={po.name}>
+                        <td style={st.td}>{po.name}</td>
+                        <td style={st.td}>{po.count.toLocaleString()}</td>
+                        <td style={{ ...st.td, textAlign: 'right' }}>
+                          <button
+                            onClick={() => deletePO(po.name)}
+                            disabled={poDeleting === po.name}
+                            style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', fontWeight: 600, opacity: poDeleting === po.name ? 0.5 : 1 }}>
+                            {poDeleting === po.name ? 'Removing...' : '\ud83d\uddd1 Remove'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p style={{ color: '#666', fontSize: 12, marginTop: 8 }}>
+                  Total: {uploadedPOs.reduce((s, p) => s + p.count, 0).toLocaleString()} ISBNs across {uploadedPOs.length} POs
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
