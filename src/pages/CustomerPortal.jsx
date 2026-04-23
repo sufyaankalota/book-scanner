@@ -2,7 +2,7 @@
 import { db } from '../firebase';
 import {
   collection, doc, setDoc, getDoc, addDoc,
-  query, where, onSnapshot, serverTimestamp, writeBatch,
+  query, where, onSnapshot, orderBy, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
@@ -44,6 +44,8 @@ export default function CustomerPortal() {
 
   // Exception photo viewer
   const [viewingPhoto, setViewingPhoto] = useState(null);
+  // Billing reports
+  const [billingReports, setBillingReports] = useState([]);
 
   // Customer Login
   const handleLogin = async () => {
@@ -118,6 +120,16 @@ export default function CustomerPortal() {
     return onSnapshot(q, (snap) => {
       setBols(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+    });
+  }, [authenticated, job]);
+
+  // Billing reports
+  useEffect(() => {
+    if (!authenticated || !job) return;
+    const q = query(collection(db, 'billing-reports'), where('jobId', '==', job.id));
+    return onSnapshot(q, (snap) => {
+      setBillingReports(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.weekStart?.toDate?.()?.getTime() || 0) - (a.weekStart?.toDate?.()?.getTime() || 0)));
     });
   }, [authenticated, job]);
 
@@ -376,7 +388,7 @@ export default function CustomerPortal() {
       </div>
 
       <div style={st.tabBar}>
-        {[['daily','Daily Volume'],['exceptions','Exceptions'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']].map(([key, label]) => (
+        {[['daily','Daily Volume'],['exceptions','Exceptions'],['billing','Billing'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']].map(([key, label]) => (
           <button key={key} onClick={() => setActiveTab(key)}
             style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}) }}>
             {label}
@@ -462,6 +474,61 @@ export default function CustomerPortal() {
               <img src={viewingPhoto} alt="Exception photo" style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, border: '2px solid #444' }} />
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'billing' && (
+        <div>
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>💰 Weekly Billing Reports</h3>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
+              Billing reports are generated weekly by the warehouse. Each report contains unit counts broken down by day, pod, and operator.
+            </p>
+            {billingReports.length === 0 && (
+              <p style={{ color: '#666', fontSize: 14, textAlign: 'center', padding: 20 }}>No billing reports available yet.</p>
+            )}
+            {billingReports.map((report) => {
+              const start = report.weekStart?.toDate?.();
+              const end = report.weekEnd?.toDate?.();
+              const created = report.createdAt?.toDate?.();
+              return (
+                <div key={report.id} style={{ border: '1px solid #333', borderRadius: 12, padding: 16, marginBottom: 12, backgroundColor: 'var(--bg-input, #0a0a0a)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
+                        {start ? start.toLocaleDateString() : '?'} – {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
+                      </div>
+                      <div style={{ color: '#888', fontSize: 13 }}>
+                        Generated: {created ? created.toLocaleDateString() + ' ' + created.toLocaleTimeString() : 'Unknown'}
+                      </div>
+                    </div>
+                    <button onClick={() => {
+                      try {
+                        const bytes = Uint8Array.from(atob(report.fileData), (c) => c.charCodeAt(0));
+                        downloadBlob(bytes, report.fileName);
+                      } catch { alert('Download failed'); }
+                    }} style={{ ...st.smallBtn, padding: '8px 20px' }}>
+                      📥 Download XLSX
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ color: '#22C55E', fontSize: 22, fontWeight: 800 }}>{(report.standardCount || 0).toLocaleString()}</div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Regular Units</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ color: '#F97316', fontSize: 22, fontWeight: 800 }}>{(report.exceptionCount || 0).toLocaleString()}</div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Exceptions</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ color: '#3B82F6', fontSize: 22, fontWeight: 800 }}>{(report.totalUnits || 0).toLocaleString()}</div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Total Units</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

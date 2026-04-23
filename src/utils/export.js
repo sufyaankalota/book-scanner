@@ -221,3 +221,104 @@ export function exportShiftSummary(shiftStats) {
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   downloadBlob(buf, `shift_${shiftStats.operator}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
+/**
+ * Weekly Billing Export — produces an invoice-ready XLSX.
+ * @param {Array} scans — all scans in the billing period
+ * @param {Array} exceptions — manual exceptions in the billing period
+ * @param {Object} jobMeta — job metadata
+ * @param {Date} weekStart — billing period start
+ * @param {Date} weekEnd — billing period end
+ */
+export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd) {
+  const wb = XLSX.utils.book_new();
+  const startStr = weekStart.toLocaleDateString();
+  const endStr = weekEnd.toLocaleDateString();
+
+  const standardScans = scans.filter((s) => s.type === 'standard');
+  const exceptionScans = scans.filter((s) => s.type === 'exception');
+  const totalExceptions = exceptionScans.length + exceptions.length;
+
+  // Sheet 1: Billing Summary (the one you'd use for invoicing)
+  const summaryRows = [
+    { Item: 'Customer / Job', Detail: jobMeta.name || '', Qty: '', Rate: '', Amount: '' },
+    { Item: 'Billing Period', Detail: `${startStr} – ${endStr}`, Qty: '', Rate: '', Amount: '' },
+    { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
+    { Item: 'Regular Scans', Detail: '', Qty: standardScans.length, Rate: '', Amount: '' },
+    { Item: 'Exceptions', Detail: '', Qty: totalExceptions, Rate: '', Amount: '' },
+    { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
+    { Item: 'TOTAL UNITS', Detail: '', Qty: standardScans.length + totalExceptions, Rate: '', Amount: '' },
+  ];
+  const ws1 = XLSX.utils.json_to_sheet(summaryRows);
+  // Widen columns
+  ws1['!cols'] = [{ wch: 20 }, { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Billing Summary');
+
+  // Sheet 2: Daily breakdown
+  const dailyMap = {};
+  for (const s of scans) {
+    const d = s.timestamp?.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
+    const key = d.toLocaleDateString();
+    if (!dailyMap[key]) dailyMap[key] = { date: key, standard: 0, exceptions: 0 };
+    if (s.type === 'standard') dailyMap[key].standard++;
+    else dailyMap[key].exceptions++;
+  }
+  for (const ex of exceptions) {
+    const d = ex.timestamp?.toDate ? ex.timestamp.toDate() : new Date(ex.timestamp);
+    const key = d.toLocaleDateString();
+    if (!dailyMap[key]) dailyMap[key] = { date: key, standard: 0, exceptions: 0 };
+    dailyMap[key].exceptions++;
+  }
+  const dailyRows = Object.values(dailyMap)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .map((d) => ({
+      Date: d.date,
+      'Regular Scans': d.standard,
+      Exceptions: d.exceptions,
+      'Day Total': d.standard + d.exceptions,
+    }));
+  // Add totals row
+  dailyRows.push({
+    Date: 'TOTAL',
+    'Regular Scans': dailyRows.reduce((s, r) => s + r['Regular Scans'], 0),
+    Exceptions: dailyRows.reduce((s, r) => s + r.Exceptions, 0),
+    'Day Total': dailyRows.reduce((s, r) => s + r['Day Total'], 0),
+  });
+  const ws2 = XLSX.utils.json_to_sheet(dailyRows);
+  ws2['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Daily Breakdown');
+
+  // Sheet 3: By Pod
+  const podMap = {};
+  for (const s of scans) {
+    const pod = s.podId || 'Unknown';
+    if (!podMap[pod]) podMap[pod] = { standard: 0, exceptions: 0 };
+    if (s.type === 'standard') podMap[pod].standard++;
+    else podMap[pod].exceptions++;
+  }
+  const podRows = Object.entries(podMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([pod, d]) => ({ Pod: pod, 'Regular Scans': d.standard, Exceptions: d.exceptions, Total: d.standard + d.exceptions }));
+  const ws3 = XLSX.utils.json_to_sheet(podRows);
+  XLSX.utils.book_append_sheet(wb, ws3, 'By Pod');
+
+  // Sheet 4: By Operator
+  const opMap = {};
+  for (const s of scans) {
+    const op = s.scannerId || 'Unknown';
+    if (!opMap[op]) opMap[op] = { standard: 0, exceptions: 0 };
+    if (s.type === 'standard') opMap[op].standard++;
+    else opMap[op].exceptions++;
+  }
+  const opRows = Object.entries(opMap)
+    .sort((a, b) => (b[1].standard + b[1].exceptions) - (a[1].standard + a[1].exceptions))
+    .map(([op, d]) => ({ Operator: op, 'Regular Scans': d.standard, Exceptions: d.exceptions, Total: d.standard + d.exceptions }));
+  const ws4 = XLSX.utils.json_to_sheet(opRows);
+  XLSX.utils.book_append_sheet(wb, ws4, 'By Operator');
+
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const tag = weekStart.toISOString().slice(0, 10);
+  const fileName = `${jobMeta.name || 'billing'}_billing_${tag}.xlsx`;
+  downloadBlob(buf, fileName);
+  return { buf, fileName };
+}

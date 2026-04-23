@@ -72,6 +72,14 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    // Billing reports — dashboard creates, portal reads
+    match /billing-reports/{reportId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['jobId', 'weekStart', 'weekEnd', 'fileName']);
+      allow update: if false;
+      allow delete: if true;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

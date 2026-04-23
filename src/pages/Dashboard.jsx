@@ -17,11 +17,11 @@ function AutoRefreshIndicator({ lastUpdated }) {
 }
 import { db } from '../firebase';
 import {
-  collection, doc, getDocs, getDoc, updateDoc, setDoc,
-  query, where, onSnapshot, Timestamp,
+  collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc,
+  query, where, onSnapshot, Timestamp, serverTimestamp,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
-import { exportTodayXLSX, exportAllXLSX, exportPerPO, downloadBlob, exportReconciliation, exportExceptionsXLSX } from '../utils/export';
+import { exportTodayXLSX, exportAllXLSX, exportPerPO, downloadBlob, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
 
 export default function Dashboard() {
@@ -46,6 +46,13 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedExceptions, setSelectedExceptions] = useState(new Set());
   const [bols, setBols] = useState([]);
+  const [showBilling, setShowBilling] = useState(false);
+  const [billingWeek, setBillingWeek] = useState(() => {
+    // Default to last Monday
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7);
+    return d.toISOString().slice(0, 10);
+  });
 
   // Load active job
   useEffect(() => {
@@ -338,6 +345,46 @@ export default function Dashboard() {
     exportReconciliation(allScans, manifestData, job.meta);
   };
 
+  const handleBillingExport = async () => {
+    if (!job) return;
+    setExporting(true);
+    try {
+      const weekStart = new Date(billingWeek + 'T00:00:00');
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const q1 = query(collection(db, 'scans'), where('jobId', '==', job.id),
+        where('timestamp', '>=', Timestamp.fromDate(weekStart)),
+        where('timestamp', '<', Timestamp.fromDate(weekEnd)));
+      const q2 = query(collection(db, 'exceptions'), where('jobId', '==', job.id),
+        where('timestamp', '>=', Timestamp.fromDate(weekStart)),
+        where('timestamp', '<', Timestamp.fromDate(weekEnd)));
+      const [scanSnap, excSnap] = await Promise.all([getDocs(q1), getDocs(q2)]);
+      const scans = scanSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const excs = excSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const standardCount = scans.filter((s) => s.type === 'standard').length;
+      const exceptionCount = scans.filter((s) => s.type === 'exception').length + excs.length;
+      const { buf, fileName } = exportBillingXLSX(scans, excs, job.meta, weekStart, weekEnd);
+      // Convert to base64 for Firestore storage
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      // Save to billing-reports collection for Customer Portal access
+      await addDoc(collection(db, 'billing-reports'), {
+        jobId: job.id,
+        jobName: job.meta.name || 'Unknown',
+        weekStart: Timestamp.fromDate(weekStart),
+        weekEnd: Timestamp.fromDate(weekEnd),
+        standardCount,
+        exceptionCount,
+        totalUnits: standardCount + exceptionCount,
+        fileName,
+        fileData: base64,
+        createdAt: serverTimestamp(),
+      });
+      logAudit('billing_export', { weekStart: weekStart.toISOString(), weekEnd: weekEnd.toISOString(), scans: scans.length, exceptions: excs.length });
+    } catch (err) { alert('Billing export failed: ' + err.message); }
+    setExporting(false);
+    setShowBilling(false);
+  };
+
   if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;
   if (!job) return (
     <div style={st.container}>
@@ -366,6 +413,7 @@ export default function Dashboard() {
           <button onClick={handleExportAll} disabled={exporting} style={{ ...st.exportBtn, opacity: exporting ? 0.5 : 1 }}>
             {exporting ? '...' : '📊 All'}
           </button>
+          <button onClick={() => setShowBilling(true)} style={{ ...st.exportBtn, borderColor: '#22C55E', color: '#22C55E' }}>💰 Billing</button>
           {manifestCompletion && (
             <button onClick={handleExportReconciliation} style={st.exportBtn}>📋 Reconciliation</button>
           )}
@@ -373,6 +421,45 @@ export default function Dashboard() {
           <Link to="/setup" style={st.setupLink}>Setup</Link>
         </div>
       </div>
+
+      {/* Billing Export Modal */}
+      {showBilling && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 16, padding: 32, maxWidth: 440, width: '100%', border: '2px solid #22C55E' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ color: '#fff', margin: 0, fontSize: 22 }}>💰 Weekly Billing Export</h2>
+              <button onClick={() => setShowBilling(false)}
+                style={{ background: 'none', border: '1px solid #555', borderRadius: 8, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            </div>
+            <p style={{ color: '#aaa', fontSize: 14, marginTop: 0, marginBottom: 16 }}>
+              Select the week start date (Monday). The export covers 7 days from that date.
+            </p>
+            <label style={{ color: '#ccc', fontSize: 14, fontWeight: 600, display: 'block', marginBottom: 6 }}>Week starting:</label>
+            <input type="date" value={billingWeek}
+              onChange={(e) => setBillingWeek(e.target.value)}
+              style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #444', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 16, marginBottom: 16, boxSizing: 'border-box' }} />
+            <p style={{ color: '#888', fontSize: 13, margin: '0 0 16px' }}>
+              📅 {new Date(billingWeek + 'T00:00:00').toLocaleDateString()} – {new Date(new Date(billingWeek + 'T00:00:00').getTime() + 6 * 86400000).toLocaleDateString()}
+            </p>
+            <p style={{ color: '#666', fontSize: 12, marginBottom: 20, lineHeight: 1.5 }}>
+              The XLSX includes: <strong>Billing Summary</strong> (regular scan count + exception count), <strong>Daily Breakdown</strong>, <strong>By Pod</strong>, and <strong>By Operator</strong> sheets. Fill in your rates in the Rate/Amount columns.
+            </p>
+            <div style={{ backgroundColor: '#14532d', border: '1px solid #22C55E', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#86efac', fontSize: 13 }}>
+              📋 This report will also be visible to the customer in their portal.
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={handleBillingExport} disabled={exporting}
+                style={{ flex: 1, padding: '14px 20px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 700, cursor: exporting ? 'wait' : 'pointer', opacity: exporting ? 0.6 : 1 }}>
+                {exporting ? '⏳ Generating...' : '📥 Download Billing XLSX'}
+              </button>
+              <button onClick={() => setShowBilling(false)}
+                style={{ padding: '14px 20px', borderRadius: 10, border: '1px solid #555', backgroundColor: 'transparent', color: '#aaa', fontSize: 14, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary bar */}
       <div style={st.summaryRow}>
