@@ -209,50 +209,38 @@ export default function CustomerPortal() {
     return d.toLocaleString();
   };
 
-  // Load existing uploaded POs from manifest
+  // Load existing uploaded POs from po-uploads collection
   const loadUploadedPOs = async () => {
-    if (!job) return;
     setPOLoading(true);
     try {
-      const snap = await getDocs(collection(db, 'jobs', job.id, 'manifest'));
-      const grouped = {};
-      snap.forEach((d) => {
-        const po = d.data().poName;
-        if (!grouped[po]) grouped[po] = 0;
-        grouped[po]++;
-      });
-      setUploadedPOs(Object.entries(grouped).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name)));
+      const snap = await getDocs(collection(db, 'po-uploads'));
+      const uploads = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.uploadedAt?.toDate?.()?.getTime() || 0) - (a.uploadedAt?.toDate?.()?.getTime() || 0));
+      setUploadedPOs(uploads);
     } catch { setUploadedPOs([]); }
     setPOLoading(false);
   };
 
   useEffect(() => {
-    if (authenticated && job) loadUploadedPOs();
-  }, [authenticated, job]);
+    if (authenticated) loadUploadedPOs();
+  }, [authenticated]);
 
-  // Delete a PO (remove all its ISBNs from manifest)
-  const deletePO = async (poName) => {
-    if (!job) return;
-    if (!confirm(`Remove PO "${poName}" and all its ISBNs from the manifest?`)) return;
-    setPODeleting(poName);
+  // Delete a PO upload (remove the po-upload doc and its manifest subcollection)
+  const deletePO = async (uploadId) => {
+    if (!confirm('Remove this PO upload and all its ISBNs?')) return;
+    setPODeleting(uploadId);
     try {
-      const snap = await getDocs(collection(db, 'jobs', job.id, 'manifest'));
-      const toDelete = snap.docs.filter((d) => d.data().poName === poName);
+      const snap = await getDocs(collection(db, 'po-uploads', uploadId, 'manifest'));
       const BATCH_SIZE = 400;
-      for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
+      for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {
         const batch = writeBatch(db);
-        toDelete.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref));
+        snap.docs.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref));
         await batch.commit();
       }
-      // Remove PO color if exists
-      if (job.poColors && job.poColors[poName]) {
-        const updated = { ...job.poColors };
-        delete updated[poName];
-        await setDoc(doc(db, 'jobs', job.id), { poColors: updated }, { merge: true });
-      }
+      await deleteDoc(doc(db, 'po-uploads', uploadId));
       await loadUploadedPOs();
     } catch (err) {
-      alert('Failed to delete PO: ' + err.message);
+      alert('Failed to delete: ' + err.message);
     }
     setPODeleting(null);
   };
@@ -272,22 +260,24 @@ export default function CustomerPortal() {
   };
 
   const submitPO = async () => {
-    if (!manifest || !job) return;
+    if (!manifest) return;
     setUploadStatus('Uploading...');
     try {
       const entries = Object.entries(manifest);
+      const uploadId = `po_${Date.now()}`;
+      // Create metadata doc
+      await setDoc(doc(db, 'po-uploads', uploadId), {
+        poNames, isbnCount: entries.length,
+        uploadedAt: serverTimestamp(), status: 'pending', jobId: null,
+      });
+      // Store ISBNs in subcollection
       const BATCH_SIZE = 400;
       for (let i = 0; i < entries.length; i += BATCH_SIZE) {
         const batch = writeBatch(db);
         entries.slice(i, i + BATCH_SIZE).forEach(([isbn, poName]) => {
-          batch.set(doc(db, 'jobs', job.id, 'manifest', isbn), { poName });
+          batch.set(doc(db, 'po-uploads', uploadId, 'manifest', isbn), { poName });
         });
         await batch.commit();
-      }
-      if (job.meta.mode === 'multi') {
-        const colors = {};
-        poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length]; });
-        await setDoc(doc(db, 'jobs', job.id), { poColors: colors }, { merge: true });
       }
       setUploadStatus('Uploaded ' + entries.length.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
       setManifest(null); setPoNames([]);
@@ -722,7 +712,7 @@ export default function CustomerPortal() {
                     </tbody>
                   </table>
                 </div>
-                <button onClick={submitPO} style={st.primaryBtn}>Upload to Job</button>
+                <button onClick={submitPO} style={st.primaryBtn}>Upload PO</button>
               </div>
             )}
             {uploadStatus && (
@@ -753,31 +743,38 @@ export default function CustomerPortal() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th style={st.th}>PO Name</th>
+                      <th style={st.th}>PO Names</th>
                       <th style={st.th}>ISBNs</th>
+                      <th style={st.th}>Status</th>
                       <th style={{ ...st.th, textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {uploadedPOs.map((po) => (
-                      <tr key={po.name}>
-                        <td style={st.td}>{po.name}</td>
-                        <td style={st.td}>{po.count.toLocaleString()}</td>
+                    {uploadedPOs.map((up) => (
+                      <tr key={up.id}>
+                        <td style={st.td}>{(up.poNames || []).join(', ')}</td>
+                        <td style={st.td}>{(up.isbnCount || 0).toLocaleString()}</td>
+                        <td style={st.td}>
+                          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                            backgroundColor: up.status === 'added' ? '#166534' : '#92400e',
+                            color: up.status === 'added' ? '#4ADE80' : '#FCD34D' }}>
+                            {up.status === 'added' ? '✓ Added to Job' : '⏳ Pending'}
+                          </span>
+                        </td>
                         <td style={{ ...st.td, textAlign: 'right' }}>
-                          <button
-                            onClick={() => deletePO(po.name)}
-                            disabled={poDeleting === po.name}
-                            style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', fontWeight: 600, opacity: poDeleting === po.name ? 0.5 : 1 }}>
-                            {poDeleting === po.name ? 'Removing...' : '\ud83d\uddd1 Remove'}
-                          </button>
+                          {up.status === 'pending' && (
+                            <button
+                              onClick={() => deletePO(up.id)}
+                              disabled={poDeleting === up.id}
+                              style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', fontWeight: 600, opacity: poDeleting === up.id ? 0.5 : 1 }}>
+                              {poDeleting === up.id ? 'Removing...' : '\ud83d\uddd1 Remove'}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <p style={{ color: '#666', fontSize: 12, marginTop: 8 }}>
-                  Total: {uploadedPOs.reduce((s, p) => s + p.count, 0).toLocaleString()} ISBNs across {uploadedPOs.length} POs
-                </p>
               </div>
             )}
           </div>

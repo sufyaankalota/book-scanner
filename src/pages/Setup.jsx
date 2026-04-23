@@ -76,6 +76,10 @@ export default function Setup() {
   const [customerPw, setCustomerPw] = useState('');
   const [customerPwSaved, setCustomerPwSaved] = useState(false);
 
+  // Customer PO uploads
+  const [customerPOUploads, setCustomerPOUploads] = useState([]);
+  const [selectedUploadId, setSelectedUploadId] = useState(null);
+
   useEffect(() => {
     (async () => {
       try {
@@ -116,11 +120,16 @@ export default function Setup() {
       } catch (err) { console.error('Failed to load:', err); }
       setLoading(false);
     })();
+    // Load customer PO uploads
+    getDocs(collection(db, 'po-uploads')).then((snap) => {
+      setCustomerPOUploads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.uploadedAt?.toDate?.()?.getTime() || 0) - (a.uploadedAt?.toDate?.()?.getTime() || 0)));
+    }).catch(() => {});
   }, []);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    setFileError('');
+    setFileError(''); setSelectedUploadId(null);
     try {
       const result = await parseManifestFile(file);
       setManifest(result.manifest); setPoNames(result.poNames);
@@ -129,6 +138,25 @@ export default function Setup() {
       result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
       setPoColors(colors);
     } catch (err) { setFileError(err.message); setManifest(null); setPoNames([]); setManifestPreview([]); }
+  };
+
+  // Use a customer-uploaded PO
+  const useCustomerUpload = async (upload) => {
+    setFileError('');
+    try {
+      const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
+      const man = {};
+      snap.forEach((d) => { man[d.id] = d.data().poName; });
+      setManifest(man);
+      setPoNames(upload.poNames || []);
+      setManifestPreview(Object.entries(man).slice(0, 50));
+      const colors = {};
+      (upload.poNames || []).forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
+      setPoColors(colors);
+      setSelectedUploadId(upload.id);
+    } catch (err) {
+      setFileError('Failed to load PO upload: ' + err.message);
+    }
   };
 
   const handlePodInputChange = (val) => {
@@ -165,6 +193,11 @@ export default function Setup() {
             batch.set(doc(db, 'jobs', jobId, 'manifest', isbn), { poName });
           });
           await batch.commit();
+        }
+        // Mark customer upload as added if used
+        if (selectedUploadId) {
+          await updateDoc(doc(db, 'po-uploads', selectedUploadId), { status: 'added', jobId, addedAt: serverTimestamp() });
+          setSelectedUploadId(null);
         }
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
@@ -590,6 +623,34 @@ export default function Setup() {
           <div style={{ marginTop: 16 }}>
             <label style={s.label}>Upload Manifest (CSV or XLSX — columns: ISBN, PO)</label>
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} style={s.input} />
+
+            {/* Customer-uploaded POs */}
+            {customerPOUploads.filter((u) => u.status === 'pending').length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, backgroundColor: '#1a1a2e', borderRadius: 8, border: '1px solid #3B82F6' }}>
+                <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>
+                  📦 Customer-Uploaded POs Available
+                </p>
+                {customerPOUploads.filter((u) => u.status === 'pending').map((up) => (
+                  <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #333' }}>
+                    <div>
+                      <span style={{ color: '#ccc', fontSize: 13 }}>{(up.poNames || []).join(', ')}</span>
+                      <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>({(up.isbnCount || 0).toLocaleString()} ISBNs)</span>
+                      <span style={{ color: '#666', fontSize: 11, marginLeft: 8 }}>
+                        {up.uploadedAt?.toDate?.()?.toLocaleDateString() || ''}
+                      </span>
+                    </div>
+                    <button onClick={() => useCustomerUpload(up)}
+                      style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6',
+                        backgroundColor: selectedUploadId === up.id ? '#1E40AF' : 'transparent',
+                        color: selectedUploadId === up.id ? '#fff' : '#3B82F6',
+                        fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                      {selectedUploadId === up.id ? '✓ Selected' : 'Use This'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {fileError && <p style={{ color: '#EF4444', marginTop: 4 }}>{fileError}</p>}
             {manifest && (
               <p style={{ color: '#22C55E', marginTop: 4 }}>

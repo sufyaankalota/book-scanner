@@ -80,6 +80,17 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    // PO uploads — customer uploads, dashboard/setup reads and attaches to jobs
+    match /po-uploads/{uploadId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['poNames', 'isbnCount', 'uploadedAt', 'status']);
+      allow update, delete: if true;
+
+      match /manifest/{isbn} {
+        allow read, write: if true;
+      }
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

@@ -18,7 +18,7 @@ function AutoRefreshIndicator({ lastUpdated }) {
 import { db } from '../firebase';
 import {
   collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc, deleteDoc,
-  query, where, onSnapshot, Timestamp, serverTimestamp,
+  query, where, onSnapshot, Timestamp, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
 import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
@@ -49,6 +49,8 @@ export default function Dashboard() {
   const [viewingPhoto, setViewingPhoto] = useState(null);
   const [bols, setBols] = useState([]);
   const [showBilling, setShowBilling] = useState(false);
+  const [pendingPOUploads, setPendingPOUploads] = useState([]);
+  const [addingPO, setAddingPO] = useState(null);
   const [billingWeek, setBillingWeek] = useState(() => {
     // Default to last Monday
     const d = new Date(); d.setHours(0, 0, 0, 0);
@@ -74,6 +76,14 @@ export default function Dashboard() {
         }
       } else setJob(null);
       setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  // Load pending PO uploads
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, 'po-uploads'), where('status', '==', 'pending')), (snap) => {
+      setPendingPOUploads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return unsub;
   }, []);
@@ -257,6 +267,46 @@ export default function Dashboard() {
     }
     logAudit('bulk_delete_exceptions', { count: ids.length });
     setSelectedExceptions(new Set());
+  };
+
+  // Add customer PO upload to active job
+  const addPOToJob = async (upload) => {
+    if (!job) return alert('No active job');
+    if (!confirm(`Add ${(upload.poNames || []).join(', ')} (${(upload.isbnCount || 0).toLocaleString()} ISBNs) to the current job?`)) return;
+    setAddingPO(upload.id);
+    try {
+      // Read ISBNs from po-upload manifest
+      const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
+      const BATCH_SIZE = 400;
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        docs.slice(i, i + BATCH_SIZE).forEach((d) => {
+          batch.set(doc(db, 'jobs', job.id, 'manifest', d.id), d.data());
+        });
+        await batch.commit();
+      }
+      // Assign colors for new POs
+      const existingColors = job.poColors || {};
+      const newColors = { ...existingColors };
+      let colorIdx = Object.keys(existingColors).length;
+      const DEFAULT_CLR = ['#EF4444','#3B82F6','#EAB308','#22C55E','#F97316','#A855F7','#EC4899','#14B8A6','#6366F1','#84CC16'];
+      (upload.poNames || []).forEach((po) => {
+        if (!newColors[po]) { newColors[po] = DEFAULT_CLR[colorIdx % DEFAULT_CLR.length]; colorIdx++; }
+      });
+      await setDoc(doc(db, 'jobs', job.id), { poColors: newColors }, { merge: true });
+      // Mark upload as added
+      await updateDoc(doc(db, 'po-uploads', upload.id), { status: 'added', jobId: job.id, addedAt: serverTimestamp() });
+      // Refresh manifest cache
+      const ms = await getDocs(collection(db, 'jobs', job.id, 'manifest'));
+      const cache = {};
+      ms.forEach((m) => { cache[m.id] = m.data().poName; });
+      setManifestData(cache);
+      logAudit('add_po_to_job', { uploadId: upload.id, poNames: upload.poNames, jobId: job.id });
+    } catch (err) {
+      alert('Failed to add PO: ' + err.message);
+    }
+    setAddingPO(null);
   };
 
   // Toggle exception selection
@@ -573,6 +623,30 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* Pending PO uploads from customer */}
+      {pendingPOUploads.length > 0 && (
+        <div style={{ backgroundColor: '#1a1a2e', border: '1px solid #3B82F6', borderRadius: 10, padding: 16, marginTop: 16 }}>
+          <p style={{ color: '#93C5FD', fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>
+            📦 {pendingPOUploads.length} Customer PO Upload{pendingPOUploads.length > 1 ? 's' : ''} Pending
+          </p>
+          {pendingPOUploads.map((up) => (
+            <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #333' }}>
+              <div>
+                <span style={{ color: '#ccc', fontSize: 14, fontWeight: 600 }}>{(up.poNames || []).join(', ')}</span>
+                <span style={{ color: '#888', fontSize: 13, marginLeft: 10 }}>{(up.isbnCount || 0).toLocaleString()} ISBNs</span>
+                <span style={{ color: '#666', fontSize: 12, marginLeft: 10 }}>
+                  {up.uploadedAt?.toDate?.()?.toLocaleString() || ''}
+                </span>
+              </div>
+              <button onClick={() => addPOToJob(up)} disabled={addingPO === up.id}
+                style={{ padding: '6px 14px', borderRadius: 6, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: addingPO === up.id ? 0.6 : 1 }}>
+                {addingPO === up.id ? 'Adding...' : '+ Add to Job'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Panel toggles */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
