@@ -751,6 +751,70 @@ export default function Setup() {
           ))}
         </div>
       )}
+
+      {/* Admin sections — always accessible */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
+        {['branding', 'customer', 'audit'].map((key) => (
+          <button key={key} onClick={() => { setShowSection(showSection === key ? '' : key); if (key === 'audit') loadAuditLog(); }}
+            style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
+            {key === 'branding' ? '🎨 Branding' : key === 'audit' ? '📋 Audit' : '🔑 Customer'}
+          </button>
+        ))}
+        <Link to="/users" style={{ ...s.secondaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>👥 Users</Link>
+      </div>
+
+      {showSection === 'branding' && (
+        <div style={s.card}>
+          <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>Customize your app branding.</p>
+          <label style={s.label}>App Name</label>
+          <input type="text" value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="BookFlow" style={s.input} />
+          <label style={s.label}>Subtitle</label>
+          <input type="text" value={brandSubtitle} onChange={(e) => setBrandSubtitle(e.target.value)} placeholder="by PrepFort" style={s.input} />
+          <button onClick={async () => {
+            await setDoc(doc(db, 'config', 'branding'), { name: brandName.trim(), subtitle: brandSubtitle.trim(), logo: brandLogo }, { merge: true });
+            setBrandSaved(true); setTimeout(() => setBrandSaved(false), 2000);
+          }} style={{ ...s.primaryBtn, marginTop: 8 }}>{brandSaved ? '✓ Saved!' : 'Save Branding'}</button>
+        </div>
+      )}
+
+      {showSection === 'customer' && (
+        <div style={s.card}>
+          <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>Set the email and password for the Customer Portal (/portal).</p>
+          <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
+            placeholder="Customer email..." style={s.input} />
+          <input type="text" value={customerPw} onChange={(e) => setCustomerPw(e.target.value)}
+            placeholder="Customer password..." style={{ ...s.input, marginTop: 8 }} />
+          <button onClick={async () => {
+            if (!customerPw.trim()) return;
+            const pwHash = await hashPassword(customerPw.trim());
+            const update = { passwordHash: pwHash };
+            if (customerEmail.trim()) update.email = customerEmail.trim().toLowerCase();
+            await setDoc(doc(db, 'config', 'customer'), update, { merge: true });
+            setCustomerPwSaved(true); setTimeout(() => setCustomerPwSaved(false), 2000);
+          }} disabled={!customerPw.trim()}
+            style={{ ...s.primaryBtn, marginTop: 8 }}>{customerPwSaved ? '✓ Saved!' : 'Save Customer Credentials'}</button>
+        </div>
+      )}
+
+      {showSection === 'audit' && (
+        <div style={s.card}>
+          {auditLoading ? <p style={s.text}>Loading...</p> : (
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {auditLogs.map((log) => (
+                <div key={log.id} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid #222', fontSize: 13 }}>
+                  <span style={{ color: '#3B82F6', fontWeight: 600, minWidth: 120 }}>{log.action}</span>
+                  <span style={{ color: '#888', flex: 1 }}>
+                    {log.user?.name && <span style={{ color: '#A855F7', marginRight: 6 }}>{log.user.name}</span>}
+                    {Object.entries(log).filter(([k]) => !['id', 'action', 'timestamp', 'user'].includes(k)).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
+                  </span>
+                  <span style={{ color: '#666', whiteSpace: 'nowrap' }}>{log.timestamp?.toDate?.()?.toLocaleString() || '—'}</span>
+                </div>
+              ))}
+              {auditLogs.length === 0 && <p style={{ color: '#888' }}>No audit logs yet.</p>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
