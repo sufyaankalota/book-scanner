@@ -357,7 +357,7 @@ export default function Pod() {
   };
 
   // ─── Flash helper ───
-  const flash = (color, text, duration = 600) => {
+  const flash = (color, text, duration = 1500) => {
     setFlashColor(color); setFlashText(text);
     setTimeout(() => { setFlashColor(null); setFlashText(''); }, duration);
   };
@@ -369,7 +369,7 @@ export default function Pod() {
 
     const now = Date.now();
     if (isbn === lastScannedRef.current.isbn && (now - lastScannedRef.current.time) < DEBOUNCE_MS) {
-      flash('#EAB308', t('duplicate') + ' — SKIPPED', 800);
+      flash('#EAB308', t('duplicate') + ' — SKIPPED', 1500);
       // Show duplicate count
       setDuplicateInfo(`"${isbn}" scanned before`);
       setTimeout(() => setDuplicateInfo(''), 3000);
@@ -378,7 +378,7 @@ export default function Pod() {
     lastScannedRef.current = { isbn, time: now };
 
     if (!isValidISBN(isbn)) {
-      playErrorBeep(); flash('#EF4444', t('invalidIsbn'), 1200);
+      playErrorBeep(); flash('#EF4444', t('invalidIsbn'), 2000);
       setLastBarcodeType(detectBarcodeType(isbn));
       return;
     }
@@ -450,7 +450,7 @@ export default function Pod() {
       });
     } else {
       playErrorBeep();
-      flash('#F97316', 'NOT IN MANIFEST — EXCEPTIONS', 1200);
+      flash('#F97316', 'NOT IN MANIFEST — EXCEPTIONS', 2000);
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -474,8 +474,8 @@ export default function Pod() {
       await deleteDoc(doc(db, 'scans', last.docId));
       setLocalCount((c) => Math.max(0, c - 1));
       setRecentScans((prev) => prev.slice(1));
-      flash('#EAB308', 'LAST SCAN REMOVED', 800);
-    } catch { flash('#EF4444', 'UNDO FAILED', 800); }
+      flash('#EAB308', 'LAST SCAN REMOVED', 1500);
+    } catch { flash('#EF4444', 'UNDO FAILED', 1500); }
   };
 
   const handleKeyDown = (e) => {
