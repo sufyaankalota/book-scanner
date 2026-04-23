@@ -60,6 +60,7 @@ export default function Pod() {
   const [showExceptionModal, setShowExceptionModal] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualIsbn, setManualIsbn] = useState('');
+  const [duplicateConfirm, setDuplicateConfirm] = useState(null); // { isbn, raw } when awaiting confirmation
   const [lastScanTime, setLastScanTime] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -184,10 +185,10 @@ export default function Pod() {
 
   // ─── Keep input focused ───
   const refocusInput = useCallback(() => {
-    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift && !showManualEntry) {
+    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift && !showManualEntry && !duplicateConfirm) {
       inputRef.current.focus();
     }
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift, showManualEntry]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift, showManualEntry, duplicateConfirm]);
 
   useEffect(() => {
     if (!isScanning) return;
@@ -368,14 +369,41 @@ export default function Pod() {
     if (!isbn) return;
 
     const now = Date.now();
+    // Within debounce window — definitely accidental double-tap
     if (isbn === lastScannedRef.current.isbn && (now - lastScannedRef.current.time) < DEBOUNCE_MS) {
       flash('#EAB308', t('duplicate') + ' — SKIPPED', 1500);
-      // Show duplicate count
       setDuplicateInfo(`"${isbn}" scanned before`);
       setTimeout(() => setDuplicateInfo(''), 3000);
       return;
     }
+    // Same ISBN as last scan but outside debounce — ask for confirmation
+    if (isbn === lastScannedRef.current.isbn) {
+      playErrorBeep();
+      setDuplicateConfirm({ isbn });
+      return;
+    }
     lastScannedRef.current = { isbn, time: now };
+    processScan(isbn);
+  };
+
+  const confirmDuplicate = () => {
+    if (!duplicateConfirm) return;
+    const { isbn } = duplicateConfirm;
+    lastScannedRef.current = { isbn, time: Date.now() };
+    setDuplicateConfirm(null);
+    processScan(isbn);
+    setTimeout(refocusInput, 100);
+  };
+
+  const cancelDuplicate = () => {
+    setDuplicateConfirm(null);
+    flash('#EAB308', 'DUPLICATE SKIPPED', 1500);
+    setTimeout(refocusInput, 100);
+  };
+
+  // ─── Process scan (after validation/confirmation) ───
+  const processScan = (isbn) => {
+    const now = Date.now();
 
     if (!isValidISBN(isbn)) {
       playErrorBeep(); flash('#EF4444', t('invalidIsbn'), 2000);
@@ -1114,6 +1142,31 @@ export default function Pod() {
         <ExceptionModal podId={podId} scannerId={operatorName}
           onSubmit={handleException}
           onClose={() => { setShowExceptionModal(false); setTimeout(refocusInput, 100); }} />
+      )}
+
+      {/* Duplicate confirmation modal */}
+      {duplicateConfirm && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <div style={{ backgroundColor: '#1a1a1a', border: '3px solid #EAB308', borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
+            <h2 style={{ color: '#EAB308', margin: '0 0 8px', fontSize: 24, fontWeight: 800 }}>Duplicate ISBN</h2>
+            <p style={{ color: '#ccc', fontSize: 16, margin: '0 0 4px' }}>This ISBN was just scanned:</p>
+            <p style={{ color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', margin: '8px 0 20px', padding: '10px 16px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
+            <p style={{ color: '#999', fontSize: 14, margin: '0 0 24px' }}>
+              Is this a different copy of the same book?
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button onClick={confirmDuplicate}
+                style={{ padding: '14px 28px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
+                ✓ Yes, Scan It
+              </button>
+              <button onClick={cancelDuplicate}
+                style={{ padding: '14px 28px', borderRadius: 10, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
+                ✕ Skip
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Keyboard shortcuts overlay */}
