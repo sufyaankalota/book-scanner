@@ -216,14 +216,14 @@ export default function Users() {
 }
 
 const s = {
-  container: { minHeight: '100vh', backgroundColor: '#0a0a0a', color: '#fff', padding: '16px 16px 40px', fontFamily: 'system-ui,sans-serif', maxWidth: 700, margin: '0 auto' },
-  backLink: { color: '#666', textDecoration: 'none', fontSize: 14, display: 'inline-block', marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: 800, margin: '0 0 8px', color: '#fff' },
-  card: { backgroundColor: '#1a1a1a', borderRadius: 12, padding: 16, border: '1px solid #222', marginBottom: 12 },
-  cardTitle: { fontSize: 15, fontWeight: 700, color: '#ccc', marginTop: 0, marginBottom: 12 },
-  input: { width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #333', backgroundColor: '#222', color: '#fff', fontSize: 14, boxSizing: 'border-box' },
-  addBtn: { padding: '10px 20px', borderRadius: 8, border: '1px dashed #444', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 14, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 16 },
-  primaryBtn: { padding: '10px 20px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
-  cancelBtn: { padding: '10px 20px', borderRadius: 8, border: '1px solid #444', backgroundColor: 'transparent', color: '#888', fontSize: 14, fontWeight: 600, cursor: 'pointer' },
-  smallBtn: { padding: '4px 10px', borderRadius: 4, border: '1px solid #444', backgroundColor: 'transparent', color: '#888', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  container: { minHeight: '100vh', backgroundColor: '#0a0a0a', color: '#f0f0f0', padding: '20px 20px 40px', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", maxWidth: 640, margin: '0 auto' },
+  backLink: { color: '#555', textDecoration: 'none', fontSize: 13, display: 'inline-block', marginBottom: 14, fontWeight: 600 },
+  title: { fontSize: 22, fontWeight: 800, margin: '0 0 8px', color: '#f0f0f0', letterSpacing: '-0.3px' },
+  card: { backgroundColor: '#141414', borderRadius: 12, padding: '14px 16px', border: '1px solid #1e1e1e', marginBottom: 10 },
+  cardTitle: { fontSize: 14, fontWeight: 700, color: '#aaa', marginTop: 0, marginBottom: 10, letterSpacing: '-0.2px' },
+  input: { width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: '#1a1a1a', color: '#f0f0f0', fontSize: 14, boxSizing: 'border-box', fontWeight: 500 },
+  addBtn: { padding: '10px 20px', borderRadius: 8, border: '1px dashed #2a2a2a', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 14 },
+  primaryBtn: { padding: '10px 20px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  cancelBtn: { padding: '10px 20px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: '#666', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  smallBtn: { padding: '4px 10px', borderRadius: 4, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: '#666', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
 };

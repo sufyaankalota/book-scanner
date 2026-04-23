@@ -99,20 +99,22 @@ export default function Home() {
 
   return (
     <div style={styles.container}>
-      {/* User bar */}
-      {currentUser && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <span style={{ color: '#666', fontSize: 13 }}>{currentUser.name} ({currentUser.role})</span>
-          <button onClick={logout} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #333', backgroundColor: 'transparent', color: '#888', fontSize: 12, cursor: 'pointer' }}>Sign Out</button>
+      {/* Top bar */}
+      <div style={styles.topBar}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src={branding.logo || '/icon.svg'} alt="Logo" style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'contain' }} />
+          <div>
+            <h1 style={styles.title}>{branding.name || 'BookFlow'}</h1>
+            <p style={styles.subtitle}>{branding.subtitle || 'by PrepFort'}</p>
+          </div>
         </div>
-      )}
-      {/* Header */}
-      <div style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 4 }}>
-          <img src={branding.logo || '/icon.svg'} alt="Logo" style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'contain' }} />
-          <h1 style={{ ...styles.title, marginBottom: 0 }}>{branding.name || 'BookFlow'}</h1>
-        </div>
-        <p style={styles.subtitle}>{branding.subtitle || 'by PrepFort'}</p>
+        {currentUser && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ color: '#666', fontSize: 13 }}>{currentUser.name}</span>
+            <span style={{ color: '#444', fontSize: 13 }}>({currentUser.role})</span>
+            <button onClick={logout} style={styles.signOutBtn}>Sign Out</button>
+          </div>
+        )}
       </div>
 
       {/* PWA Install */}
@@ -143,24 +145,29 @@ export default function Home() {
         </div>
       )}
 
-      {/* Quick Links */}
-      <div style={styles.quickLinks}>
-        <Link to="/setup" style={styles.quickLink}>
-          ⚙️ Setup
+      {/* Navigation */}
+      <nav style={styles.nav}>
+        <Link to="/setup" style={styles.navLink}>
+          <span style={styles.navIcon}>⚙️</span>
+          <span>Setup</span>
         </Link>
-        <Link to="/dashboard" style={styles.quickLink}>
-          📊 Dashboard
+        <Link to="/dashboard" style={styles.navLink}>
+          <span style={styles.navIcon}>📊</span>
+          <span>Dashboard</span>
         </Link>
-        <Link to="/kiosk" style={styles.quickLink}>
-          📺 Kiosk
+        <Link to="/kiosk" style={styles.navLink}>
+          <span style={styles.navIcon}>📺</span>
+          <span>Kiosk</span>
         </Link>
-        <Link to="/history" style={styles.quickLink}>
-          📁 Job History
+        <Link to="/history" style={styles.navLink}>
+          <span style={styles.navIcon}>📁</span>
+          <span>History</span>
         </Link>
-        <Link to="/portal" style={styles.quickLink}>
-          📦 Customer Portal
+        <Link to="/portal" style={styles.navLink}>
+          <span style={styles.navIcon}>📦</span>
+          <span>Portal</span>
         </Link>
-      </div>
+      </nav>
 
       {/* Pod Grid */}
       <h2 style={styles.sectionTitle}>Pod Stations</h2>
@@ -301,42 +308,52 @@ export default function Home() {
 const styles = {
   container: {
     minHeight: '100vh',
-    backgroundColor: 'var(--bg, #111)',
-    color: 'var(--text, #fff)',
-    fontFamily: 'system-ui, sans-serif',
-    padding: '32px 24px',
-    maxWidth: 1200,
+    backgroundColor: 'var(--bg, #0f0f0f)',
+    color: 'var(--text, #f0f0f0)',
+    fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    padding: '0 24px 40px',
+    maxWidth: 1100,
     margin: '0 auto',
   },
-  loader: {
-    color: '#888',
-    fontSize: 18,
-    textAlign: 'center',
-    marginTop: 100,
-  },
-  header: {
-    textAlign: 'center',
+  topBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px 0',
+    borderBottom: '1px solid var(--border, #1e1e1e)',
     marginBottom: 24,
   },
   title: {
-    fontSize: 42,
+    fontSize: 22,
     fontWeight: 800,
     margin: 0,
+    letterSpacing: '-0.3px',
   },
   subtitle: {
-    fontSize: 18,
-    color: 'var(--text-secondary, #888)',
-    marginTop: 4,
+    fontSize: 12,
+    color: 'var(--text-secondary, #666)',
+    margin: 0,
+    lineHeight: 1,
+  },
+  signOutBtn: {
+    padding: '6px 14px', borderRadius: 6, border: '1px solid #2a2a2a',
+    backgroundColor: 'transparent', color: '#777', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
+  loader: {
+    color: '#666',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 100,
   },
   installBtn: {
     display: 'block',
-    margin: '0 auto 24px',
+    margin: '0 auto 20px',
     padding: '10px 24px',
     borderRadius: 8,
-    border: '1px solid var(--accent, #3B82F6)',
-    backgroundColor: 'var(--bg-input, #1e3a5f)',
-    color: 'var(--text, #fff)',
-    fontSize: 16,
+    border: '1px solid #1e40af',
+    backgroundColor: 'rgba(59,130,246,0.08)',
+    color: '#93c5fd',
+    fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
     textAlign: 'center',
@@ -345,178 +362,157 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#14532d',
-    border: '1px solid #22C55E',
+    backgroundColor: 'rgba(34,197,94,0.06)',
+    border: '1px solid rgba(34,197,94,0.2)',
     borderRadius: 10,
-    padding: '12px 20px',
-    marginBottom: 24,
+    padding: '14px 20px',
+    marginBottom: 20,
   },
   jobDot: {
-    width: 10,
-    height: 10,
+    width: 8,
+    height: 8,
     borderRadius: '50%',
     backgroundColor: '#22C55E',
     flexShrink: 0,
   },
   jobText: {
-    fontSize: 16,
-    color: '#bbf7d0',
+    fontSize: 14,
+    color: '#86efac',
   },
   noJobBanner: {
-    backgroundColor: '#7f1d1d',
-    border: '1px solid #EF4444',
+    backgroundColor: 'rgba(239,68,68,0.06)',
+    border: '1px solid rgba(239,68,68,0.2)',
     borderRadius: 10,
-    padding: '12px 20px',
-    marginBottom: 24,
+    padding: '14px 20px',
+    marginBottom: 20,
   },
   noJobText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#fca5a5',
   },
   link: {
     color: '#93c5fd',
     textDecoration: 'underline',
   },
-  quickLinks: {
+  nav: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 32,
-  },
-  quickLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
     gap: 6,
-    padding: '10px 20px',
-    borderRadius: 8,
-    backgroundColor: 'var(--bg-card, #1a1a1a)',
-    border: '1px solid var(--border, #333)',
-    color: 'var(--text-secondary, #ddd)',
-    fontSize: 16,
+    marginBottom: 28,
+    overflowX: 'auto',
+    paddingBottom: 4,
+  },
+  navLink: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
+    padding: '12px 20px',
+    borderRadius: 10,
+    backgroundColor: 'var(--bg-card, #161616)',
+    border: '1px solid var(--border, #222)',
+    color: 'var(--text-secondary, #aaa)',
+    fontSize: 13,
     fontWeight: 600,
     textDecoration: 'none',
+    minWidth: 80,
+    textAlign: 'center',
+    flexShrink: 0,
+  },
+  navIcon: {
+    fontSize: 20,
+    lineHeight: 1,
   },
   sectionTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 700,
     marginBottom: 4,
+    letterSpacing: '-0.2px',
   },
   sectionHint: {
-    fontSize: 14,
-    color: 'var(--text-secondary, #888)',
+    fontSize: 13,
+    color: 'var(--text-secondary, #666)',
     marginBottom: 16,
   },
   podGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: 16,
-    marginBottom: 40,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gap: 12,
+    marginBottom: 32,
   },
   podCard: {
     display: 'block',
-    backgroundColor: 'var(--bg-card, #1a1a1a)',
-    border: '1px solid var(--border, #333)',
+    backgroundColor: 'var(--bg-card, #161616)',
+    border: '1px solid var(--border, #222)',
     borderRadius: 12,
-    padding: 20,
+    padding: '18px 20px',
     textDecoration: 'none',
-    color: 'var(--text, #fff)',
-    transition: 'border-color 0.2s, transform 0.2s',
+    color: 'var(--text, #f0f0f0)',
+    transition: 'border-color 0.2s, background-color 0.2s',
   },
   podHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   podName: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: 800,
     margin: 0,
+    letterSpacing: '-0.3px',
   },
   statusBadge: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 6,
-    padding: '4px 12px',
+    gap: 5,
+    padding: '3px 10px',
     borderRadius: 20,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
     letterSpacing: 0.5,
   },
   statusDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: '50%',
   },
   scannerSection: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
   scannerRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  scannerDotGreen: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    backgroundColor: '#22C55E',
-    flexShrink: 0,
-  },
-  scannerDotYellow: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    backgroundColor: '#EAB308',
-    flexShrink: 0,
-  },
-  scannerDotGray: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    backgroundColor: '#555',
-    flexShrink: 0,
-  },
-  scannerName: {
-    fontSize: 14,
-    color: 'var(--text-secondary, #ccc)',
-    fontWeight: 600,
-  },
-  scannerLinked: {
-    fontSize: 12,
-    color: '#22C55E',
-    fontWeight: 600,
-    marginLeft: 'auto',
-  },
-  scannerPending: {
-    fontSize: 13,
-    color: '#EAB308',
-  },
-  scannerOffline: {
-    fontSize: 13,
-    color: '#666',
-  },
+  scannerDotGreen: { width: 7, height: 7, borderRadius: '50%', backgroundColor: '#22C55E', flexShrink: 0 },
+  scannerDotYellow: { width: 7, height: 7, borderRadius: '50%', backgroundColor: '#EAB308', flexShrink: 0 },
+  scannerDotGray: { width: 7, height: 7, borderRadius: '50%', backgroundColor: '#444', flexShrink: 0 },
+  scannerName: { fontSize: 13, color: 'var(--text-secondary, #bbb)', fontWeight: 600 },
+  scannerLinked: { fontSize: 11, color: '#22C55E', fontWeight: 600, marginLeft: 'auto' },
+  scannerPending: { fontSize: 12, color: '#EAB308' },
+  scannerOffline: { fontSize: 12, color: '#555' },
   urlHint: {
-    fontSize: 12,
-    color: '#555',
+    fontSize: 11,
+    color: '#444',
     fontFamily: 'monospace',
     marginTop: 8,
   },
   instructions: {
-    backgroundColor: 'var(--bg-card, #1a1a1a)',
-    border: '1px solid var(--border, #333)',
+    backgroundColor: 'var(--bg-card, #161616)',
+    border: '1px solid var(--border, #222)',
     borderRadius: 12,
-    padding: 24,
+    padding: '20px 24px',
   },
   instructionsTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 700,
     marginBottom: 16,
+    color: 'var(--text-secondary, #aaa)',
   },
   steps: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
     gap: 16,
   },
   step: {
@@ -525,27 +521,27 @@ const styles = {
     alignItems: 'flex-start',
   },
   stepNum: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: '50%',
     backgroundColor: '#3B82F6',
     color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: 700,
     flexShrink: 0,
   },
   stepTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 700,
-    color: 'var(--text, #fff)',
+    color: 'var(--text, #f0f0f0)',
     marginBottom: 2,
   },
   stepText: {
-    fontSize: 13,
-    color: 'var(--text-secondary, #999)',
+    fontSize: 12,
+    color: 'var(--text-secondary, #888)',
     lineHeight: 1.4,
   },
 };

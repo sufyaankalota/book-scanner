@@ -143,22 +143,22 @@ export default function AuthGate({ children, requiredRole }) {
 const st = {
   container: {
     minHeight: '100vh', backgroundColor: '#0a0a0a', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: 24,
+    alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", padding: 24,
   },
   card: {
-    backgroundColor: '#1a1a1a', borderRadius: 16, padding: 40, width: '100%', maxWidth: 400,
-    border: '1px solid #333', textAlign: 'center',
+    backgroundColor: '#141414', borderRadius: 16, padding: '36px 32px', width: '100%', maxWidth: 380,
+    border: '1px solid #222', textAlign: 'center',
   },
-  title: { color: '#fff', fontSize: 22, fontWeight: 800, marginTop: 0, marginBottom: 4 },
-  subtitle: { color: '#888', fontSize: 14, marginBottom: 20 },
+  title: { color: '#f0f0f0', fontSize: 22, fontWeight: 800, marginTop: 0, marginBottom: 4, letterSpacing: '-0.3px' },
+  subtitle: { color: '#666', fontSize: 14, marginBottom: 24 },
   input: {
-    width: '100%', padding: '14px 16px', borderRadius: 8, border: '1px solid #444',
-    backgroundColor: '#222', color: '#fff', fontSize: 16, boxSizing: 'border-box',
+    width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #2a2a2a',
+    backgroundColor: '#1a1a1a', color: '#f0f0f0', fontSize: 15, boxSizing: 'border-box', fontWeight: 500,
   },
-  error: { color: '#EF4444', fontSize: 14, marginTop: 8 },
+  error: { color: '#f87171', fontSize: 13, marginTop: 8 },
   btn: {
-    width: '100%', padding: '14px', borderRadius: 8, border: 'none',
-    backgroundColor: '#3B82F6', color: '#fff', fontSize: 16, fontWeight: 700,
+    width: '100%', padding: '12px', borderRadius: 10, border: 'none',
+    backgroundColor: '#3B82F6', color: '#fff', fontSize: 15, fontWeight: 700,
     cursor: 'pointer', marginTop: 16,
   },
 };
