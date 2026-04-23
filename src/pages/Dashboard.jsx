@@ -46,6 +46,7 @@ export default function Dashboard() {
   const [manifestData, setManifestData] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedExceptions, setSelectedExceptions] = useState(new Set());
+  const [viewingPhoto, setViewingPhoto] = useState(null);
   const [bols, setBols] = useState([]);
   const [showBilling, setShowBilling] = useState(false);
   const [billingWeek, setBillingWeek] = useState(() => {
@@ -374,6 +375,7 @@ export default function Dashboard() {
       const excs = excSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const standardCount = scans.filter((s) => s.type === 'standard').length;
       const exceptionCount = scans.filter((s) => s.type === 'exception').length + excs.length;
+      const totalAmount = standardCount * 0.40 + exceptionCount * 0.60;
       const { buf, fileName } = exportBillingXLSX(scans, excs, job.meta, weekStart, weekEnd);
       // Convert to base64 for Firestore storage
       const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -386,6 +388,7 @@ export default function Dashboard() {
         standardCount,
         exceptionCount,
         totalUnits: standardCount + exceptionCount,
+        totalAmount,
         fileName,
         fileData: base64,
         createdAt: serverTimestamp(),
@@ -618,6 +621,11 @@ export default function Dashboard() {
                   onChange={() => toggleException(ex.id)}
                   style={{ accentColor: '#3B82F6', cursor: 'pointer', width: 16, height: 16 }} />
               )}
+              {ex.photo && (
+                <img src={ex.photo} alt="Exception"
+                  onClick={() => setViewingPhoto(ex.photo)}
+                  style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', border: '1px solid #444', cursor: 'pointer', flexShrink: 0 }} />
+              )}
               <span style={st.exTag}>{ex.reason}</span>
               <span style={st.exDetail}>
                 {ex.isbn ? `ISBN: ${ex.isbn}` : ''}{ex.title ? ` "${ex.title}"` : ''} · Pod {ex.podId} · {ex.scannerId}
@@ -634,6 +642,14 @@ export default function Dashboard() {
             </div>
           ))}
           {totalExceptions === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions today</p>}
+        </div>
+      )}
+
+      {/* Photo viewer overlay */}
+      {viewingPhoto && (
+        <div onClick={() => setViewingPhoto(null)}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'pointer', padding: 24 }}>
+          <img src={viewingPhoto} alt="Exception photo" style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, border: '2px solid #444' }} />
         </div>
       )}
 

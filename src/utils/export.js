@@ -268,19 +268,25 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
   const startStr = weekStart.toLocaleDateString();
   const endStr = weekEnd.toLocaleDateString();
 
+  const RATE_REGULAR = 0.40;
+  const RATE_EXCEPTION = 0.60;
+
   const standardScans = scans.filter((s) => s.type === 'standard');
   const exceptionScans = scans.filter((s) => s.type === 'exception');
   const totalExceptions = exceptionScans.length + exceptions.length;
+  const regularAmount = standardScans.length * RATE_REGULAR;
+  const exceptionAmount = totalExceptions * RATE_EXCEPTION;
+  const totalAmount = regularAmount + exceptionAmount;
 
   // Sheet 1: Billing Summary (the one you'd use for invoicing)
   const summaryRows = [
     { Item: 'Customer / Job', Detail: jobMeta.name || '', Qty: '', Rate: '', Amount: '' },
     { Item: 'Billing Period', Detail: `${startStr} – ${endStr}`, Qty: '', Rate: '', Amount: '' },
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
-    { Item: 'Regular Scans', Detail: '', Qty: standardScans.length, Rate: '', Amount: '' },
-    { Item: 'Exceptions', Detail: '', Qty: totalExceptions, Rate: '', Amount: '' },
+    { Item: 'Regular Scans', Detail: '', Qty: standardScans.length, Rate: `$${RATE_REGULAR.toFixed(2)}`, Amount: `$${regularAmount.toFixed(2)}` },
+    { Item: 'Exceptions', Detail: '', Qty: totalExceptions, Rate: `$${RATE_EXCEPTION.toFixed(2)}`, Amount: `$${exceptionAmount.toFixed(2)}` },
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
-    { Item: 'TOTAL UNITS', Detail: '', Qty: standardScans.length + totalExceptions, Rate: '', Amount: '' },
+    { Item: 'TOTAL UNITS', Detail: '', Qty: standardScans.length + totalExceptions, Rate: '', Amount: `$${totalAmount.toFixed(2)}` },
   ];
   const ws1 = XLSX.utils.json_to_sheet(summaryRows);
   // Widen columns
@@ -309,16 +315,20 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
       'Regular Scans': d.standard,
       Exceptions: d.exceptions,
       'Day Total': d.standard + d.exceptions,
+      Amount: `$${(d.standard * RATE_REGULAR + d.exceptions * RATE_EXCEPTION).toFixed(2)}`,
     }));
   // Add totals row
+  const totalRegular = dailyRows.reduce((s, r) => s + r['Regular Scans'], 0);
+  const totalExc = dailyRows.reduce((s, r) => s + r.Exceptions, 0);
   dailyRows.push({
     Date: 'TOTAL',
-    'Regular Scans': dailyRows.reduce((s, r) => s + r['Regular Scans'], 0),
-    Exceptions: dailyRows.reduce((s, r) => s + r.Exceptions, 0),
-    'Day Total': dailyRows.reduce((s, r) => s + r['Day Total'], 0),
+    'Regular Scans': totalRegular,
+    Exceptions: totalExc,
+    'Day Total': totalRegular + totalExc,
+    Amount: `$${(totalRegular * RATE_REGULAR + totalExc * RATE_EXCEPTION).toFixed(2)}`,
   });
   const ws2 = XLSX.utils.json_to_sheet(dailyRows);
-  ws2['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+  ws2['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, ws2, 'Daily Breakdown');
 
   // Sheet 3: By Pod

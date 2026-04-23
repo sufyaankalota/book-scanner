@@ -47,6 +47,8 @@ export default function CustomerPortal() {
   // Billing reports
   const [billingReports, setBillingReports] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
+  // Reports tab — default to last 7 days
+  const [reportsShowAll, setReportsShowAll] = useState(false);
 
   // Customer Login
   const handleLogin = async () => {
@@ -534,15 +536,21 @@ export default function CustomerPortal() {
                   <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#22C55E', fontSize: 22, fontWeight: 800 }}>{(report.standardCount || 0).toLocaleString()}</div>
-                      <div style={{ color: '#888', fontSize: 12 }}>Regular Units</div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Regular @ $0.40</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#F97316', fontSize: 22, fontWeight: 800 }}>{(report.exceptionCount || 0).toLocaleString()}</div>
-                      <div style={{ color: '#888', fontSize: 12 }}>Exceptions</div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Exceptions @ $0.60</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#3B82F6', fontSize: 22, fontWeight: 800 }}>{(report.totalUnits || 0).toLocaleString()}</div>
                       <div style={{ color: '#888', fontSize: 12 }}>Total Units</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ color: '#EAB308', fontSize: 22, fontWeight: 800 }}>
+                        ${(report.totalAmount != null ? report.totalAmount : (report.standardCount || 0) * 0.40 + (report.exceptionCount || 0) * 0.60).toFixed(2)}
+                      </div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Total Amount</div>
                     </div>
                   </div>
                 </div>
@@ -554,11 +562,17 @@ export default function CustomerPortal() {
 
       {activeTab === 'reports' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button onClick={() => setReportsShowAll(!reportsShowAll)}
+              style={{ ...st.smallBtn, color: reportsShowAll ? '#3B82F6' : '#666' }}>
+              {reportsShowAll ? '📅 Show Recent Only' : '📅 Show All Dates'}
+            </button>
+          </div>
           <div style={st.card}>
             <h3 style={st.cardTitle}>Daily Scan Reports</h3>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Download a list of all items scanned on each day.</p>
             {dailyBreakdown.length === 0 && <p style={{ color: '#666', fontSize: 14 }}>No data yet.</p>}
-            {dailyBreakdown.slice(0, 14).map((d) => (
+            {(reportsShowAll ? dailyBreakdown : dailyBreakdown.slice(0, 7)).map((d) => (
               <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
                 <div>
                   <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{d.date}</span>
@@ -567,12 +581,18 @@ export default function CustomerPortal() {
                 <button onClick={() => exportDailyScans(d.date)} style={st.smallBtn}>Download</button>
               </div>
             ))}
+            {!reportsShowAll && dailyBreakdown.length > 7 && (
+              <p style={{ color: '#666', fontSize: 13, textAlign: 'center', padding: '8px 0', cursor: 'pointer' }}
+                onClick={() => setReportsShowAll(true)}>
+                + {dailyBreakdown.length - 7} older days hidden
+              </p>
+            )}
           </div>
           <div style={st.card}>
             <h3 style={st.cardTitle}>Daily Exception Reports</h3>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Download exception details for each day.</p>
             {dailyBreakdown.filter((d) => d.exceptions > 0).length === 0 && <p style={{ color: '#666', fontSize: 14 }}>No exceptions.</p>}
-            {dailyBreakdown.filter((d) => d.exceptions > 0).map((d) => (
+            {(reportsShowAll ? dailyBreakdown : dailyBreakdown.slice(0, 7)).filter((d) => d.exceptions > 0).map((d) => (
               <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
                 <div>
                   <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{d.date}</span>
