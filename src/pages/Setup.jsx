@@ -50,6 +50,7 @@ export default function Setup() {
   // Branding
   const [brandName, setBrandName] = useState('');
   const [brandSubtitle, setBrandSubtitle] = useState('');
+  const [brandLogo, setBrandLogo] = useState('');
   const [brandSaved, setBrandSaved] = useState(false);
 
   // Data retention
@@ -93,6 +94,7 @@ export default function Setup() {
         if (brandDoc.exists()) {
           setBrandName(brandDoc.data().name || '');
           setBrandSubtitle(brandDoc.data().subtitle || '');
+          setBrandLogo(brandDoc.data().logo || '');
         }
         // Load past (closed) jobs
         const pastSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
@@ -250,10 +252,20 @@ export default function Setup() {
 
   const handleBrandingSave = async () => {
     try {
-      await setDoc(doc(db, 'config', 'branding'), { name: brandName.trim(), subtitle: brandSubtitle.trim() });
+      await setDoc(doc(db, 'config', 'branding'), { name: brandName.trim(), subtitle: brandSubtitle.trim(), logo: brandLogo });
       logAudit('branding_updated', { name: brandName.trim() }); setBrandSaved(true);
       setTimeout(() => setBrandSaved(false), 3000);
     } catch (err) { alert('Failed to save branding: ' + err.message); }
+  };
+
+  const handleLogoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) { alert('Logo must be under 500 KB'); e.target.value = ''; return; }
+    if (!file.type.startsWith('image/')) { alert('Please select an image file'); e.target.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = () => setBrandLogo(reader.result);
+    reader.readAsDataURL(file);
   };
 
   const handleDataCleanup = async () => {
@@ -407,12 +419,30 @@ export default function Setup() {
 
         {showSection === 'branding' && (
           <div style={s.card}>
-            <label style={s.label}>Company / Warehouse Name</label>
+            <label style={s.label}>Company / App Name</label>
             <input type="text" value={brandName} onChange={(e) => setBrandName(e.target.value)}
-              placeholder="e.g. ACME Warehouse" style={s.input} />
+              placeholder="e.g. BookFlow" style={s.input} />
             <label style={s.label}>Subtitle</label>
             <input type="text" value={brandSubtitle} onChange={(e) => setBrandSubtitle(e.target.value)}
-              placeholder="e.g. Book Processing Center" style={s.input} />
+              placeholder="e.g. by PrepFort" style={s.input} />
+            <label style={s.label}>Logo</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
+              {brandLogo ? (
+                <img src={brandLogo} alt="Logo" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'contain', border: '1px solid #333', backgroundColor: '#0a0a0a' }} />
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: 12, border: '1px dashed #444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12 }}>No logo</div>
+              )}
+              <div style={{ flex: 1 }}>
+                <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ ...s.input, padding: 8 }} />
+                <p style={{ color: '#666', fontSize: 11, marginTop: 4 }}>PNG, JPG, or SVG — max 500 KB</p>
+                {brandLogo && (
+                  <button onClick={() => setBrandLogo('')}
+                    style={{ padding: '2px 10px', borderRadius: 4, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', marginTop: 4 }}>
+                    Remove Logo
+                  </button>
+                )}
+              </div>
+            </div>
             <button onClick={handleBrandingSave}
               style={{ ...s.primaryBtn, marginTop: 12 }}>{brandSaved ? '✓ Saved!' : 'Save Branding'}</button>
           </div>

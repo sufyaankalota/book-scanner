@@ -100,7 +100,7 @@ export default function Home() {
       {/* Header */}
       <div style={styles.header}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 4 }}>
-          <img src="/icon.svg" alt="BookFlow" style={{ width: 44, height: 44, borderRadius: 10 }} />
+          <img src={branding.logo || '/icon.svg'} alt="Logo" style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'contain' }} />
           <h1 style={{ ...styles.title, marginBottom: 0 }}>{branding.name || 'BookFlow'}</h1>
         </div>
         <p style={styles.subtitle}>{branding.subtitle || 'by PrepFort'}</p>

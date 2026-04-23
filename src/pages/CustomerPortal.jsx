@@ -49,6 +49,15 @@ export default function CustomerPortal() {
   const [showArchived, setShowArchived] = useState(false);
   // Reports tab — default to last 7 days
   const [reportsShowAll, setReportsShowAll] = useState(false);
+  // Branding
+  const [brandLogo, setBrandLogo] = useState('');
+
+  // Load branding logo
+  useEffect(() => {
+    getDoc(doc(db, 'config', 'branding')).then((snap) => {
+      if (snap.exists() && snap.data().logo) setBrandLogo(snap.data().logo);
+    }).catch(() => {});
+  }, []);
 
   // Customer Login
   const handleLogin = async () => {
@@ -324,7 +333,7 @@ export default function CustomerPortal() {
       <div style={st.loginContainer}>
         <div style={st.loginCard}>
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <img src="/icon.svg" alt="BookFlow" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8 }} />
+            <img src={brandLogo || '/icon.svg'} alt="Logo" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8, objectFit: 'contain' }} />
             <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
             <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort — Enter your access password</p>
           </div>
