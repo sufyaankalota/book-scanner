@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { hashPassword, verifyPassword } from '../utils/crypto';
+import { verifyPassword } from '../utils/crypto';
 
 const DEFAULT_PIN = '1234';
 

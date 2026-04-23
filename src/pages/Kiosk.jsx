@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../firebase';
 import {
   collection, query, where, onSnapshot, Timestamp,
@@ -103,7 +103,7 @@ export default function Kiosk() {
   const remaining = Math.max(0, dailyTarget - totalScans);
 
   // Hourly breakdown
-  const hourlyData = (() => {
+  const hourlyData = useMemo(() => {
     const hours = {};
     for (const s of allScans) {
       const d = s.timestamp?.toDate?.();
@@ -116,11 +116,11 @@ export default function Kiosk() {
       arr.push({ hour: h, count: hours[h] || 0 });
     }
     return arr;
-  })();
+  }, [allScans]);
   const maxHourly = Math.max(1, ...hourlyData.map((d) => d.count));
 
   return (
-    <div ref={containerRef} style={k.container} onClick={goFullscreen}>
+    <div ref={containerRef} style={k.container}>
       {/* Top bar */}
       <div style={k.topBar}>
         <div>
@@ -234,7 +234,8 @@ export default function Kiosk() {
       </div>
 
       <p style={{ textAlign: 'center', color: '#444', fontSize: 12, marginTop: 16 }}>
-        Click anywhere to toggle fullscreen · Auto-refreshes in real time
+        <button onClick={goFullscreen} style={{ background: 'none', border: '1px solid #444', color: '#888', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: 12 }}>⛶ Toggle Fullscreen</button>
+        {' · '}Auto-refreshes in real time
       </p>
     </div>
   );

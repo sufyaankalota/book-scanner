@@ -25,6 +25,14 @@ export function checkMilestone(count) {
 }
 
 export function triggerConfetti() {
+  // Inject keyframes if not already present
+  if (!document.getElementById('confetti-keyframes')) {
+    const style = document.createElement('style');
+    style.id = 'confetti-keyframes';
+    style.textContent = `@keyframes confettiFall { 0% { transform: translateY(0) rotate(0deg); opacity:1; } 100% { transform: translateY(100vh) rotate(720deg); opacity:0; } }`;
+    document.head.appendChild(style);
+  }
+
   const container = document.createElement('div');
   container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;';
   document.body.appendChild(container);

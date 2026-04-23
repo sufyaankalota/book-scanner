@@ -21,11 +21,11 @@ export default function PhotoUpload() {
     };
   }, [cameraStream]);
 
-  if (!token) {
+  if (!token || !token.startsWith('pu_') || token.length < 10) {
     return (
       <div style={styles.container}>
         <h1 style={styles.title}>Invalid Link</h1>
-        <p style={styles.text}>This upload link is missing the required token.</p>
+        <p style={styles.text}>This upload link is missing a valid token.</p>
       </div>
     );
   }

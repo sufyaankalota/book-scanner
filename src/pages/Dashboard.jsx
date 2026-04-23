@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 function AutoRefreshIndicator({ lastUpdated }) {
@@ -28,9 +28,12 @@ export default function Dashboard() {
   const [job, setJob] = useState(null);
   const [podData, setPodData] = useState({});
   const [presence, setPresence] = useState({});
+  const presenceRef = useRef({});
   const [operatorStats, setOperatorStats] = useState({});
   const [allScans, setAllScans] = useState([]);
   const [allExceptions, setAllExceptions] = useState([]);
+  const allScansRef = useRef([]);
+  const allExceptionsRef = useRef([]);
   const [shifts, setShifts] = useState([]);
   const [showExceptions, setShowExceptions] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -77,6 +80,7 @@ export default function Dashboard() {
         data[d.id] = { ...p, online: p.online && isRecent };
       });
       setPresence(data);
+      presenceRef.current = data;
     });
     return unsub;
   }, []);
@@ -90,6 +94,7 @@ export default function Dashboard() {
     const unsub = onSnapshot(q, (snap) => {
       const scans = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setAllScans(scans);
+      allScansRef.current = scans;
       setLastUpdated(new Date());
       const pods = {};
       const opStats = {};
@@ -117,7 +122,7 @@ export default function Dashboard() {
       // Push alert: check for idle pods (no scans in 5 min from online pods)
       if (notificationsEnabled) {
         for (const podId of job.meta.pods || []) {
-          const pr = presence[podId]; if (!pr?.online) continue;
+          const pr = presenceRef.current[podId]; if (!pr?.online) continue;
           const podScans = scans.filter((s) => s.podId === podId);
           const last = podScans.sort((a, b) => (b.timestamp?.toDate?.()?.getTime() || 0) - (a.timestamp?.toDate?.()?.getTime() || 0))[0];
           if (last) {
@@ -130,7 +135,7 @@ export default function Dashboard() {
       }
     });
     return unsub;
-  }, [job, notificationsEnabled, presence]);
+  }, [job, notificationsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Exceptions
   useEffect(() => {
@@ -139,7 +144,9 @@ export default function Dashboard() {
     const q = query(collection(db, 'exceptions'), where('jobId', '==', job.id),
       where('timestamp', '>=', Timestamp.fromDate(today)));
     const unsub = onSnapshot(q, (snap) => {
-      setAllExceptions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const exs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setAllExceptions(exs);
+      allExceptionsRef.current = exs;
     });
     return unsub;
   }, [job]);
@@ -179,12 +186,12 @@ export default function Dashboard() {
         const [h, m] = targetTime.split(':').map(Number);
         if (now.getHours() === h && now.getMinutes() === m) {
           exported = true;
-          exportTodayXLSX(allScans, allExceptions, job.meta);
+          exportTodayXLSX(allScansRef.current, allExceptionsRef.current, job.meta);
         }
       } catch {}
     }, 60000);
     return () => clearInterval(interval);
-  }, [job, allScans, allExceptions]);
+  }, [job]);
 
   // Enable notifications
   const enableNotifications = async () => {

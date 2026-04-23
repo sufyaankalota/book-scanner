@@ -85,7 +85,7 @@ export default function Pod() {
   const [lastBarcodeType, setLastBarcodeType] = useState('');
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [breakMinutesUsed, setBreakMinutesUsed] = useState(0);
-  const [operatorHistory] = useState(() => {
+  const [operatorHistory, setOperatorHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('operator-history') || '[]'); } catch { return []; }
   });
 
@@ -111,6 +111,7 @@ export default function Pod() {
       const filtered = history.filter((n) => n.toLowerCase() !== trimmed.toLowerCase());
       const updated = [trimmed, ...filtered].slice(0, 10);
       localStorage.setItem('operator-history', JSON.stringify(updated));
+      setOperatorHistory(updated);
     } catch {}
   };
 
@@ -328,15 +329,16 @@ export default function Pod() {
   }, [breakTimer]); // eslint-disable-line
 
   // ─── Shift tracking ───
-  const startShift = async () => {
+  const startShift = async (nameOverride) => {
     if (trainingMode) return;
+    const name = nameOverride || operatorName;
     try {
       const docRef = await addDoc(collection(db, 'shifts'), {
-        operatorName, podId, jobId: job?.id || '',
+        operatorName: name, podId, jobId: job?.id || '',
         startTime: serverTimestamp(), endTime: null, totalScans: 0,
       });
       shiftDocRef.current = docRef.id;
-      logAudit('shift_start', { operator: operatorName, podId });
+      logAudit('shift_start', { operator: name, podId });
     } catch {}
   };
 
@@ -832,22 +834,26 @@ export default function Pod() {
               </p>
               <input type="text" value={switchName}
                 onChange={(e) => setSwitchName(e.target.value)}
-                onKeyDown={(e) => {
+                onKeyDown={async (e) => {
                   if (e.key === 'Enter' && switchName.trim()) {
-                    endShift();
-                    setOperatorName(switchName.trim()); setSwitchName('');
+                    const newName = switchName.trim();
+                    await endShift();
+                    saveOperatorToHistory(newName);
+                    setOperatorName(newName); setSwitchName('');
                     setShowSwitchOperator(false); setPhase(PHASE_SCANNING);
-                    startShift(); setTimeout(refocusInput, 100);
+                    startShift(newName); setTimeout(refocusInput, 100);
                   }
                 }}
                 placeholder="New operator name..." style={styles.setupInput} autoFocus />
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-                <button onClick={() => {
+                <button onClick={async () => {
                   if (switchName.trim()) {
-                    endShift();
-                    setOperatorName(switchName.trim()); setSwitchName('');
+                    const newName = switchName.trim();
+                    await endShift();
+                    saveOperatorToHistory(newName);
+                    setOperatorName(newName); setSwitchName('');
                     setShowSwitchOperator(false); setPhase(PHASE_SCANNING);
-                    startShift(); setTimeout(refocusInput, 100);
+                    startShift(newName); setTimeout(refocusInput, 100);
                   }
                 }} style={{ ...styles.primaryBtn, width: 'auto' }}>Switch & Resume</button>
                 <button onClick={() => { setShowSwitchOperator(false); setSwitchName(''); }} style={styles.secondaryBtn}>Cancel</button>

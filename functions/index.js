@@ -6,12 +6,12 @@
  *
  * Setup:
  *   1. cd functions && npm install
- *   2. Set email SMTP credentials:
- *      firebase functions:config:set smtp.host="smtp.gmail.com" smtp.port="587"
- *        smtp.user="your-email@gmail.com" smtp.pass="your-app-password"
+ *   2. Set SMTP environment variables (in .env or Cloud Functions secrets):
+ *      SMTP_HOST=smtp.gmail.com  SMTP_PORT=587
+ *      SMTP_USER=your-email@gmail.com  SMTP_PASS=your-app-password
  *      OR for SendGrid:
- *      firebase functions:config:set smtp.host="smtp.sendgrid.net" smtp.port="587"
- *        smtp.user="apikey" smtp.pass="SG.your-sendgrid-key"
+ *      SMTP_HOST=smtp.sendgrid.net  SMTP_PORT=587
+ *      SMTP_USER=apikey  SMTP_PASS=SG.your-sendgrid-key
  *   3. firebase deploy --only functions
  *
  * The report email address is read from Firestore: config/schedule.reportEmail
