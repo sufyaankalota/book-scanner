@@ -72,7 +72,8 @@ export default function Setup() {
   const [reportEmail, setReportEmail] = useState('');
   const [scheduleSaved, setScheduleSaved] = useState(false);
 
-  // Customer password
+  // Customer portal credentials
+  const [customerEmail, setCustomerEmail] = useState('');
   const [customerPw, setCustomerPw] = useState('');
   const [customerPwSaved, setCustomerPwSaved] = useState(false);
 
@@ -440,6 +441,7 @@ export default function Setup() {
               {key === 'pin' ? '🔒 PIN' : key === 'branding' ? '🎨 Branding' : key === 'alerts' ? '⚙️ Alerts' : key === 'qr' ? '📱 QR Codes' : key === 'schedule' ? '⏰ Auto-Export' : key === 'retention' ? '🗑 Retention' : key === 'audit' ? '📋 Audit' : '🔑 Customer'}
             </button>
           ))}
+          <Link to="/users" style={{ ...s.secondaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>👥 Users</Link>
         </div>
 
         {showSection === 'pin' && (
@@ -572,7 +574,8 @@ export default function Setup() {
                   <div key={log.id} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid #222', fontSize: 13 }}>
                     <span style={{ color: '#3B82F6', fontWeight: 600, minWidth: 120 }}>{log.action}</span>
                     <span style={{ color: '#888', flex: 1 }}>
-                      {Object.entries(log).filter(([k]) => !['id', 'action', 'timestamp'].includes(k)).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                      {log.user?.name && <span style={{ color: '#A855F7', marginRight: 6 }}>{log.user.name}</span>}
+                      {Object.entries(log).filter(([k]) => !['id', 'action', 'timestamp', 'user'].includes(k)).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
                     </span>
                     <span style={{ color: '#666', whiteSpace: 'nowrap' }}>{log.timestamp?.toDate?.()?.toLocaleString() || '—'}</span>
                   </div>
@@ -585,18 +588,23 @@ export default function Setup() {
 
         {showSection === 'customer' && (
           <div style={s.card}>
-            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>Set a password for the Customer Portal (/portal). Customers use this to view daily volumes, reports, upload POs and BOLs.</p>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>Set the email and password for the Customer Portal (/portal). Customers use this to view daily volumes, reports, upload POs and BOLs.</p>
+            <input type="email" value={customerEmail}
+              onChange={(e) => setCustomerEmail(e.target.value)}
+              placeholder="Customer email..." style={s.input} />
             <input type="text" value={customerPw}
               onChange={(e) => setCustomerPw(e.target.value)}
-              placeholder="Customer password..." style={s.input} />
+              placeholder="Customer password..." style={{ ...s.input, marginTop: 8 }} />
             <button onClick={async () => {
               if (!customerPw.trim()) return;
               const pwHash = await hashPassword(customerPw.trim());
-              await setDoc(doc(db, 'config', 'customer'), { passwordHash: pwHash }, { merge: true });
+              const update = { passwordHash: pwHash };
+              if (customerEmail.trim()) update.email = customerEmail.trim().toLowerCase();
+              await setDoc(doc(db, 'config', 'customer'), update, { merge: true });
               setCustomerPwSaved(true);
               setTimeout(() => setCustomerPwSaved(false), 2000);
             }} disabled={!customerPw.trim()}
-              style={{ ...s.primaryBtn, marginTop: 8 }}>{customerPwSaved ? '✓ Password Saved!' : 'Set Customer Password'}</button>
+              style={{ ...s.primaryBtn, marginTop: 8 }}>{customerPwSaved ? '✓ Saved!' : 'Save Customer Credentials'}</button>
           </div>
         )}
       </div>

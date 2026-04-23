@@ -20,6 +20,7 @@ const DEFAULT_COLORS = [
 export default function CustomerPortal() {
   // Auth
   const [authenticated, setAuthenticated] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -68,7 +69,7 @@ export default function CustomerPortal() {
 
   // Customer Login
   const handleLogin = async () => {
-    if (!password.trim()) return;
+    if (!loginEmail.trim() || !password.trim()) return;
     setAuthLoading(true);
     setAuthError('');
     try {
@@ -77,18 +78,22 @@ export default function CustomerPortal() {
         setAuthError('Customer access not configured. Contact the warehouse.');
       } else {
         const data = configDoc.data();
-        let match = false;
-        // Support both hashed and legacy plaintext passwords
-        if (data.passwordHash) {
-          match = await verifyPassword(password, data.passwordHash);
-        } else if (data.password) {
-          match = password === data.password;
-        }
-        if (match) {
-          setAuthenticated(true);
-          sessionStorage.setItem('customer-auth', 'true');
+        // Verify email matches
+        if (data.email && data.email.toLowerCase() !== loginEmail.trim().toLowerCase()) {
+          setAuthError('Invalid email or password.');
         } else {
-          setAuthError('Incorrect password.');
+          let match = false;
+          if (data.passwordHash) {
+            match = await verifyPassword(password, data.passwordHash);
+          } else if (data.password) {
+            match = password === data.password;
+          }
+          if (match) {
+            setAuthenticated(true);
+            sessionStorage.setItem('customer-auth', 'true');
+          } else {
+            setAuthError('Invalid email or password.');
+          }
         }
       }
     } catch {
@@ -388,6 +393,7 @@ export default function CustomerPortal() {
     sessionStorage.removeItem('customer-auth');
     setAuthenticated(false);
     setPassword('');
+    setLoginEmail('');
   };
 
   // LOGIN SCREEN
@@ -398,15 +404,18 @@ export default function CustomerPortal() {
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <img src={brandLogo || '/icon.svg'} alt="Logo" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8, objectFit: 'contain' }} />
             <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
-            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort — Enter your access password</p>
+            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort — Sign in to your portal</p>
           </div>
+          <input type="email" value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            placeholder="Email" autoFocus style={st.loginInput} />
           <input type="password" value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
-            placeholder="Password..." autoFocus style={st.loginInput} />
+            placeholder="Password" style={{ ...st.loginInput, marginTop: 10 }} />
           {authError && <p style={{ color: '#EF4444', fontSize: 14, marginTop: 8, textAlign: 'center' }}>{authError}</p>}
-          <button onClick={handleLogin} disabled={!password.trim() || authLoading}
-            style={{ ...st.loginBtn, opacity: !password.trim() || authLoading ? 0.5 : 1 }}>
+          <button onClick={handleLogin} disabled={!loginEmail.trim() || !password.trim() || authLoading}
+            style={{ ...st.loginBtn, opacity: !loginEmail.trim() || !password.trim() || authLoading ? 0.5 : 1 }}>
             {authLoading ? 'Verifying...' : 'Sign In'}
           </button>
         </div>

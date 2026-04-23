@@ -91,6 +91,13 @@ service cloud.firestore {
       }
     }
 
+    // Users — app user management
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['name', 'email', 'passwordHash', 'role']);
+      allow update, delete: if true;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

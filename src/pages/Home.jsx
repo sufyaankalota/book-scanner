@@ -7,8 +7,10 @@ import {
   where,
   onSnapshot,
 } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Home() {
+  const { currentUser, logout } = useAuth();
   const [job, setJob] = useState(null);
   const [presenceRaw, setPresenceRaw] = useState({});
   const [presence, setPresence] = useState({});
@@ -97,6 +99,13 @@ export default function Home() {
 
   return (
     <div style={styles.container}>
+      {/* User bar */}
+      {currentUser && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <span style={{ color: '#666', fontSize: 13 }}>{currentUser.name} ({currentUser.role})</span>
+          <button onClick={logout} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #333', backgroundColor: 'transparent', color: '#888', fontSize: 12, cursor: 'pointer' }}>Sign Out</button>
+        </div>
+      )}
       {/* Header */}
       <div style={styles.header}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 4 }}>

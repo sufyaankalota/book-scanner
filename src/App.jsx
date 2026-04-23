@@ -2,7 +2,8 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './pages/Home';
 import Pod from './pages/Pod';
-import SupervisorGate from './components/SupervisorGate';
+import AuthGate from './components/AuthGate';
+import { AuthProvider } from './contexts/AuthContext';
 
 // Lazy load non-critical pages
 const Setup = lazy(() => import('./pages/Setup'));
@@ -11,6 +12,7 @@ const JobHistory = lazy(() => import('./pages/JobHistory'));
 const Kiosk = lazy(() => import('./pages/Kiosk'));
 const CustomerPortal = lazy(() => import('./pages/CustomerPortal'));
 const PhotoUpload = lazy(() => import('./pages/PhotoUpload'));
+const Users = lazy(() => import('./pages/Users'));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -62,21 +64,24 @@ const Loading = () => (
 export default function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <Suspense fallback={<Loading />}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/setup" element={<SupervisorGate><Setup /></SupervisorGate>} />
-            <Route path="/pod" element={<Pod />} />
-            <Route path="/dashboard" element={<SupervisorGate><Dashboard /></SupervisorGate>} />
-            <Route path="/kiosk" element={<Kiosk />} />
-            <Route path="/portal" element={<CustomerPortal />} />
-            <Route path="/upload" element={<PhotoUpload />} />
-            <Route path="/history" element={<SupervisorGate><JobHistory /></SupervisorGate>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Suspense fallback={<Loading />}>
+            <Routes>
+              <Route path="/" element={<AuthGate><Home /></AuthGate>} />
+              <Route path="/setup" element={<AuthGate requiredRole="admin"><Setup /></AuthGate>} />
+              <Route path="/pod" element={<AuthGate><Pod /></AuthGate>} />
+              <Route path="/dashboard" element={<AuthGate requiredRole="manager"><Dashboard /></AuthGate>} />
+              <Route path="/kiosk" element={<AuthGate><Kiosk /></AuthGate>} />
+              <Route path="/portal" element={<CustomerPortal />} />
+              <Route path="/upload" element={<PhotoUpload />} />
+              <Route path="/history" element={<AuthGate requiredRole="manager"><JobHistory /></AuthGate>} />
+              <Route path="/users" element={<AuthGate requiredRole="admin"><Users /></AuthGate>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }
