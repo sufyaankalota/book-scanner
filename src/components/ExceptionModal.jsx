@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { t } from '../utils/locale';
 
-const EXCEPTION_REASONS = [
-  'Damaged / Unsellable',
-  'No ISBN Barcode',
-  'Not a Book',
-  'Other',
+const EXCEPTION_REASON_KEYS = [
+  'reasonDamaged',
+  'reasonNoIsbn',
+  'reasonNotBook',
+  'reasonOther',
 ];
 
 function generateToken() {
@@ -87,8 +88,10 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
 
   const handleSubmit = () => {
     if (needsPhoto && !photoData) return;
+    // Store English reason text in Firestore for consistency
+    const REASON_EN = { reasonDamaged: 'Damaged / Unsellable', reasonNoIsbn: 'No ISBN Barcode', reasonNotBook: 'Not a Book', reasonOther: 'Other' };
     onSubmit({
-      reason,
+      reason: REASON_EN[reason] || reason,
       isbn: null,
       title: title.trim() || null,
       photo: photoData || null,
@@ -118,20 +121,20 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     <div style={styles.overlay}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.titleRow}>
-          <h2 style={styles.title}>⚠️ Log Exception</h2>
+          <h2 style={styles.title}>⚠️ {t('logException')}</h2>
           <button onClick={handleClose} style={styles.closeX} aria-label="Close">✕</button>
         </div>
 
         {step === 'reason' && (
           <div>
-            <p style={styles.subtitle}>What's the issue?</p>
-            {EXCEPTION_REASONS.map((r) => (
+            <p style={styles.subtitle}>{t('whatsTheIssue')}</p>
+            {EXCEPTION_REASON_KEYS.map((rKey) => (
               <button
-                key={r}
-                onClick={() => handleReasonSelect(r)}
+                key={rKey}
+                onClick={() => handleReasonSelect(rKey)}
                 style={styles.reasonBtn}
               >
-                {r}
+                {t(rKey)}
               </button>
             ))}
           </div>
@@ -139,19 +142,19 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
 
         {step === 'details' && (
           <div>
-            <div style={styles.reasonTag}>{reason}</div>
+            <div style={styles.reasonTag}>{t(reason)}</div>
 
             <div style={{ backgroundColor: '#1e3a5f', border: '1px solid #3B82F6', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#93c5fd', fontSize: 13 }}>
-              💡 If this item has a readable ISBN, use the <strong>Manual Entry</strong> button on the scan screen instead — it will go through the regular scan flow.
+              💡 {t('manualEntryHintModal')}
             </div>
 
-            <p style={styles.fieldLabel}>Book Title (for identification):</p>
+            <p style={styles.fieldLabel}>{t('bookTitle')}</p>
             <input ref={titleRef} type="text" value={title}
               onChange={(e) => setTitle(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder="e.g. Harry Potter..." style={styles.input} />
+              placeholder={t('bookTitlePlaceholder')} style={styles.input} />
 
             <p style={{ ...styles.fieldLabel, marginTop: 14, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
-              📸 Photo {needsPhoto ? '(required — no title entered)' : '(optional)'}:
+              📸 {t('photo')} {needsPhoto ? t('photoRequired') : t('photoOptional')}:
             </p>
 
             {/* Photo preview */}
@@ -159,7 +162,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                 <img src={photoData} alt="Exception photo"
                   style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', border: '1px solid #555' }} />
-                <span style={{ color: '#22C55E', fontSize: 14, fontWeight: 600 }}>✓ Photo captured</span>
+                <span style={{ color: '#22C55E', fontSize: 14, fontWeight: 600 }}>✓ {t('photoCaptured')}</span>
                 <button onClick={() => setPhotoData(null)}
                   style={{ background: 'none', border: 'none', color: '#888', fontSize: 16, cursor: 'pointer', padding: 4 }}>✕</button>
               </div>
@@ -168,8 +171,8 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             {/* Photo capture buttons */}
             {!photoMode && !photoData && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                <button onClick={startPhoneUpload} style={styles.photoBtn}>📱 Take Photo (Phone)</button>
-                <button onClick={() => fileRef.current?.click()} style={styles.photoBtn}>📁 Upload File</button>
+                <button onClick={startPhoneUpload} style={styles.photoBtn}>📱 {t('takePhotoPhone')}</button>
+                <button onClick={() => fileRef.current?.click()} style={styles.photoBtn}>📁 {t('uploadFile')}</button>
                 <input ref={fileRef} type="file" accept="image/*" onChange={handleFilePhoto} style={{ display: 'none' }} />
               </div>
             )}
@@ -177,8 +180,8 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             {/* Retake options */}
             {photoData && !photoMode && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                <button onClick={() => { setPhotoData(null); startPhoneUpload(); }} style={styles.photoBtnSmall}>📱 Retake (Phone)</button>
-                <button onClick={() => { setPhotoData(null); fileRef.current?.click(); }} style={styles.photoBtnSmall}>📁 Retake (File)</button>
+                <button onClick={() => { setPhotoData(null); startPhoneUpload(); }} style={styles.photoBtnSmall}>📱 {t('retakePhone')}</button>
+                <button onClick={() => { setPhotoData(null); fileRef.current?.click(); }} style={styles.photoBtnSmall}>📁 {t('retakeFile')}</button>
               </div>
             )}
 
@@ -186,7 +189,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             {photoMode === 'phone' && (
               <div style={styles.phoneBox}>
                 <p style={{ color: '#ccc', fontSize: 14, marginBottom: 8, textAlign: 'center' }}>
-                  Scan this QR code with your phone to take a photo:
+                  {t('scanQrHint')}
                 </p>
                 <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <img src={getQrUrl()} alt="Upload QR Code"
@@ -194,24 +197,24 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
                 </div>
                 {phoneWaiting && (
                   <p style={{ color: '#EAB308', fontSize: 13, textAlign: 'center' }}>
-                    ⏳ Waiting for photo from phone...
+                    ⏳ {t('waitingForPhoto')}
                   </p>
                 )}
                 <button onClick={cancelPhoneUpload}
-                  style={{ ...styles.photoBtnSmall, width: '100%', marginTop: 8 }}>Cancel</button>
+                  style={{ ...styles.photoBtnSmall, width: '100%', marginTop: 8 }}>{t('cancel')}</button>
               </div>
             )}
 
             <div style={styles.instructionBanner}>
               <span style={styles.instructionIcon}>📦</span>
               <span style={styles.instructionText}>
-                Place this item in the <strong>EXCEPTION GAYLORD / BIN</strong>
+                {t('placeInExceptionBin')}
               </span>
             </div>
 
             {needsPhoto && !photoData && (
               <p style={{ color: '#F97316', fontSize: 13, marginTop: 8, marginBottom: 0 }}>
-                ⚠️ Photo is required when no title is provided
+                ⚠️ {t('photoRequiredWarning')}
               </p>
             )}
 
@@ -219,15 +222,15 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               <button onClick={handleSubmit}
                 disabled={needsPhoto && !photoData}
                 style={{ ...styles.submitBtn, opacity: (needsPhoto && !photoData) ? 0.5 : 1, cursor: (needsPhoto && !photoData) ? 'not-allowed' : 'pointer' }}>
-                Log Exception
+                {t('logException')}
               </button>
               <button onClick={() => { setStep('reason'); setTitle(''); setReason(''); setPhotoData(null); }}
-                style={styles.backBtn}>← Back</button>
+                style={styles.backBtn}>← {t('back')}</button>
             </div>
           </div>
         )}
 
-        <button onClick={handleClose} style={styles.cancelBtn}>Cancel</button>
+        <button onClick={handleClose} style={styles.cancelBtn}>{t('cancel')}</button>
       </div>
     </div>
   );

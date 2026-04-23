@@ -5,8 +5,10 @@
 
 export function isValidISBN(code) {
   const cleaned = code.replace(/[-\s]/g, '');
-  if (cleaned.length === 13) return isValidISBN13(cleaned);
-  if (cleaned.length === 10) return isValidISBN10(cleaned);
+  if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) return true;
+  if (cleaned.length === 10 && /^\d{9}[\dXx]$/.test(cleaned)) return true;
+  // Accept UPC-A (12 digits) — common on books, scanner validates check digit
+  if (cleaned.length === 12 && /^\d{12}$/.test(cleaned)) return true;
   return false;
 }
 

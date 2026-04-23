@@ -371,37 +371,37 @@ export default function Pod() {
   };
 
   // ─── Scan handler ───
-  const handleScan = (raw) => {
+  const handleScan = (raw, isManual = false) => {
     const isbn = cleanISBN(raw);
     if (!isbn) return;
 
     // Same ISBN as last scan — always confirm
     if (isbn === lastScannedRef.current.isbn) {
       playErrorBeep();
-      setDuplicateConfirm({ isbn });
+      setDuplicateConfirm({ isbn, isManual });
       return;
     }
     lastScannedRef.current = { isbn, time: Date.now() };
-    processScan(isbn);
+    processScan(isbn, isManual);
   };
 
   const confirmDuplicate = () => {
     if (!duplicateConfirm) return;
-    const { isbn } = duplicateConfirm;
+    const { isbn, isManual } = duplicateConfirm;
     lastScannedRef.current = { isbn, time: Date.now() };
     setDuplicateConfirm(null);
-    processScan(isbn);
+    processScan(isbn, isManual);
     setTimeout(refocusInput, 100);
   };
 
   const cancelDuplicate = () => {
     setDuplicateConfirm(null);
-    flash('#EAB308', 'DUPLICATE SKIPPED', 1500);
+    flash('#EAB308', t('duplicateSkipped'), 1500);
     setTimeout(refocusInput, 100);
   };
 
   // ─── Process scan (after validation/confirmation) ───
-  const processScan = (isbn) => {
+  const processScan = (isbn, isManual = false) => {
     const now = Date.now();
 
     if (!isValidISBN(isbn)) {
@@ -409,7 +409,7 @@ export default function Pod() {
       setLastBarcodeType(detectBarcodeType(isbn));
       return;
     }
-    if (!job) { playErrorBeep(); flash('#EF4444', 'NO ACTIVE JOB'); return; }
+    if (!job) { playErrorBeep(); flash('#EF4444', t('noActiveJob')); return; }
 
     setLastBarcodeType(detectBarcodeType(isbn));
     setLastScanTime(new Date());
@@ -440,19 +440,25 @@ export default function Pod() {
     }
 
     if (job.meta.mode === 'single') {
-      playSuccessBeep();
-      flash('#22C55E', '✓ ' + t('scanSuccess'));
+      const singleType = isManual ? 'exception' : 'standard';
+      if (isManual) {
+        playErrorBeep();
+        flash('#F97316', t('manualBilled'), 2000);
+      } else {
+        playSuccessBeep();
+        flash('#22C55E', '✓ ' + t('scanSuccess'));
+      }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); sessionStorage.setItem('bestStreak', String(n)); } return n; });
-      setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null }, ...prev].slice(0, 20));
+      setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
-        poName: job.meta.name, timestamp: serverTimestamp(), type: 'standard',
+        poName: job.meta.name, timestamp: serverTimestamp(), type: singleType, ...(isManual ? { source: 'manual' } : {}),
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
         setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
-        playErrorBeep(); flash('#EF4444', 'WRITE FAILED — RESCAN', 2000);
+        playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
       return;
     }
@@ -460,35 +466,41 @@ export default function Pod() {
     // Multi-PO
     const poName = manifestCache[isbn];
     if (poName) {
+      const multiType = isManual ? 'exception' : 'standard';
       const color = job.poColors?.[poName] || '#22C55E';
-      playColorBeep(color);
-      flash(color, `${getColorName(color)} GAYLORD`);
+      if (isManual) {
+        playErrorBeep();
+        flash('#F97316', `${getColorName(color)} ${t('gaylord')} — ${t('manualBilled')}`, 2500);
+      } else {
+        playColorBeep(color);
+        flash(color, `${getColorName(color)} ${t('gaylord')}`);
+      }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); sessionStorage.setItem('bestStreak', String(n)); } return n; });
-      setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null }, ...prev].slice(0, 20));
+      setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn, poName,
-        timestamp: serverTimestamp(), type: 'standard',
+        timestamp: serverTimestamp(), type: multiType, ...(isManual ? { source: 'manual' } : {}),
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
         setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
-        playErrorBeep(); flash('#EF4444', 'WRITE FAILED — RESCAN', 2000);
+        playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
     } else {
       playErrorBeep();
-      flash('#F97316', 'NOT IN MANIFEST — EXCEPTIONS', 2000);
+      flash('#F97316', t('notInManifest'), 2000);
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
-        poName: 'EXCEPTIONS', timestamp: serverTimestamp(), type: 'exception',
+        poName: 'EXCEPTIONS', timestamp: serverTimestamp(), type: 'exception', ...(isManual ? { source: 'manual' } : {}),
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
         setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
-        playErrorBeep(); flash('#EF4444', 'WRITE FAILED — RESCAN', 2000);
+        playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
     }
   };
@@ -501,8 +513,8 @@ export default function Pod() {
       await deleteDoc(doc(db, 'scans', last.docId));
       setLocalCount((c) => Math.max(0, c - 1));
       setRecentScans((prev) => prev.slice(1));
-      flash('#EAB308', 'LAST SCAN REMOVED', 1500);
-    } catch { flash('#EF4444', 'UNDO FAILED', 1500); }
+      flash('#EAB308', t('lastScanRemoved'), 1500);
+    } catch { flash('#EF4444', t('undoFailed'), 1500); }
   };
 
   const handleKeyDown = (e) => {
@@ -518,7 +530,7 @@ export default function Pod() {
   const handleException = (data) => {
     if (!job) return;
     if (trainingMode) {
-      flash('#818cf8', t('trainingMode') + ' — exception not saved');
+      flash('#818cf8', t('trainingMode') + ' — ' + t('exceptionNotSaved'));
       return;
     }
     addDoc(collection(db, 'exceptions'), {
@@ -527,7 +539,7 @@ export default function Pod() {
       photo: data.photo || null,
       timestamp: serverTimestamp(),
     }).then(() => flash('#F97316', '✓ ' + t('exception'), 1000))
-      .catch(() => flash('#EF4444', 'Failed to log exception', 1000));
+      .catch(() => flash('#EF4444', t('failedLogException'), 1000));
   };
 
   const handlePairScan = (e) => {
@@ -1059,6 +1071,7 @@ export default function Pod() {
               )}
               {s.poName === 'TRAINING' && <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 600 }}>TRAINING</span>}
               {s.isException && <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 600 }}>EXCEPTION</span>}
+              {s.isManual && !s.isException && <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 600 }}>MANUAL</span>}
               <span style={{ marginLeft: 'auto', fontSize: 11, color: '#666' }}>{s.time.toLocaleTimeString()}</span>
             </div>
           ))}
@@ -1067,13 +1080,14 @@ export default function Pod() {
 
       {/* Manual ISBN Entry */}
       {showManualEntry && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #3B82F6', borderRadius: 12, padding: 16, marginBottom: 12 }}>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #F97316', borderRadius: 12, padding: 16, marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ color: '#93c5fd', fontWeight: 700, fontSize: 15 }}>⌨️ Manual ISBN Entry</span>
+            <span style={{ color: '#fdba74', fontWeight: 700, fontSize: 15 }}>⌨️ {t('manualIsbnEntry')}</span>
             <button onClick={() => { setShowManualEntry(false); setManualIsbn(''); setTimeout(refocusInput, 100); }}
               style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 16, width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
-          <p style={{ color: '#888', fontSize: 13, margin: '0 0 8px' }}>Type the ISBN if the barcode can't be scanned.</p>
+          <p style={{ color: '#F97316', fontSize: 12, margin: '0 0 4px', fontWeight: 600 }}>⚠️ {t('manualBilled')}</p>
+          <p style={{ color: '#888', fontSize: 13, margin: '0 0 8px' }}>{t('manualEntryHint')}</p>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               ref={manualInputRef}
@@ -1087,7 +1101,7 @@ export default function Pod() {
                   const val = manualIsbn.trim();
                   setManualIsbn('');
                   setShowManualEntry(false);
-                  handleScan(val);
+                  handleScan(val, true);
                   setTimeout(refocusInput, 100);
                 }
                 if (e.key === 'Escape') {
@@ -1098,7 +1112,7 @@ export default function Pod() {
                 }
               }}
               placeholder="e.g. 978-0-13-468599-1"
-              style={{ flex: 1, padding: '12px 14px', borderRadius: 8, border: '2px solid #3B82F6', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', outline: 'none' }}
+              style={{ flex: 1, padding: '12px 14px', borderRadius: 8, border: '2px solid #F97316', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', outline: 'none' }}
               autoFocus
             />
             <button
@@ -1107,12 +1121,12 @@ export default function Pod() {
                   const val = manualIsbn.trim();
                   setManualIsbn('');
                   setShowManualEntry(false);
-                  handleScan(val);
+                  handleScan(val, true);
                   setTimeout(refocusInput, 100);
                 }
               }}
               disabled={!manualIsbn.trim()}
-              style={{ padding: '12px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#3B82F6' : '#333', color: '#fff', fontSize: 16, fontWeight: 700, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
+              style={{ padding: '12px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#F97316' : '#333', color: '#fff', fontSize: 16, fontWeight: 700, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
             >Scan ↵</button>
           </div>
         </div>
@@ -1122,14 +1136,13 @@ export default function Pod() {
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
           style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 14 }}>
-          ⌨️ Manual Entry
+          ⌨️ {t('manualEntry')}
         </button>
         <button onClick={() => setShowExceptionModal(true)}
           style={{ ...styles.exceptionBtn, margin: 0, flex: 1 }}>
           ⚠️ {t('exceptions').toUpperCase()}
         </button>
       </div>
-      <p style={{ textAlign: 'center', color: '#555', fontSize: 12, marginTop: 4 }}>Esc = Exception · Type ISBN for manual entry</p>
 
       {!job && (
         <div style={styles.warning}>
@@ -1148,20 +1161,20 @@ export default function Pod() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div style={{ backgroundColor: '#1a1a1a', border: '3px solid #EAB308', borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
-            <h2 style={{ color: '#EAB308', margin: '0 0 8px', fontSize: 24, fontWeight: 800 }}>Duplicate ISBN</h2>
-            <p style={{ color: '#ccc', fontSize: 16, margin: '0 0 4px' }}>This ISBN was just scanned:</p>
+            <h2 style={{ color: '#EAB308', margin: '0 0 8px', fontSize: 24, fontWeight: 800 }}>{t('duplicateIsbn')}</h2>
+            <p style={{ color: '#ccc', fontSize: 16, margin: '0 0 4px' }}>{t('duplicateJustScanned')}</p>
             <p style={{ color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', margin: '8px 0 20px', padding: '10px 16px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
             <p style={{ color: '#999', fontSize: 14, margin: '0 0 24px' }}>
-              Is this a different copy of the same book?
+              {t('duplicateDifferentCopy')}
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
               <button onClick={confirmDuplicate}
                 style={{ padding: '14px 28px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
-                ✓ Yes, Scan It
+                ✓ {t('scanAgain')}
               </button>
               <button onClick={cancelDuplicate}
                 style={{ padding: '14px 28px', borderRadius: 10, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
-                ✕ Skip
+                ✕ {t('skip')}
               </button>
             </div>
           </div>
