@@ -4,37 +4,15 @@
       <stop offset="0%" stop-color="#FBAD41"/>
       <stop offset="100%" stop-color="#F7941D"/>
     </linearGradient>
-    <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#3D3A8C"/>
-      <stop offset="100%" stop-color="#2D2B6B"/>
-    </linearGradient>
   </defs>
-  <!-- Background circle -->
-  <circle cx="256" cy="256" r="256" fill="url(#pg)"/>
-  <!-- Left page -->
-  <path d="M248 128 L248 370 Q248 380 238 378 L128 348 Q118 346 118 336 L118 148 Q118 138 128 140 L238 160 Q248 162 248 148 Z" fill="#ffffff" opacity="0.95"/>
-  <!-- Right page -->
-  <path d="M264 128 L264 370 Q264 380 274 378 L384 348 Q394 346 394 336 L394 148 Q394 138 384 140 L274 160 Q264 162 264 148 Z" fill="#ffffff" opacity="0.85"/>
-  <!-- Spine -->
-  <rect x="246" y="122" width="20" height="260" rx="4" fill="#ffffff" opacity="0.5"/>
-  <!-- Scan line 1 -->
-  <rect x="142" y="198" width="86" height="4" rx="2" fill="url(#og)" opacity="0.9"/>
-  <!-- Scan line 2 -->
-  <rect x="142" y="218" width="72" height="4" rx="2" fill="url(#og)" opacity="0.7"/>
-  <!-- Scan line 3 -->
-  <rect x="142" y="238" width="80" height="4" rx="2" fill="url(#og)" opacity="0.5"/>
-  <!-- Flow arrow on right page -->
-  <path d="M290 210 L350 210 L350 200 L378 218 L350 236 L350 226 L290 226 Z" fill="url(#og)" opacity="0.9"/>
-  <!-- Barcode lines on right page -->
-  <rect x="290" y="260" width="5" height="40" rx="1" fill="url(#og)" opacity="0.8"/>
-  <rect x="300" y="260" width="3" height="40" rx="1" fill="url(#og)" opacity="0.6"/>
-  <rect x="308" y="260" width="5" height="40" rx="1" fill="url(#og)" opacity="0.8"/>
-  <rect x="318" y="260" width="2" height="40" rx="1" fill="url(#og)" opacity="0.5"/>
-  <rect x="324" y="260" width="5" height="40" rx="1" fill="url(#og)" opacity="0.7"/>
-  <rect x="334" y="260" width="3" height="40" rx="1" fill="url(#og)" opacity="0.9"/>
-  <rect x="342" y="260" width="4" height="40" rx="1" fill="url(#og)" opacity="0.6"/>
-  <rect x="350" y="260" width="5" height="40" rx="1" fill="url(#og)" opacity="0.8"/>
-  <rect x="360" y="260" width="2" height="40" rx="1" fill="url(#og)" opacity="0.5"/>
-  <!-- BookFlow text -->
-  <text x="256" y="430" text-anchor="middle" font-size="52" font-family="system-ui, -apple-system, sans-serif" font-weight="800" fill="#ffffff" letter-spacing="3">BOOKFLOW</text>
+  <rect width="512" height="512" rx="96" fill="#2D2B6B"/>
+  <rect x="128" y="128" width="24" height="256" rx="4" fill="#ffffff" opacity="0.9"/>
+  <rect x="164" y="144" width="16" height="224" rx="3" fill="url(#og)" opacity="0.9"/>
+  <rect x="192" y="136" width="20" height="240" rx="3" fill="#ffffff" opacity="0.8"/>
+  <rect x="224" y="148" width="12" height="216" rx="3" fill="url(#og)" opacity="0.7"/>
+  <rect x="248" y="132" width="22" height="248" rx="3" fill="#ffffff" opacity="0.9"/>
+  <rect x="284" y="144" width="14" height="224" rx="3" fill="url(#og)" opacity="0.6"/>
+  <rect x="312" y="128" width="24" height="256" rx="3" fill="#ffffff" opacity="0.85"/>
+  <rect x="348" y="140" width="16" height="232" rx="3" fill="url(#og)" opacity="0.8"/>
+  <rect x="376" y="132" width="12" height="248" rx="3" fill="#ffffff" opacity="0.7"/>
 </svg>
