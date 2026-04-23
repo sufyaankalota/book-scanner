@@ -1,4 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { db } from '../firebase';
+import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 const EXCEPTION_REASONS = [
   'Damaged / Unsellable',
@@ -7,14 +9,45 @@ const EXCEPTION_REASONS = [
   'Other',
 ];
 
+function generateToken() {
+  return 'pu_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+}
+
 export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) {
   const [reason, setReason] = useState('');
   const [isbn, setIsbn] = useState('');
   const [title, setTitle] = useState('');
   const [step, setStep] = useState('reason');
   const [photoData, setPhotoData] = useState(null);
+  const [photoMode, setPhotoMode] = useState(null); // 'camera' | 'phone' | null
+  const [cameraStream, setCameraStream] = useState(null);
+  const [cameraError, setCameraError] = useState('');
+  const [uploadToken, setUploadToken] = useState('');
+  const [phoneWaiting, setPhoneWaiting] = useState(false);
   const isbnRef = useRef(null);
   const fileRef = useRef(null);
+  const videoRef = useRef(null);
+
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      if (cameraStream) cameraStream.getTracks().forEach((t) => t.stop());
+    };
+  }, [cameraStream]);
+
+  // Listen for phone upload
+  useEffect(() => {
+    if (!uploadToken || !phoneWaiting) return;
+    const unsub = onSnapshot(doc(db, 'photo-uploads', uploadToken), (snap) => {
+      if (snap.exists() && snap.data().photo) {
+        setPhotoData(snap.data().photo);
+        setPhoneWaiting(false);
+        setPhotoMode(null);
+        deleteDoc(doc(db, 'photo-uploads', uploadToken)).catch(() => {});
+      }
+    });
+    return unsub;
+  }, [uploadToken, phoneWaiting]);
 
   const handleReasonSelect = (r) => {
     setReason(r);
@@ -22,12 +55,68 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     setTimeout(() => isbnRef.current?.focus(), 100);
   };
 
-  const handlePhoto = (e) => {
+  // ─── Camera capture ───
+  const startCamera = async () => {
+    setPhotoMode('camera');
+    setCameraError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+      setCameraStream(stream);
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    } catch (err) {
+      setCameraError(err.name === 'NotAllowedError'
+        ? 'Camera access denied. Check browser permissions.'
+        : 'No camera found on this device.');
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const MAX = 400;
+    const scale = Math.min(MAX / video.videoWidth, MAX / video.videoHeight, 1);
+    canvas.width = video.videoWidth * scale;
+    canvas.height = video.videoHeight * scale;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    setPhotoData(canvas.toDataURL('image/jpeg', 0.6));
+    stopCamera();
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => t.stop());
+      setCameraStream(null);
+    }
+    setPhotoMode(null);
+  };
+
+  // ─── Phone QR upload ───
+  const startPhoneUpload = () => {
+    const token = generateToken();
+    setUploadToken(token);
+    setPhoneWaiting(true);
+    setPhotoMode('phone');
+  };
+
+  const getUploadUrl = () => `${window.location.origin}/upload?t=${uploadToken}`;
+  const getQrUrl = () => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getUploadUrl())}`;
+
+  const cancelPhoneUpload = () => {
+    setPhoneWaiting(false);
+    setPhotoMode(null);
+    if (uploadToken) deleteDoc(doc(db, 'photo-uploads', uploadToken)).catch(() => {});
+  };
+
+  // ─── File upload (fallback) ───
+  const handleFilePhoto = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      // Compress to thumbnail via canvas
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
@@ -37,6 +126,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
         canvas.height = img.height * scale;
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         setPhotoData(canvas.toDataURL('image/jpeg', 0.6));
+        setPhotoMode(null);
       };
       img.src = reader.result;
     };
@@ -46,7 +136,8 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   const needsPhoto = !isbn.trim() && !title.trim();
 
   const handleSubmit = () => {
-    if (needsPhoto && !photoData) return; // blocked — photo required
+    if (needsPhoto && !photoData) return;
+    stopCamera();
     onSubmit({
       reason,
       isbn: isbn.trim() || null,
@@ -58,6 +149,12 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     onClose();
   };
 
+  const handleClose = () => {
+    stopCamera();
+    if (uploadToken) deleteDoc(doc(db, 'photo-uploads', uploadToken)).catch(() => {});
+    onClose();
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -65,7 +162,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     }
     if (e.key === 'Escape') {
       e.preventDefault();
-      onClose();
+      handleClose();
     }
   };
 
@@ -74,7 +171,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.titleRow}>
           <h2 style={styles.title}>⚠️ Log Exception</h2>
-          <button onClick={onClose} style={styles.closeX} aria-label="Close">✕</button>
+          <button onClick={handleClose} style={styles.closeX} aria-label="Close">✕</button>
         </div>
 
         {step === 'reason' && (
@@ -97,52 +194,91 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             <div style={styles.reasonTag}>{reason}</div>
 
             <p style={styles.fieldLabel}>ISBN (scan or type):</p>
-            <input
-              ref={isbnRef}
-              type="text"
-              value={isbn}
-              onChange={(e) => setIsbn(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Scan barcode or type ISBN..."
-              style={styles.input}
-            />
+            <input ref={isbnRef} type="text" value={isbn}
+              onChange={(e) => setIsbn(e.target.value)} onKeyDown={handleKeyDown}
+              placeholder="Scan barcode or type ISBN..." style={styles.input} />
 
-            <p style={{ ...styles.fieldLabel, marginTop: 14 }}>
-              Or Book Title (if no ISBN):
-            </p>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. Harry Potter..."
-              style={styles.input}
-            />
+            <p style={{ ...styles.fieldLabel, marginTop: 14 }}>Or Book Title (if no ISBN):</p>
+            <input type="text" value={title}
+              onChange={(e) => setTitle(e.target.value)} onKeyDown={handleKeyDown}
+              placeholder="e.g. Harry Potter..." style={styles.input} />
 
             <p style={{ ...styles.fieldLabel, marginTop: 14, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
               📸 Photo {needsPhoto ? '(required — no ISBN or title entered)' : '(optional)'}:
             </p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handlePhoto}
-              style={{ display: 'none' }}
-            />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button onClick={() => fileRef.current?.click()}
-                style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#222', color: '#ccc', fontSize: 14, cursor: 'pointer' }}>
-                {photoData ? '📷 Retake Photo' : '📷 Take Photo'}
-              </button>
-              {photoData && (
-                <>
-                  <img src={photoData} alt="Exception photo" style={{ width: 48, height: 48, borderRadius: 6, objectFit: 'cover', border: '1px solid #555' }} />
-                  <button onClick={() => setPhotoData(null)}
-                    style={{ background: 'none', border: 'none', color: '#888', fontSize: 16, cursor: 'pointer', padding: 4 }}>✕</button>
-                </>
-              )}
-            </div>
+
+            {/* Photo preview */}
+            {photoData && !photoMode && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <img src={photoData} alt="Exception photo"
+                  style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', border: '1px solid #555' }} />
+                <span style={{ color: '#22C55E', fontSize: 14, fontWeight: 600 }}>✓ Photo captured</span>
+                <button onClick={() => setPhotoData(null)}
+                  style={{ background: 'none', border: 'none', color: '#888', fontSize: 16, cursor: 'pointer', padding: 4 }}>✕</button>
+              </div>
+            )}
+
+            {/* Photo capture buttons */}
+            {!photoMode && !photoData && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button onClick={startCamera} style={styles.photoBtn}>📷 Use Camera</button>
+                <button onClick={startPhoneUpload} style={styles.photoBtn}>📱 Use Phone</button>
+                <button onClick={() => fileRef.current?.click()} style={styles.photoBtn}>📁 Upload File</button>
+                <input ref={fileRef} type="file" accept="image/*" onChange={handleFilePhoto} style={{ display: 'none' }} />
+              </div>
+            )}
+
+            {/* Retake options */}
+            {photoData && !photoMode && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button onClick={() => { setPhotoData(null); startCamera(); }} style={styles.photoBtnSmall}>📷 Retake</button>
+                <button onClick={() => { setPhotoData(null); startPhoneUpload(); }} style={styles.photoBtnSmall}>📱 Phone</button>
+              </div>
+            )}
+
+            {/* Camera view */}
+            {photoMode === 'camera' && (
+              <div style={styles.cameraBox}>
+                {cameraError ? (
+                  <div style={{ padding: 20, textAlign: 'center' }}>
+                    <p style={{ color: '#EF4444', fontSize: 14, marginBottom: 12 }}>{cameraError}</p>
+                    <button onClick={() => { stopCamera(); fileRef.current?.click(); }} style={styles.photoBtnSmall}>📁 Upload File Instead</button>
+                  </div>
+                ) : (
+                  <>
+                    <video ref={(el) => { videoRef.current = el; if (el && cameraStream) el.srcObject = cameraStream; }}
+                      autoPlay playsInline muted style={{ width: '100%', borderRadius: 8, backgroundColor: '#000' }} />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button onClick={capturePhoto}
+                        style={{ flex: 1, padding: '10px 20px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                        📸 Capture
+                      </button>
+                      <button onClick={stopCamera} style={styles.photoBtnSmall}>Cancel</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Phone QR upload */}
+            {photoMode === 'phone' && (
+              <div style={styles.phoneBox}>
+                <p style={{ color: '#ccc', fontSize: 14, marginBottom: 8, textAlign: 'center' }}>
+                  Scan this QR code with your phone to take a photo:
+                </p>
+                <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                  <img src={getQrUrl()} alt="Upload QR Code"
+                    style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
+                </div>
+                {phoneWaiting && (
+                  <p style={{ color: '#EAB308', fontSize: 13, textAlign: 'center' }}>
+                    ⏳ Waiting for photo from phone...
+                  </p>
+                )}
+                <button onClick={cancelPhoneUpload}
+                  style={{ ...styles.photoBtnSmall, width: '100%', marginTop: 8 }}>Cancel</button>
+              </div>
+            )}
 
             <div style={styles.instructionBanner}>
               <span style={styles.instructionIcon}>📦</span>
@@ -163,19 +299,13 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
                 style={{ ...styles.submitBtn, opacity: needsPhoto && !photoData ? 0.5 : 1, cursor: needsPhoto && !photoData ? 'not-allowed' : 'pointer' }}>
                 Log Exception
               </button>
-              <button
-                onClick={() => { setStep('reason'); setIsbn(''); setTitle(''); setReason(''); }}
-                style={styles.backBtn}
-              >
-                ← Back
-              </button>
+              <button onClick={() => { stopCamera(); setStep('reason'); setIsbn(''); setTitle(''); setReason(''); setPhotoData(null); }}
+                style={styles.backBtn}>← Back</button>
             </div>
           </div>
         )}
 
-        <button onClick={onClose} style={styles.cancelBtn}>
-          Cancel
-        </button>
+        <button onClick={handleClose} style={styles.cancelBtn}>Cancel</button>
       </div>
     </div>
   );
@@ -200,6 +330,8 @@ const styles = {
     maxWidth: 520,
     border: '2px solid #F97316',
     position: 'relative',
+    maxHeight: '90vh',
+    overflowY: 'auto',
   },
   titleRow: {
     display: 'flex',
@@ -305,15 +437,24 @@ const styles = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  photoBtn: {
+    padding: '10px 16px', borderRadius: 8, border: '1px solid #555',
+    backgroundColor: '#222', color: '#ccc', fontSize: 14, cursor: 'pointer', fontWeight: 600,
+  },
+  photoBtnSmall: {
+    padding: '8px 14px', borderRadius: 6, border: '1px solid #555',
+    backgroundColor: '#333', color: '#aaa', fontSize: 13, cursor: 'pointer',
+  },
+  cameraBox: {
+    marginBottom: 12, padding: 12, borderRadius: 10,
+    border: '1px solid #3B82F6', backgroundColor: '#0f172a',
+  },
+  phoneBox: {
+    marginBottom: 12, padding: 16, borderRadius: 10,
+    border: '1px solid #A855F7', backgroundColor: '#1e1033',
+  },
   cancelBtn: {
-    width: '100%',
-    marginTop: 12,
-    padding: '12px',
-    borderRadius: 8,
-    border: '1px solid #444',
-    backgroundColor: 'transparent',
-    color: '#888',
-    fontSize: 14,
-    cursor: 'pointer',
+    width: '100%', marginTop: 12, padding: '12px', borderRadius: 8,
+    border: '1px solid #444', backgroundColor: 'transparent', color: '#888', fontSize: 14, cursor: 'pointer',
   },
 };

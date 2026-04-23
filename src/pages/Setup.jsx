@@ -68,6 +68,7 @@ export default function Setup() {
   // Export scheduling
   const [autoExportTime, setAutoExportTime] = useState('17:00');
   const [autoExportEnabled, setAutoExportEnabled] = useState(false);
+  const [reportEmail, setReportEmail] = useState('');
   const [scheduleSaved, setScheduleSaved] = useState(false);
 
   // Customer password
@@ -108,6 +109,7 @@ export default function Setup() {
         if (schedDoc.exists()) {
           setAutoExportEnabled(schedDoc.data().enabled || false);
           setAutoExportTime(schedDoc.data().time || '17:00');
+          setReportEmail(schedDoc.data().reportEmail || '');
         }
       } catch (err) { console.error('Failed to load:', err); }
       setLoading(false);
@@ -297,7 +299,7 @@ export default function Setup() {
 
   const handleScheduleSave = async () => {
     try {
-      await setDoc(doc(db, 'config', 'schedule'), { enabled: autoExportEnabled, time: autoExportTime });
+      await setDoc(doc(db, 'config', 'schedule'), { enabled: autoExportEnabled, time: autoExportTime, reportEmail: reportEmail.trim() });
       logAudit('schedule_updated', { enabled: autoExportEnabled, time: autoExportTime });
       setScheduleSaved(true);
       setTimeout(() => setScheduleSaved(false), 3000);
@@ -467,6 +469,12 @@ export default function Setup() {
               style={s.input} />
             <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
               Report will auto-download on any open Dashboard tab at this time
+            </p>
+            <label style={{ ...s.label, marginTop: 16 }}>📧 EOD Report Email</label>
+            <input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)}
+              placeholder="e.g. supervisor@company.com" style={s.input} />
+            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
+              Daily scan &amp; exception reports in Excel format will be emailed at the scheduled time
             </p>
             <button onClick={handleScheduleSave}
               style={{ ...s.primaryBtn, marginTop: 12 }}>{scheduleSaved ? '✓ Saved!' : 'Save Schedule'}</button>

@@ -492,6 +492,7 @@ export default function Pod() {
     addDoc(collection(db, 'exceptions'), {
       jobId: job.id, podId: data.podId, scannerId: data.scannerId,
       isbn: data.isbn, title: data.title || null, reason: data.reason,
+      photo: data.photo || null,
       timestamp: serverTimestamp(),
     }).then(() => flash('#F97316', '✓ ' + t('exception'), 1000))
       .catch(() => flash('#EF4444', 'Failed to log exception', 1000));

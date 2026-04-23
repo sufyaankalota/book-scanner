@@ -56,6 +56,14 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Photo uploads — temporary docs for phone-to-pod photo transfer
+    match /photo-uploads/{tokenId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['photo', 'timestamp']);
+      allow delete: if true;
+      allow update: if false;
+    }
+
     // Audit log — internal logging
     match /audit/{logId} {
       allow read: if true;
