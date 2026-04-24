@@ -1,11 +1,13 @@
 import {
   collection, doc, setDoc, addDoc, updateDoc, deleteDoc, getDocs,
-  query, where, serverTimestamp, writeBatch,
+  query, where, serverTimestamp, writeBatch, Timestamp,
 } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 
 // ─── Demo pod / operator names (avoid collision with real pods A-E) ───
 export const DEMO_PODS = ['D1', 'D2', 'D3', 'D4', 'D5'];
 const DEMO_OPERATORS = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'];
+const EXCEPTION_REASONS = ['Damaged / Unsellable', 'No ISBN Barcode', 'Not a Book', 'Other'];
 
 // Realistic book ISBNs for simulation
 const SAMPLE_ISBNS = [
@@ -85,7 +87,26 @@ export async function createDemoJob(db) {
       type: 'standard',
     });
   }
+  // Seed some exceptions (~8-15)
+  const excCount = 8 + Math.floor(Math.random() * 8);
+  for (let i = 0; i < excCount; i++) {
+    const podIdx = i % DEMO_PODS.length;
+    const ref = doc(collection(db, 'exceptions'));
+    batch.set(ref, {
+      jobId,
+      podId: DEMO_PODS[podIdx],
+      scannerId: DEMO_OPERATORS[podIdx],
+      isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
+      title: null,
+      reason: EXCEPTION_REASONS[Math.floor(Math.random() * EXCEPTION_REASONS.length)],
+      photo: null,
+      timestamp: serverTimestamp(),
+    });
+  }
   await batch.commit();
+
+  // Seed sample billing reports for past 3 weeks
+  await seedBillingReports(db, jobId);
 
   saveDemoJobId(jobId);
   setDemoMode(true);
@@ -106,15 +127,29 @@ export function startSimulation(db, jobId) {
     for (let i = 0; i < count; i++) {
       const pod = available[Math.floor(Math.random() * available.length)];
       const opIdx = DEMO_PODS.indexOf(pod);
-      addDoc(collection(db, 'scans'), {
-        jobId,
-        podId: pod,
-        scannerId: DEMO_OPERATORS[opIdx],
-        isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
-        poName: DEMO_JOB_NAME,
-        timestamp: serverTimestamp(),
-        type: 'standard',
-      }).catch(() => {}); // swallow errors silently
+      // ~8% chance of an exception instead of a standard scan
+      if (Math.random() < 0.08) {
+        addDoc(collection(db, 'exceptions'), {
+          jobId,
+          podId: pod,
+          scannerId: DEMO_OPERATORS[opIdx],
+          isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
+          title: null,
+          reason: EXCEPTION_REASONS[Math.floor(Math.random() * EXCEPTION_REASONS.length)],
+          photo: null,
+          timestamp: serverTimestamp(),
+        }).catch(() => {});
+      } else {
+        addDoc(collection(db, 'scans'), {
+          jobId,
+          podId: pod,
+          scannerId: DEMO_OPERATORS[opIdx],
+          isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
+          poName: DEMO_JOB_NAME,
+          timestamp: serverTimestamp(),
+          type: 'standard',
+        }).catch(() => {});
+      }
     }
   };
 
@@ -141,6 +176,86 @@ export function startSimulation(db, jobId) {
 export function stopSimulation() {
   if (simInterval) { clearInterval(simInterval); simInterval = null; }
   if (presenceInterval) { clearInterval(presenceInterval); presenceInterval = null; }
+}
+
+// ─── Seed sample billing reports for the past 3 weeks ───
+async function seedBillingReports(db, jobId) {
+  const RATE_REGULAR = 0.40;
+  const RATE_EXCEPTION = 0.60;
+  const now = new Date();
+
+  for (let w = 1; w <= 3; w++) {
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - (weekStart.getDay() || 7) - (w * 7) + 1); // Monday of w weeks ago
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    const standardCount = 2800 + Math.floor(Math.random() * 1200);
+    const exceptionCount = 30 + Math.floor(Math.random() * 40);
+    const totalAmount = standardCount * RATE_REGULAR + exceptionCount * RATE_EXCEPTION;
+
+    // Build a small XLSX in-memory for the downloadable file
+    const wb = XLSX.utils.book_new();
+    const summaryRows = [
+      { Item: 'Customer / Job', Detail: DEMO_JOB_NAME, Qty: '', Rate: '', Amount: '' },
+      { Item: 'Billing Period', Detail: `${weekStart.toLocaleDateString()} – ${weekEnd.toLocaleDateString()}`, Qty: '', Rate: '', Amount: '' },
+      { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
+      { Item: 'Regular Scans', Detail: '', Qty: standardCount, Rate: `$${RATE_REGULAR.toFixed(2)}`, Amount: `$${(standardCount * RATE_REGULAR).toFixed(2)}` },
+      { Item: 'Exceptions', Detail: '', Qty: exceptionCount, Rate: `$${RATE_EXCEPTION.toFixed(2)}`, Amount: `$${(exceptionCount * RATE_EXCEPTION).toFixed(2)}` },
+      { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
+      { Item: 'TOTAL UNITS', Detail: '', Qty: standardCount + exceptionCount, Rate: '', Amount: `$${totalAmount.toFixed(2)}` },
+    ];
+    const ws1 = XLSX.utils.json_to_sheet(summaryRows);
+    ws1['!cols'] = [{ wch: 20 }, { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Billing Summary');
+
+    // Daily breakdown (7 days)
+    const dailyRows = [];
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(weekStart);
+      day.setDate(day.getDate() + d);
+      const dayStd = Math.round(standardCount / 7) + Math.floor(Math.random() * 80 - 40);
+      const dayExc = Math.round(exceptionCount / 7) + Math.floor(Math.random() * 4);
+      dailyRows.push({
+        Date: day.toLocaleDateString(),
+        'Regular Scans': dayStd,
+        Exceptions: dayExc,
+        'Day Total': dayStd + dayExc,
+        Amount: `$${(dayStd * RATE_REGULAR + dayExc * RATE_EXCEPTION).toFixed(2)}`,
+      });
+    }
+    const ws2 = XLSX.utils.json_to_sheet(dailyRows);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Daily Breakdown');
+
+    // By Pod
+    const podRows = DEMO_PODS.map((p) => {
+      const std = Math.round(standardCount / DEMO_PODS.length) + Math.floor(Math.random() * 60 - 30);
+      const exc = Math.round(exceptionCount / DEMO_PODS.length) + Math.floor(Math.random() * 3);
+      return { Pod: p, 'Regular Scans': std, Exceptions: exc, Total: std + exc };
+    });
+    const ws3 = XLSX.utils.json_to_sheet(podRows);
+    XLSX.utils.book_append_sheet(wb, ws3, 'By Pod');
+
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    const tag = weekStart.toISOString().slice(0, 10);
+    const fileName = `${DEMO_JOB_NAME}_billing_${tag}.xlsx`;
+
+    await addDoc(collection(db, 'billing-reports'), {
+      jobId,
+      jobName: DEMO_JOB_NAME,
+      weekStart: Timestamp.fromDate(weekStart),
+      weekEnd: Timestamp.fromDate(weekEnd),
+      standardCount,
+      exceptionCount,
+      totalUnits: standardCount + exceptionCount,
+      totalAmount,
+      fileName,
+      fileData: base64,
+      createdAt: serverTimestamp(),
+    });
+  }
 }
 
 // ─── Full cleanup: stop sim, delete all demo data, reset state ───
@@ -170,6 +285,22 @@ export async function cleanupDemo(db) {
     for (let i = 0; i < scanSnap.docs.length; i += BATCH) {
       const batch = writeBatch(db);
       scanSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Delete demo exceptions in batches
+    const excSnap = await getDocs(query(collection(db, 'exceptions'), where('jobId', '==', jobId)));
+    for (let i = 0; i < excSnap.docs.length; i += BATCH) {
+      const batch = writeBatch(db);
+      excSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Delete demo billing reports in batches
+    const billingSnap = await getDocs(query(collection(db, 'billing-reports'), where('jobId', '==', jobId)));
+    for (let i = 0; i < billingSnap.docs.length; i += BATCH) {
+      const batch = writeBatch(db);
+      billingSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
       await batch.commit();
     }
 
