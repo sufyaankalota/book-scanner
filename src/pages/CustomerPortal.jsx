@@ -7,6 +7,7 @@ import {
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
 import { verifyPassword } from '../utils/crypto';
+import { isDemoMode, pickActiveJob } from '../utils/demo';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -115,16 +116,21 @@ export default function CustomerPortal() {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, async (snap) => {
       if (!snap.empty) {
-        const d = snap.docs[0];
-        setJob({ id: d.id, ...d.data() });
+        const picked = pickActiveJob(snap.docs);
+        if (picked) {
+          setJob(picked);
+        } else {
+          setJob(null);
+        }
       } else {
         // No active job — load most recently closed job for historical data
         try {
           const closedSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
           if (!closedSnap.empty) {
             const sorted = closedSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+              .filter((j) => !j.meta?.isDemo)
               .sort((a, b) => (b.meta.closedAt?.toDate?.()?.getTime() || 0) - (a.meta.closedAt?.toDate?.()?.getTime() || 0));
-            setJob(sorted[0]);
+            setJob(sorted[0] || null);
           } else {
             setJob(null);
           }
@@ -418,6 +424,12 @@ export default function CustomerPortal() {
             style={{ ...st.loginBtn, opacity: !loginEmail.trim() || !password.trim() || authLoading ? 0.5 : 1 }}>
             {authLoading ? 'Verifying...' : 'Sign In'}
           </button>
+          {isDemoMode() && (
+            <button onClick={() => { setAuthenticated(true); sessionStorage.setItem('customer-auth', 'true'); }}
+              style={{ ...st.loginBtn, marginTop: 10, backgroundColor: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc' }}>
+              Demo Login (skip credentials)
+            </button>
+          )}
         </div>
       </div>
     );

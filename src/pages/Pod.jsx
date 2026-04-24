@@ -10,7 +10,7 @@ import { playErrorBeep, playSuccessBeep, playColorBeep, getVolume, setVolume } f
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
-import { pickActiveJob } from '../utils/demo';
+import { pickActiveJob, isDemoMode, DEMO_PODS, claimDemoPod, releaseDemoPod } from '../utils/demo';
 import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
 import ExceptionModal from '../components/ExceptionModal';
@@ -126,6 +126,14 @@ export default function Pod() {
     localStorage.setItem('pod-fontsize', String(fontSize));
     return () => { document.documentElement.style.fontSize = ''; };
   }, [fontSize]);
+
+  // ─── Demo pod claim: stop simulation for this pod while user is here ───
+  useEffect(() => {
+    if (isDemoMode() && DEMO_PODS.includes(podId)) {
+      claimDemoPod(podId);
+      return () => releaseDemoPod(podId);
+    }
+  }, [podId]);
 
   // ─── Persist state ───
   useEffect(() => {

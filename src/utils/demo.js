@@ -35,6 +35,11 @@ function saveDemoJobId(id) {
   localStorage.setItem('bookflow_demo_jobId', id || '');
 }
 
+// ─── Pod claiming: when user manually opens a demo pod, exclude it from simulation ───
+const claimedPods = new Set();
+export function claimDemoPod(podId) { claimedPods.add(podId); }
+export function releaseDemoPod(podId) { claimedPods.delete(podId); }
+
 // ─── Pick the right active job from a snapshot ───
 export function pickActiveJob(docs) {
   const demo = isDemoMode();
@@ -95,13 +100,16 @@ export function startSimulation(db, jobId) {
   stopSimulation(); // clear any existing
 
   const addScans = () => {
+    const available = DEMO_PODS.filter((p) => !claimedPods.has(p));
+    if (available.length === 0) return;
     const count = Math.floor(Math.random() * 3) + 1; // 1-3 scans per tick
     for (let i = 0; i < count; i++) {
-      const podIdx = Math.floor(Math.random() * DEMO_PODS.length);
+      const pod = available[Math.floor(Math.random() * available.length)];
+      const opIdx = DEMO_PODS.indexOf(pod);
       addDoc(collection(db, 'scans'), {
         jobId,
-        podId: DEMO_PODS[podIdx],
-        scannerId: DEMO_OPERATORS[podIdx],
+        podId: pod,
+        scannerId: DEMO_OPERATORS[opIdx],
         isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
         poName: DEMO_JOB_NAME,
         timestamp: serverTimestamp(),
@@ -112,6 +120,7 @@ export function startSimulation(db, jobId) {
 
   const heartbeat = () => {
     for (let i = 0; i < DEMO_PODS.length; i++) {
+      if (claimedPods.has(DEMO_PODS[i])) continue; // skip manually-opened pods
       setDoc(doc(db, 'presence', DEMO_PODS[i]), {
         podId: DEMO_PODS[i],
         scanners: [DEMO_OPERATORS[i]],
