@@ -686,7 +686,7 @@ export default function Dashboard() {
           </div>
           {allScans.filter((s) => s.type === 'exception').map((s) => (
             <div key={s.id} style={st.exRow}>
-              <span style={st.exTag}>NOT IN MANIFEST</span>
+              <span style={st.exTag}>{s.poName === 'EXCEPTIONS' ? 'NOT IN MANIFEST' : s.source === 'manual' ? 'MANUAL ENTRY' : 'EXCEPTION'}</span>
               <span style={st.exDetail}>ISBN: {s.isbn} · Pod {s.podId} · {s.scannerId}</span>
               <span style={st.exTime}>{s.timestamp?.toDate?.()?.toLocaleTimeString() || '—'}</span>
             </div>
