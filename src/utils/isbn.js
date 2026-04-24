@@ -1,38 +1,23 @@
 /**
- * ISBN / barcode validation utilities.
- * Accepts all barcode formats commonly found on books:
- *   ISBN-13, ISBN-10, EAN-13, EAN-8, UPC-A, and add-on supplements.
+ * ISBN validation utilities.
+ * Only accepts ISBN-10 and ISBN-13 formats.
+ * Employees must find the copyright page and type the ISBN.
  */
 
 export function isValidISBN(code) {
   const cleaned = code.replace(/[-\s]/g, '');
 
-  // ISBN-13 / EAN-13 (13 digits)
-  if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) return isValidEAN13(cleaned);
+  // ISBN-13 (13 digits, starts with 978 or 979)
+  if (cleaned.length === 13 && /^\d{13}$/.test(cleaned) && (cleaned.startsWith('978') || cleaned.startsWith('979'))) return isValidEAN13(cleaned);
 
   // ISBN-10 (9 digits + check digit which can be X)
   if (cleaned.length === 10 && /^\d{9}[\dXx]$/.test(cleaned)) return isValidISBN10(cleaned);
 
-  // UPC-A (12 digits)
-  if (cleaned.length === 12 && /^\d{12}$/.test(cleaned)) return isValidUPCA(cleaned);
-
-  // EAN-8 (8 digits) — less common on books but valid
-  if (cleaned.length === 8 && /^\d{8}$/.test(cleaned)) return isValidEAN8(cleaned);
-
   // Bookland EAN + 5-digit add-on (18 digits) — strip supplement, validate base ISBN-13
-  if (cleaned.length === 18 && /^\d{18}$/.test(cleaned)) return isValidEAN13(cleaned.slice(0, 13));
+  if (cleaned.length === 18 && /^\d{18}$/.test(cleaned) && (cleaned.startsWith('978') || cleaned.startsWith('979'))) return isValidEAN13(cleaned.slice(0, 13));
 
-  // UPC-A + 5-digit add-on (17 digits) — strip supplement, validate base UPC-A
-  if (cleaned.length === 17 && /^\d{17}$/.test(cleaned)) return isValidUPCA(cleaned.slice(0, 12));
-
-  // UPC-A + 2-digit add-on (14 digits) — strip supplement, validate base UPC-A
-  if (cleaned.length === 14 && /^\d{14}$/.test(cleaned)) return isValidUPCA(cleaned.slice(0, 12));
-
-  // EAN-13 + 2-digit add-on (15 digits) — strip supplement, validate base EAN-13
-  if (cleaned.length === 15 && /^\d{15}$/.test(cleaned)) return isValidEAN13(cleaned.slice(0, 13));
-
-  // Fallback: accept any numeric string 8-18 digits (warehouse permissive mode)
-  if (/^\d{8,18}$/.test(cleaned)) return true;
+  // ISBN-13 + 2-digit add-on (15 digits) — strip supplement, validate base ISBN-13
+  if (cleaned.length === 15 && /^\d{15}$/.test(cleaned) && (cleaned.startsWith('978') || cleaned.startsWith('979'))) return isValidEAN13(cleaned.slice(0, 13));
 
   return false;
 }
@@ -82,14 +67,14 @@ export function cleanISBN(code) {
   return code.replace(/[-\s]/g, '').trim();
 }
 
-/** Detect barcode type: ISBN-13, ISBN-10, UPC-A, EAN-13, or Unknown */
+/** Detect barcode type: ISBN-13, ISBN-10, or Not ISBN */
 export function detectBarcodeType(code) {
   const cleaned = code.replace(/[-\s]/g, '').trim();
   if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) {
     if (cleaned.startsWith('978') || cleaned.startsWith('979')) return 'ISBN-13';
-    return 'EAN-13';
+    return 'Not ISBN (EAN-13)';
   }
   if (cleaned.length === 10 && /^\d{9}[\dXx]$/.test(cleaned)) return 'ISBN-10';
-  if (cleaned.length === 12 && /^\d{12}$/.test(cleaned)) return 'UPC-A';
-  return 'Unknown';
+  if (cleaned.length === 12 && /^\d{12}$/.test(cleaned)) return 'Not ISBN (UPC)';
+  return 'Not ISBN';
 }

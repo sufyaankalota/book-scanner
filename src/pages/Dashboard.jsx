@@ -20,7 +20,6 @@ import {
   collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc, deleteDoc,
   query, where, onSnapshot, Timestamp, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
-import { pickActiveJob } from '../utils/demo';
 import PodCard from '../components/PodCard';
 import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
@@ -52,6 +51,8 @@ export default function Dashboard() {
   const [showBilling, setShowBilling] = useState(false);
   const [pendingPOUploads, setPendingPOUploads] = useState([]);
   const [addingPO, setAddingPO] = useState(null);
+  const [gaylordCount, setGaylordCount] = useState('');
+  const [gaylordSaved, setGaylordSaved] = useState(false);
   const [billingWeek, setBillingWeek] = useState(() => {
     // Default to last Monday
     const d = new Date(); d.setHours(0, 0, 0, 0);
@@ -64,9 +65,11 @@ export default function Dashboard() {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const picked = pickActiveJob(snap.docs);
+        const d = snap.docs[0];
+        const picked = { id: d.id, ...d.data() };
         if (picked) {
           setJob(picked);
+          setGaylordCount(picked.meta.gaylordCount || '');
           // Load manifest for completion tracking
           if (picked.meta.mode === 'multi') {
             getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
@@ -312,6 +315,19 @@ export default function Dashboard() {
     setAddingPO(null);
   };
 
+  // Save gaylord count
+  const handleSaveGaylords = async () => {
+    if (!job) return;
+    const count = Number(gaylordCount);
+    if (isNaN(count) || count < 0) return alert('Enter a valid number');
+    try {
+      await updateDoc(doc(db, 'jobs', job.id), { 'meta.gaylordCount': count });
+      logAudit('gaylord_count_updated', { jobId: job.id, count });
+      setGaylordSaved(true);
+      setTimeout(() => setGaylordSaved(false), 3000);
+    } catch (err) { alert('Failed to save: ' + err.message); }
+  };
+
   // Toggle exception selection
   const toggleException = (exId) => {
     setSelectedExceptions((prev) => {
@@ -552,6 +568,24 @@ export default function Dashboard() {
             <div style={st.summaryLabel}>Scans/Labor Hr</div>
           </div>
         )}
+        <div style={st.summaryItem}>
+          <div style={{ ...st.summaryValue, color: '#F59E0B' }}>{job?.meta?.gaylordCount || '—'}</div>
+          <div style={st.summaryLabel}>Gaylords</div>
+        </div>
+      </div>
+
+      {/* Gaylord count entry */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <label style={{ color: '#888', fontSize: 13 }}>📦 Gaylord Count:</label>
+        <input type="number" min="0" value={gaylordCount}
+          onChange={(e) => setGaylordCount(e.target.value)}
+          placeholder="Enter count"
+          style={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: 6, color: '#fff', padding: '6px 12px', fontSize: 14, width: 100 }} />
+        <button onClick={handleSaveGaylords}
+          style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #F59E0B', backgroundColor: 'rgba(245,158,11,0.1)', color: '#F59E0B', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          {gaylordSaved ? '✓ Saved' : 'Save'}
+        </button>
+        <span style={{ color: '#666', fontSize: 12 }}>Used for truck organization</span>
       </div>
 
       {/* Progress bar */}

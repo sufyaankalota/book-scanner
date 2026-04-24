@@ -30,6 +30,8 @@ export default function Setup() {
   const [poNames, setPoNames] = useState([]);
   const [poColors, setPoColors] = useState({});
   const [fileError, setFileError] = useState('');
+  const [parseProgress, setParseProgress] = useState(0);
+  const [parsing, setParsing] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
   const [pastJobs, setPastJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -87,9 +89,9 @@ export default function Setup() {
         const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
         const snap = await getDocs(q);
         if (!snap.empty) {
-          const realDoc = snap.docs.find((d) => !d.data().meta?.isDemo);
-          if (realDoc) {
-            const jobData = { id: realDoc.id, ...realDoc.data() };
+          const d = snap.docs[0];
+          if (d) {
+            const jobData = { id: d.id, ...d.data() };
             setActiveJob(jobData);
             setEditTarget(jobData.meta.dailyTarget);
             setEditHours(jobData.meta.workingHours);
@@ -132,15 +134,17 @@ export default function Setup() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    setFileError(''); setSelectedUploadId(null);
+    setFileError(''); setSelectedUploadId(null); setParsing(true); setParseProgress(0);
     try {
-      const result = await parseManifestFile(file);
+      const result = await parseManifestFile(file, (pct) => setParseProgress(pct));
       setManifest(result.manifest); setPoNames(result.poNames);
       setManifestPreview(Object.entries(result.manifest).slice(0, 50));
       const colors = {};
       result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
       setPoColors(colors);
+      setParseProgress(100);
     } catch (err) { setFileError(err.message); setManifest(null); setPoNames([]); setManifestPreview([]); }
+    setParsing(false);
   };
 
   // Use a customer-uploaded PO
@@ -175,8 +179,6 @@ export default function Setup() {
     if (!jobName.trim()) return alert('Enter a job name');
     if (mode === 'multi' && !manifest) return alert('Upload a manifest for Multi-PO mode');
     if (pods.length === 0) return alert('Configure at least one pod');
-    const RESERVED = ['D1', 'D2', 'D3', 'D4', 'D5'];
-    if (pods.some((p) => RESERVED.includes(p.toUpperCase()))) return alert('Pod names D1–D5 are reserved for demo mode. Please use other names.');
     const target = Number(dailyTarget); const hours = Number(workingHours);
     if (!target || target <= 0) return alert('Enter a valid daily target');
     if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours (1-24)');
@@ -184,10 +186,9 @@ export default function Setup() {
     setSaving(true);
     try {
       const existing = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', true)));
-      const realActive = existing.docs.find((d) => !d.data().meta?.isDemo);
-      if (realActive) {
+      if (!existing.empty) {
         alert('Another job is already active. Close it first.');
-        const d = realActive; setActiveJob({ id: d.id, ...d.data() }); setSaving(false); return;
+        const d = existing.docs[0]; setActiveJob({ id: d.id, ...d.data() }); setSaving(false); return;
       }
       const jobId = `job_${Date.now()}`;
       await setDoc(doc(db, 'jobs', jobId), {
@@ -275,8 +276,6 @@ export default function Setup() {
     if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours');
     const newPods = [...new Set(editPods.split(',').map((s) => s.trim()).filter(Boolean))];
     if (newPods.length === 0) return alert('Need at least one pod');
-    const RESERVED = ['D1', 'D2', 'D3', 'D4', 'D5'];
-    if (newPods.some((p) => RESERVED.includes(p.toUpperCase()))) return alert('Pod names D1–D5 are reserved for demo mode.');
     try {
       await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods });
       logAudit('job_edited', { jobId: activeJob.id });
@@ -641,7 +640,17 @@ export default function Setup() {
         {mode === 'multi' && (
           <div style={{ marginTop: 16 }}>
             <label style={s.label}>Upload Manifest (CSV or XLSX — columns: ISBN, PO)</label>
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} style={s.input} />
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} style={s.input} disabled={parsing} />
+            {parsing && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>Parsing manifest... {parseProgress}%</span>
+                </div>
+                <div style={{ height: 6, backgroundColor: '#222', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${parseProgress}%`, backgroundColor: '#3B82F6', borderRadius: 3, transition: 'width 0.2s' }} />
+                </div>
+              </div>
+            )}
 
             {/* Customer-uploaded POs */}
             {customerPOUploads.filter((u) => u.status === 'pending').length > 0 && (

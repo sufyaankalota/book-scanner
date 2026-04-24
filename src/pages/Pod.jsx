@@ -10,7 +10,6 @@ import { playErrorBeep, playSuccessBeep, playColorBeep, getVolume, setVolume } f
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
-import { pickActiveJob, isDemoMode, DEMO_PODS, claimDemoPod, releaseDemoPod, getAutoScanISBN } from '../utils/demo';
 import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
 import ExceptionModal from '../components/ExceptionModal';
@@ -92,8 +91,6 @@ export default function Pod() {
   const [operatorHistory, setOperatorHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('operator-history') || '[]'); } catch { return []; }
   });
-  const [autoScanActive, setAutoScanActive] = useState(false);
-  const autoScanRef = useRef(null);
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
   const inputRef = useRef(null);
@@ -128,14 +125,6 @@ export default function Pod() {
     localStorage.setItem('pod-fontsize', String(fontSize));
     return () => { document.documentElement.style.fontSize = ''; };
   }, [fontSize]);
-
-  // ─── Demo pod claim: stop simulation for this pod while user is here ───
-  useEffect(() => {
-    if (isDemoMode() && DEMO_PODS.includes(podId)) {
-      claimDemoPod(podId);
-      return () => releaseDemoPod(podId);
-    }
-  }, [podId]);
 
   // ─── Persist state ───
   useEffect(() => {
@@ -229,7 +218,8 @@ export default function Pod() {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const picked = pickActiveJob(snap.docs);
+        const d = snap.docs[0];
+        const picked = { id: d.id, ...d.data() };
         if (picked) {
           setJob(picked);
           if (picked.meta.mode === 'multi') {
@@ -539,18 +529,6 @@ export default function Pod() {
     }
   };
 
-  // ─── Demo auto-scan: simulate scanning at ~2.5s intervals ───
-  useEffect(() => {
-    if (autoScanActive && isScanning && isDemoMode()) {
-      autoScanRef.current = setInterval(() => {
-        const isbn = getAutoScanISBN();
-        handleScan(isbn);
-      }, 2500);
-      return () => clearInterval(autoScanRef.current);
-    }
-    if (autoScanRef.current) { clearInterval(autoScanRef.current); autoScanRef.current = null; }
-  }, [autoScanActive, isScanning]);
-
   const handleException = (data) => {
     if (!job) return;
     if (trainingMode) {
@@ -811,6 +789,11 @@ export default function Pod() {
         </div>
       )}
 
+      {/* ISBN search tip banner */}
+      <div style={{ backgroundColor: '#1a1a2e', border: '1px solid #334155', borderRadius: 8, padding: '10px 14px', marginBottom: 8, color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
+        📖 <strong style={{ color: '#e2e8f0' }}>Can't scan?</strong> Check the front cover, back cover, and the first &amp; last 2–3 pages for the copyright page. Type in the ISBN manually. Only ~2% of books lack one.
+      </div>
+
       {!isOnline && <div style={styles.offlineBanner}>⚠️ OFFLINE — scans will sync when reconnected</div>}
       {showIdleWarning && !isPaused && <div style={styles.idleWarning}>⚠️ No scans for 2+ minutes — is the scanner connected?</div>}
 
@@ -981,12 +964,6 @@ export default function Pod() {
           </div>
           {recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training' && (
             <button onClick={handleUndo} style={styles.undoBtn}>↩ {t('undoLastScan')}</button>
-          )}
-          {isDemoMode() && (
-            <button onClick={() => setAutoScanActive((a) => !a)}
-              style={{ ...styles.settingsBtn, backgroundColor: autoScanActive ? 'rgba(168,85,247,0.2)' : undefined, borderColor: autoScanActive ? '#A855F7' : undefined, color: autoScanActive ? '#c084fc' : undefined }}>
-              {autoScanActive ? '⏹ Auto' : '▶ Auto'}
-            </button>
           )}
           <button onClick={() => setShowSettings(!showSettings)} style={styles.settingsBtn}>⚙️</button>
           <button onClick={() => setPhase(PHASE_PAUSED)} style={styles.pauseBtn}>⏸ {t('pause')}</button>

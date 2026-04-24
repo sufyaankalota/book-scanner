@@ -7,7 +7,6 @@ import {
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
 import { verifyPassword } from '../utils/crypto';
-import { isDemoMode, pickActiveJob } from '../utils/demo';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -43,6 +42,8 @@ export default function CustomerPortal() {
   const [poLoading, setPOLoading] = useState(false);
   const [poDeleting, setPODeleting] = useState(null);
   const [poColors, setPoColors] = useState({});
+  const [parseProgress, setParseProgress] = useState(0);
+  const [parsing, setParsing] = useState(false);
 
   // BOL Upload
   const [bolFile, setBolFile] = useState(null);
@@ -116,7 +117,8 @@ export default function CustomerPortal() {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, async (snap) => {
       if (!snap.empty) {
-        const picked = pickActiveJob(snap.docs);
+        const d = snap.docs[0];
+        const picked = { id: d.id, ...d.data() };
         if (picked) {
           setJob(picked);
         } else {
@@ -128,7 +130,6 @@ export default function CustomerPortal() {
           const closedSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
           if (!closedSnap.empty) {
             const sorted = closedSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-              .filter((j) => !j.meta?.isDemo)
               .sort((a, b) => (b.meta.closedAt?.toDate?.()?.getTime() || 0) - (a.meta.closedAt?.toDate?.()?.getTime() || 0));
             setJob(sorted[0] || null);
           } else {
@@ -174,6 +175,33 @@ export default function CustomerPortal() {
       setBillingReports(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.weekStart?.toDate?.()?.getTime() || 0) - (a.weekStart?.toDate?.()?.getTime() || 0)));
     });
+  }, [authenticated, job]);
+
+  // Auto-export daily report at scheduled time (e.g. 5 PM)
+  const allScansRef = React.useRef([]);
+  const allExceptionsRef = React.useRef([]);
+  useEffect(() => { allScansRef.current = allScans; }, [allScans]);
+  useEffect(() => { allExceptionsRef.current = allExceptions; }, [allExceptions]);
+  useEffect(() => {
+    if (!authenticated || !job) return;
+    let exported = false;
+    const interval = setInterval(async () => {
+      if (exported) return;
+      try {
+        const schedDoc = await getDoc(doc(db, 'config', 'schedule'));
+        if (!schedDoc.exists() || !schedDoc.data().enabled) return;
+        const targetTime = schedDoc.data().time || '17:00';
+        const now = new Date();
+        const [h, m] = targetTime.split(':').map(Number);
+        if (now.getHours() === h && now.getMinutes() === m) {
+          exported = true;
+          const today = now.toISOString().slice(0, 10);
+          exportDailyScans(today);
+          exportDailyExceptions(today);
+        }
+      } catch {}
+    }, 60000);
+    return () => clearInterval(interval);
   }, [authenticated, job]);
 
   // Computed
@@ -276,19 +304,21 @@ export default function CustomerPortal() {
   // PO Upload
   const handlePOUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    setFileError(''); setUploadStatus('');
+    setFileError(''); setUploadStatus(''); setParsing(true); setParseProgress(0);
     try {
-      const result = await parseManifestFile(file);
+      const result = await parseManifestFile(file, (pct) => setParseProgress(pct));
       setManifest(result.manifest);
       setPoNames(result.poNames);
       // Auto-assign colors
       const colors = {};
       result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
       setPoColors(colors);
+      setParseProgress(100);
     } catch (err) {
       setFileError(err.message);
       setManifest(null); setPoNames([]); setPoColors({});
     }
+    setParsing(false);
   };
 
   const submitPO = async () => {
@@ -424,12 +454,6 @@ export default function CustomerPortal() {
             style={{ ...st.loginBtn, opacity: !loginEmail.trim() || !password.trim() || authLoading ? 0.5 : 1 }}>
             {authLoading ? 'Verifying...' : 'Sign In'}
           </button>
-          {isDemoMode() && (
-            <button onClick={() => { setAuthenticated(true); sessionStorage.setItem('customer-auth', 'true'); }}
-              style={{ ...st.loginBtn, marginTop: 10, backgroundColor: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc' }}>
-              Demo Login (skip credentials)
-            </button>
-          )}
         </div>
       </div>
     );
@@ -468,6 +492,10 @@ export default function CustomerPortal() {
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: totalExcCount > 0 ? '#F97316' : '#888' }}>{totalExcCount}</div>
             <div style={st.statLbl}>Total Exceptions</div>
+          </div>
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: '#F59E0B' }}>{job?.meta?.gaylordCount || '—'}</div>
+            <div style={st.statLbl}>Gaylords</div>
           </div>
         </div>
       )}
@@ -731,7 +759,17 @@ export default function CustomerPortal() {
             <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
               Upload a CSV or XLSX file with columns: <strong style={{ color: '#ccc' }}>ISBN</strong> and <strong style={{ color: '#ccc' }}>PO</strong>.
             </p>
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handlePOUpload} style={st.input} />
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={handlePOUpload} style={st.input} disabled={parsing} />
+            {parsing && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>Parsing manifest... {parseProgress}%</span>
+                </div>
+                <div style={{ height: 6, backgroundColor: '#222', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${parseProgress}%`, backgroundColor: '#3B82F6', borderRadius: 3, transition: 'width 0.2s' }} />
+                </div>
+              </div>
+            )}
             {fileError && <p style={{ color: '#EF4444', marginTop: 8, fontSize: 14 }}>{fileError}</p>}
             {manifest && (
               <div style={{ marginTop: 12 }}>
