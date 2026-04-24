@@ -494,8 +494,8 @@ export default function CustomerPortal() {
             <div style={st.statLbl}>Total Exceptions</div>
           </div>
           <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#F59E0B' }}>{job?.meta?.gaylordCount || '—'}</div>
-            <div style={st.statLbl}>Gaylords</div>
+            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}–${Math.ceil((todayData?.standard || 0) / 1500)}` : '—'}</div>
+            <div style={st.statLbl}>Today's Est. Gaylords</div>
           </div>
         </div>
       )}
@@ -536,11 +536,18 @@ export default function CustomerPortal() {
                   <div style={{ color: '#888', fontSize: 12 }}>units scanned</div>
                 </div>
               </div>
-              {d.exceptions > 0 && (
-                <div style={{ marginTop: 8, padding: '6px 12px', backgroundColor: '#7f1d1d22', borderRadius: 6, display: 'inline-block' }}>
-                  <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+                {d.standard > 0 && (
+                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
+                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>📦 {Math.ceil(d.standard / 2000)}–{Math.ceil(d.standard / 1500)} gaylords</span>
+                  </div>
+                )}
+                {d.exceptions > 0 && (
+                  <div style={{ padding: '6px 12px', backgroundColor: '#7f1d1d22', borderRadius: 6, display: 'inline-block' }}>
+                    <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button onClick={() => exportDailyScans(d.date)} style={st.smallBtn}>Scans Report</button>
                 {d.exceptions > 0 && (
