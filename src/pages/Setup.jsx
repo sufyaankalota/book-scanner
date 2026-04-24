@@ -175,6 +175,8 @@ export default function Setup() {
     if (!jobName.trim()) return alert('Enter a job name');
     if (mode === 'multi' && !manifest) return alert('Upload a manifest for Multi-PO mode');
     if (pods.length === 0) return alert('Configure at least one pod');
+    const RESERVED = ['D1', 'D2', 'D3', 'D4', 'D5'];
+    if (pods.some((p) => RESERVED.includes(p.toUpperCase()))) return alert('Pod names D1–D5 are reserved for demo mode. Please use other names.');
     const target = Number(dailyTarget); const hours = Number(workingHours);
     if (!target || target <= 0) return alert('Enter a valid daily target');
     if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours (1-24)');
@@ -273,6 +275,8 @@ export default function Setup() {
     if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours');
     const newPods = [...new Set(editPods.split(',').map((s) => s.trim()).filter(Boolean))];
     if (newPods.length === 0) return alert('Need at least one pod');
+    const RESERVED = ['D1', 'D2', 'D3', 'D4', 'D5'];
+    if (newPods.some((p) => RESERVED.includes(p.toUpperCase()))) return alert('Pod names D1–D5 are reserved for demo mode.');
     try {
       await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods });
       logAudit('job_edited', { jobId: activeJob.id });

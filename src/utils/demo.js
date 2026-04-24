@@ -66,18 +66,18 @@ export function getAutoScanISBN() {
   return ALL_MANIFEST_ISBNS[Math.floor(Math.random() * ALL_MANIFEST_ISBNS.length)];
 }
 
-// ─── LocalStorage helpers ───
+// ─── SessionStorage helpers (per-tab, not shared across tabs) ───
 export function isDemoMode() {
-  return localStorage.getItem('bookflow_demo') === 'true';
+  return sessionStorage.getItem('bookflow_demo') === 'true';
 }
 export function setDemoMode(on) {
-  localStorage.setItem('bookflow_demo', on ? 'true' : 'false');
+  sessionStorage.setItem('bookflow_demo', on ? 'true' : 'false');
 }
 export function getDemoJobId() {
-  return localStorage.getItem('bookflow_demo_jobId') || null;
+  return sessionStorage.getItem('bookflow_demo_jobId') || null;
 }
 function saveDemoJobId(id) {
-  localStorage.setItem('bookflow_demo_jobId', id || '');
+  sessionStorage.setItem('bookflow_demo_jobId', id || '');
 }
 
 // ─── Pod claiming: when user manually opens a demo pod, exclude it from simulation ───
@@ -358,6 +358,22 @@ export async function cleanupDemo(db) {
     for (let i = 0; i < billingSnap.docs.length; i += BATCH) {
       const batch = writeBatch(db);
       billingSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Delete demo shifts in batches
+    const shiftSnap = await getDocs(query(collection(db, 'shifts'), where('jobId', '==', jobId)));
+    for (let i = 0; i < shiftSnap.docs.length; i += BATCH) {
+      const batch = writeBatch(db);
+      shiftSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Delete demo BOLs in batches
+    const bolSnap = await getDocs(query(collection(db, 'bols'), where('jobId', '==', jobId)));
+    for (let i = 0; i < bolSnap.docs.length; i += BATCH) {
+      const batch = writeBatch(db);
+      bolSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
       await batch.commit();
     }
 
