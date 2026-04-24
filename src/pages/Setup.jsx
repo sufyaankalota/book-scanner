@@ -87,12 +87,14 @@ export default function Setup() {
         const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
         const snap = await getDocs(q);
         if (!snap.empty) {
-          const jobDoc = snap.docs[0];
-          const jobData = { id: jobDoc.id, ...jobDoc.data() };
-          setActiveJob(jobData);
-          setEditTarget(jobData.meta.dailyTarget);
-          setEditHours(jobData.meta.workingHours);
-          setEditPods(jobData.meta.pods?.join(', ') || '');
+          const realDoc = snap.docs.find((d) => !d.data().meta?.isDemo);
+          if (realDoc) {
+            const jobData = { id: realDoc.id, ...realDoc.data() };
+            setActiveJob(jobData);
+            setEditTarget(jobData.meta.dailyTarget);
+            setEditHours(jobData.meta.workingHours);
+            setEditPods(jobData.meta.pods?.join(', ') || '');
+          }
         }
         // Load branding
         const brandDoc = await getDoc(doc(db, 'config', 'branding'));
@@ -180,9 +182,10 @@ export default function Setup() {
     setSaving(true);
     try {
       const existing = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', true)));
-      if (!existing.empty) {
+      const realActive = existing.docs.find((d) => !d.data().meta?.isDemo);
+      if (realActive) {
         alert('Another job is already active. Close it first.');
-        const d = existing.docs[0]; setActiveJob({ id: d.id, ...d.data() }); setSaving(false); return;
+        const d = realActive; setActiveJob({ id: d.id, ...d.data() }); setSaving(false); return;
       }
       const jobId = `job_${Date.now()}`;
       await setDoc(doc(db, 'jobs', jobId), {

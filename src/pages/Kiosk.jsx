@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import {
   collection, query, where, onSnapshot, Timestamp,
 } from 'firebase/firestore';
+import { pickActiveJob } from '../utils/demo';
 
 export default function Kiosk() {
   const [job, setJob] = useState(null);
@@ -29,8 +30,8 @@ export default function Kiosk() {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const d = snap.docs[0];
-        setJob({ id: d.id, ...d.data() });
+        const picked = pickActiveJob(snap.docs);
+        setJob(picked);
       } else setJob(null);
     });
     return unsub;

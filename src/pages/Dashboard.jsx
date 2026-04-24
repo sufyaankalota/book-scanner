@@ -20,6 +20,7 @@ import {
   collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc, deleteDoc,
   query, where, onSnapshot, Timestamp, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
+import { pickActiveJob } from '../utils/demo';
 import PodCard from '../components/PodCard';
 import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
@@ -63,17 +64,18 @@ export default function Dashboard() {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const d = snap.docs[0];
-        const data = d.data();
-        setJob({ id: d.id, ...data });
-        // Load manifest for completion tracking
-        if (data.meta.mode === 'multi') {
-          getDocs(collection(db, 'jobs', d.id, 'manifest')).then((ms) => {
-            const cache = {};
-            ms.forEach((m) => { cache[m.id] = m.data().poName; });
-            setManifestData(cache);
-          });
-        }
+        const picked = pickActiveJob(snap.docs);
+        if (picked) {
+          setJob(picked);
+          // Load manifest for completion tracking
+          if (picked.meta.mode === 'multi') {
+            getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
+              const cache = {};
+              ms.forEach((m) => { cache[m.id] = m.data().poName; });
+              setManifestData(cache);
+            });
+          }
+        } else setJob(null);
       } else setJob(null);
       setLoading(false);
     });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../firebase';
 import {
@@ -8,6 +8,10 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  isDemoMode, setDemoMode as saveDemoFlag, pickActiveJob, getDemoJobId,
+  createDemoJob, startSimulation, stopSimulation, cleanupDemo,
+} from '../utils/demo';
 
 export default function Home() {
   const { currentUser, logout } = useAuth();
@@ -17,8 +21,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [branding, setBranding] = useState({ name: '', subtitle: '' });
   const [canInstall, setCanInstall] = useState(false);
+  const [demoActive, setDemoActive] = useState(isDemoMode());
+  const [demoStarting, setDemoStarting] = useState(false);
+  const demoJobRef = useRef(getDemoJobId());
 
-  // Load active job
+  // Load active job (filters by demo mode)
   useEffect(() => {
     const q = query(
       collection(db, 'jobs'),
@@ -26,15 +33,48 @@ export default function Home() {
     );
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const d = snap.docs[0];
-        setJob({ id: d.id, ...d.data() });
+        const picked = pickActiveJob(snap.docs);
+        setJob(picked);
       } else {
         setJob(null);
       }
       setLoading(false);
     });
     return unsub;
-  }, []);
+  }, [demoActive]);
+
+  // Reconnect simulation on mount if demo is already running
+  useEffect(() => {
+    if (demoActive && demoJobRef.current) {
+      startSimulation(db, demoJobRef.current);
+    }
+    return () => stopSimulation();
+  }, [demoActive]);
+
+  const handleStartDemo = async () => {
+    setDemoStarting(true);
+    try {
+      const jobId = await createDemoJob(db);
+      demoJobRef.current = jobId;
+      startSimulation(db, jobId);
+      setDemoActive(true);
+    } catch (err) {
+      alert('Failed to start demo: ' + err.message);
+    }
+    setDemoStarting(false);
+  };
+
+  const handleStopDemo = async () => {
+    setDemoStarting(true);
+    try {
+      await cleanupDemo(db);
+      demoJobRef.current = null;
+      setDemoActive(false);
+    } catch (err) {
+      alert('Failed to stop demo: ' + err.message);
+    }
+    setDemoStarting(false);
+  };
 
   // Listen to pod presence
   useEffect(() => {
@@ -114,6 +154,22 @@ export default function Home() {
             <span style={{ color: '#444', fontSize: 13 }}>({currentUser.role})</span>
             <button onClick={logout} style={styles.signOutBtn}>Sign Out</button>
           </div>
+        )}
+      </div>
+
+      {/* Demo Mode Toggle */}
+      <div style={styles.demoBar}>
+        {demoActive ? (
+          <>
+            <span style={styles.demoBadge}>DEMO MODE</span>
+            <button onClick={handleStopDemo} disabled={demoStarting} style={styles.demoStopBtn}>
+              {demoStarting ? 'Stopping...' : 'Stop Demo'}
+            </button>
+          </>
+        ) : (
+          <button onClick={handleStartDemo} disabled={demoStarting} style={styles.demoStartBtn}>
+            {demoStarting ? 'Starting...' : '▶ Launch Demo'}
+          </button>
         )}
       </div>
 
@@ -338,6 +394,23 @@ const styles = {
   signOutBtn: {
     padding: '6px 14px', borderRadius: 6, border: '1px solid #2a2a2a',
     backgroundColor: 'transparent', color: '#777', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
+  demoBar: {
+    display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
+  },
+  demoBadge: {
+    padding: '4px 12px', borderRadius: 6, backgroundColor: 'rgba(168,85,247,0.15)',
+    color: '#c084fc', fontSize: 12, fontWeight: 700, letterSpacing: 1,
+  },
+  demoStartBtn: {
+    padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(168,85,247,0.3)',
+    backgroundColor: 'rgba(168,85,247,0.08)', color: '#c084fc', fontSize: 13,
+    fontWeight: 600, cursor: 'pointer',
+  },
+  demoStopBtn: {
+    padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)',
+    backgroundColor: 'rgba(239,68,68,0.08)', color: '#fca5a5', fontSize: 13,
+    fontWeight: 600, cursor: 'pointer',
   },
   loader: {
     color: '#666',

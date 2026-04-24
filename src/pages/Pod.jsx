@@ -10,6 +10,7 @@ import { playErrorBeep, playSuccessBeep, playColorBeep, getVolume, setVolume } f
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
+import { pickActiveJob } from '../utils/demo';
 import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
 import ExceptionModal from '../components/ExceptionModal';
@@ -218,16 +219,17 @@ export default function Pod() {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const jobDoc = snap.docs[0];
-        const data = jobDoc.data();
-        setJob({ id: jobDoc.id, ...data });
-        if (data.meta.mode === 'multi') {
-          getDocs(collection(db, 'jobs', jobDoc.id, 'manifest')).then((ms) => {
-            const cache = {};
-            ms.forEach((d) => { cache[d.id] = d.data().poName; });
-            setManifestCache(cache);
-          });
-        }
+        const picked = pickActiveJob(snap.docs);
+        if (picked) {
+          setJob(picked);
+          if (picked.meta.mode === 'multi') {
+            getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
+              const cache = {};
+              ms.forEach((d) => { cache[d.id] = d.data().poName; });
+              setManifestCache(cache);
+            });
+          }
+        } else setJob(null);
       } else setJob(null);
     });
     return unsub;
