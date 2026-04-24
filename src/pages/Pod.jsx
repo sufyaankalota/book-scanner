@@ -10,7 +10,7 @@ import { playErrorBeep, playSuccessBeep, playColorBeep, getVolume, setVolume } f
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
-import { pickActiveJob, isDemoMode, DEMO_PODS, claimDemoPod, releaseDemoPod } from '../utils/demo';
+import { pickActiveJob, isDemoMode, DEMO_PODS, claimDemoPod, releaseDemoPod, getAutoScanISBN } from '../utils/demo';
 import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
 import ExceptionModal from '../components/ExceptionModal';
@@ -92,6 +92,8 @@ export default function Pod() {
   const [operatorHistory, setOperatorHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('operator-history') || '[]'); } catch { return []; }
   });
+  const [autoScanActive, setAutoScanActive] = useState(false);
+  const autoScanRef = useRef(null);
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
   const inputRef = useRef(null);
@@ -537,6 +539,18 @@ export default function Pod() {
     }
   };
 
+  // ─── Demo auto-scan: simulate scanning at ~2.5s intervals ───
+  useEffect(() => {
+    if (autoScanActive && isScanning && isDemoMode()) {
+      autoScanRef.current = setInterval(() => {
+        const isbn = getAutoScanISBN();
+        handleScan(isbn);
+      }, 2500);
+      return () => clearInterval(autoScanRef.current);
+    }
+    if (autoScanRef.current) { clearInterval(autoScanRef.current); autoScanRef.current = null; }
+  }, [autoScanActive, isScanning]);
+
   const handleException = (data) => {
     if (!job) return;
     if (trainingMode) {
@@ -967,6 +981,12 @@ export default function Pod() {
           </div>
           {recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training' && (
             <button onClick={handleUndo} style={styles.undoBtn}>↩ {t('undoLastScan')}</button>
+          )}
+          {isDemoMode() && (
+            <button onClick={() => setAutoScanActive((a) => !a)}
+              style={{ ...styles.settingsBtn, backgroundColor: autoScanActive ? 'rgba(168,85,247,0.2)' : undefined, borderColor: autoScanActive ? '#A855F7' : undefined, color: autoScanActive ? '#c084fc' : undefined }}>
+              {autoScanActive ? '⏹ Auto' : '▶ Auto'}
+            </button>
           )}
           <button onClick={() => setShowSettings(!showSettings)} style={styles.settingsBtn}>⚙️</button>
           <button onClick={() => setPhase(PHASE_PAUSED)} style={styles.pauseBtn}>⏸ {t('pause')}</button>

@@ -9,19 +9,62 @@ export const DEMO_PODS = ['D1', 'D2', 'D3', 'D4', 'D5'];
 const DEMO_OPERATORS = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'];
 const EXCEPTION_REASONS = ['Damaged / Unsellable', 'No ISBN Barcode', 'Not a Book', 'Other'];
 
-// Realistic book ISBNs for simulation
-const SAMPLE_ISBNS = [
-  '9780143127550', '9780062316097', '9780307949486', '9780525478812', '9780399590528',
-  '9780316769488', '9780061120084', '9780140283334', '9780743273565', '9780452284234',
-  '9780060935467', '9780684801223', '9780142437230', '9780451524935', '9780679783268',
-  '9780553213119', '9780141182803', '9780140449136', '9780199535569', '9780486280615',
-  '9780061734267', '9780385472579', '9780060850524', '9780684830490', '9780375725784',
-  '9780140243723', '9780812981605', '9780375760266', '9780312427580', '9780316015844',
-  '9780143105428', '9780060838676', '9780307277671', '9780316066525', '9780060256654',
-  '9780452295292', '9780374529260', '9780679720201', '9780393970128', '9780064410397',
+const DEMO_JOB_NAME = 'DEMO — Sample Warehouse PO';
+
+// ─── Multi-PO config ───
+const DEMO_POS = [
+  { name: 'PO-Alpha',   color: '#EF4444' },  // Red
+  { name: 'PO-Bravo',   color: '#3B82F6' },  // Blue
+  { name: 'PO-Charlie',  color: '#EAB308' },  // Yellow
+  { name: 'PO-Delta',   color: '#22C55E' },  // Green
 ];
 
-const DEMO_JOB_NAME = 'DEMO — Sample Warehouse PO';
+// ISBNs assigned to each PO (used for manifest + auto-scan)
+const MANIFEST = {
+  // PO-Alpha (Red)
+  '9780143127550': 'PO-Alpha', '9780062316097': 'PO-Alpha',
+  '9780307949486': 'PO-Alpha', '9780525478812': 'PO-Alpha',
+  '9780399590528': 'PO-Alpha', '9780316769488': 'PO-Alpha',
+  '9780061120084': 'PO-Alpha', '9780140283334': 'PO-Alpha',
+  '9780743273565': 'PO-Alpha', '9780452284234': 'PO-Alpha',
+  // PO-Bravo (Blue)
+  '9780060935467': 'PO-Bravo', '9780684801223': 'PO-Bravo',
+  '9780142437230': 'PO-Bravo', '9780451524935': 'PO-Bravo',
+  '9780679783268': 'PO-Bravo', '9780553213119': 'PO-Bravo',
+  '9780141182803': 'PO-Bravo', '9780140449136': 'PO-Bravo',
+  '9780199535569': 'PO-Bravo', '9780486280615': 'PO-Bravo',
+  // PO-Charlie (Yellow)
+  '9780061734267': 'PO-Charlie', '9780385472579': 'PO-Charlie',
+  '9780060850524': 'PO-Charlie', '9780684830490': 'PO-Charlie',
+  '9780375725784': 'PO-Charlie', '9780140243723': 'PO-Charlie',
+  '9780812981605': 'PO-Charlie', '9780375760266': 'PO-Charlie',
+  '9780312427580': 'PO-Charlie', '9780316015844': 'PO-Charlie',
+  // PO-Delta (Green)
+  '9780143105428': 'PO-Delta', '9780060838676': 'PO-Delta',
+  '9780307277671': 'PO-Delta', '9780316066525': 'PO-Delta',
+  '9780060256654': 'PO-Delta', '9780452295292': 'PO-Delta',
+  '9780374529260': 'PO-Delta', '9780679720201': 'PO-Delta',
+  '9780393970128': 'PO-Delta', '9780064410397': 'PO-Delta',
+};
+
+// ISBNs NOT in the manifest — these trigger exceptions (orange flash)
+const NOT_IN_MANIFEST = [
+  '9780131103627', '9780201633610', '9780596007126', '9780321125217',
+  '9780262033848', '9780134685991', '9780596517748', '9780321573513',
+];
+
+const ALL_MANIFEST_ISBNS = Object.keys(MANIFEST);
+
+// Exported for auto-scan: weighted list — ~80% manifest hits, ~12% not-in-manifest (exception), ~8% shuffled
+export function getAutoScanISBN() {
+  const r = Math.random();
+  if (r < 0.12) {
+    // Exception: ISBN not in manifest
+    return NOT_IN_MANIFEST[Math.floor(Math.random() * NOT_IN_MANIFEST.length)];
+  }
+  // Normal: ISBN in manifest (from all 4 POs)
+  return ALL_MANIFEST_ISBNS[Math.floor(Math.random() * ALL_MANIFEST_ISBNS.length)];
+}
 
 // ─── LocalStorage helpers ───
 export function isDemoMode() {
@@ -53,13 +96,18 @@ export function pickActiveJob(docs) {
   return null;
 }
 
-// ─── Create demo job ───
+// ─── Create demo job (multi-PO with manifest) ───
 export async function createDemoJob(db) {
   const jobId = `demo_${Date.now()}`;
+
+  // Build poColors map
+  const poColors = {};
+  for (const po of DEMO_POS) poColors[po.name] = po.color;
+
   await setDoc(doc(db, 'jobs', jobId), {
     meta: {
       name: DEMO_JOB_NAME,
-      mode: 'single',
+      mode: 'multi',
       dailyTarget: 22000,
       workingHours: 8,
       pods: DEMO_PODS,
@@ -68,21 +116,29 @@ export async function createDemoJob(db) {
       location: 'Demo Warehouse',
       createdAt: serverTimestamp(),
     },
-    poColors: {},
+    poColors,
   });
+
+  // Write manifest subcollection
+  const manifestBatch = writeBatch(db);
+  for (const [isbn, poName] of Object.entries(MANIFEST)) {
+    manifestBatch.set(doc(db, 'jobs', jobId, 'manifest', isbn), { poName });
+  }
+  await manifestBatch.commit();
 
   // Seed some initial scans so the dashboard isn't empty
   const seedCount = 80 + Math.floor(Math.random() * 40);
   const batch = writeBatch(db);
   for (let i = 0; i < Math.min(seedCount, 400); i++) {
     const podIdx = i % DEMO_PODS.length;
+    const isbn = ALL_MANIFEST_ISBNS[Math.floor(Math.random() * ALL_MANIFEST_ISBNS.length)];
     const ref = doc(collection(db, 'scans'));
     batch.set(ref, {
       jobId,
       podId: DEMO_PODS[podIdx],
       scannerId: DEMO_OPERATORS[podIdx],
-      isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
-      poName: DEMO_JOB_NAME,
+      isbn,
+      poName: MANIFEST[isbn],
       timestamp: serverTimestamp(),
       type: 'standard',
     });
@@ -96,7 +152,7 @@ export async function createDemoJob(db) {
       jobId,
       podId: DEMO_PODS[podIdx],
       scannerId: DEMO_OPERATORS[podIdx],
-      isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
+      isbn: NOT_IN_MANIFEST[Math.floor(Math.random() * NOT_IN_MANIFEST.length)],
       title: null,
       reason: EXCEPTION_REASONS[Math.floor(Math.random() * EXCEPTION_REASONS.length)],
       photo: null,
@@ -133,19 +189,20 @@ export function startSimulation(db, jobId) {
           jobId,
           podId: pod,
           scannerId: DEMO_OPERATORS[opIdx],
-          isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
+          isbn: NOT_IN_MANIFEST[Math.floor(Math.random() * NOT_IN_MANIFEST.length)],
           title: null,
           reason: EXCEPTION_REASONS[Math.floor(Math.random() * EXCEPTION_REASONS.length)],
           photo: null,
           timestamp: serverTimestamp(),
         }).catch(() => {});
       } else {
+        const isbn = ALL_MANIFEST_ISBNS[Math.floor(Math.random() * ALL_MANIFEST_ISBNS.length)];
         addDoc(collection(db, 'scans'), {
           jobId,
           podId: pod,
           scannerId: DEMO_OPERATORS[opIdx],
-          isbn: SAMPLE_ISBNS[Math.floor(Math.random() * SAMPLE_ISBNS.length)],
-          poName: DEMO_JOB_NAME,
+          isbn,
+          poName: MANIFEST[isbn],
           timestamp: serverTimestamp(),
           type: 'standard',
         }).catch(() => {});
@@ -301,6 +358,14 @@ export async function cleanupDemo(db) {
     for (let i = 0; i < billingSnap.docs.length; i += BATCH) {
       const batch = writeBatch(db);
       billingSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // Delete manifest subcollection
+    const manifestSnap = await getDocs(collection(db, 'jobs', jobId, 'manifest'));
+    for (let i = 0; i < manifestSnap.docs.length; i += BATCH) {
+      const batch = writeBatch(db);
+      manifestSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
       await batch.commit();
     }
 
