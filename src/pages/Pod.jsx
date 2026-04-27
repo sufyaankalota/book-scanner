@@ -451,10 +451,9 @@ export default function Pod() {
     }
 
     if (job.meta.mode === 'single') {
-      const singleType = isManual ? 'exception' : 'standard';
       if (isManual) {
-        playErrorBeep();
-        flash('#F97316', t('manualBilled'), 2000);
+        playSuccessBeep();
+        flash('#22C55E', '✓ ' + t('scanSuccess') + ' — ' + t('manualBilled'), 2000);
       } else {
         playSuccessBeep();
         flash('#22C55E', '✓ ' + t('scanSuccess'));
@@ -463,7 +462,7 @@ export default function Pod() {
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
-        poName: job.meta.name, timestamp: serverTimestamp(), type: singleType, ...(isManual ? { source: 'manual' } : {}),
+        poName: job.meta.name, timestamp: serverTimestamp(), type: 'standard', ...(isManual ? { source: 'manual' } : {}),
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
@@ -477,11 +476,10 @@ export default function Pod() {
     // Multi-PO
     const poName = manifestCache[isbn];
     if (poName) {
-      const multiType = isManual ? 'exception' : 'standard';
       const color = job.poColors?.[poName] || '#22C55E';
       if (isManual) {
-        playErrorBeep();
-        flash('#F97316', `${getColorName(color)} ${t('gaylord')} — ${t('manualBilled')}`, 2500);
+        playColorBeep(color);
+        flash(color, `${getColorName(color)} ${t('gaylord')} — ${t('manualBilled')}`, 2500);
       } else {
         playColorBeep(color);
         flash(color, `${getColorName(color)} ${t('gaylord')}`);
@@ -490,7 +488,7 @@ export default function Pod() {
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn, poName,
-        timestamp: serverTimestamp(), type: multiType, ...(isManual ? { source: 'manual' } : {}),
+        timestamp: serverTimestamp(), type: 'standard', ...(isManual ? { source: 'manual' } : {}),
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {

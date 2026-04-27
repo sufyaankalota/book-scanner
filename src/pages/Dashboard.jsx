@@ -484,8 +484,8 @@ export default function Dashboard() {
       const [scanSnap, excSnap] = await Promise.all([getDocs(q1), getDocs(q2)]);
       const scans = scanSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const excs = excSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const standardCount = scans.filter((s) => s.type === 'standard').length;
-      const exceptionCount = scans.filter((s) => s.type === 'exception').length + excs.length;
+      const standardCount = scans.filter((s) => s.type === 'standard' && s.source !== 'manual').length;
+      const exceptionCount = scans.filter((s) => s.type === 'exception' || s.source === 'manual').length + excs.length;
       const totalAmount = standardCount * 0.40 + exceptionCount * 0.60;
       const { buf, fileName } = exportBillingXLSX(scans, excs, job.meta, weekStart, weekEnd);
       // Convert to base64 for Firestore storage

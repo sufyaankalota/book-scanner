@@ -42,7 +42,7 @@ export function exportPerPO(scans, exceptions, jobMeta) {
   for (const [po, poScans] of Object.entries(byPO).sort(([a], [b]) => a.localeCompare(b))) {
     const data = poScans.map((s) => ({
       ISBN: s.isbn,
-      Type: s.type === 'exception' ? 'Exception' : 'Standard',
+      Type: s.source === 'manual' ? 'Manual Entry' : s.type === 'exception' ? 'Exception' : 'Standard',
       Pod: s.podId,
       Scanner: s.scannerId,
       Timestamp: toDateString(s.timestamp),
@@ -277,8 +277,8 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
   const RATE_REGULAR = 0.40;
   const RATE_EXCEPTION = 0.60;
 
-  const standardScans = scans.filter((s) => s.type === 'standard');
-  const exceptionScans = scans.filter((s) => s.type === 'exception');
+  const standardScans = scans.filter((s) => s.type === 'standard' && s.source !== 'manual');
+  const exceptionScans = scans.filter((s) => s.type === 'exception' || s.source === 'manual');
   const totalExceptions = exceptionScans.length + exceptions.length;
   const regularAmount = standardScans.length * RATE_REGULAR;
   const exceptionAmount = totalExceptions * RATE_EXCEPTION;
@@ -307,7 +307,7 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
     const d = s.timestamp?.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
     const key = d.toLocaleDateString();
     if (!dailyMap[key]) dailyMap[key] = { date: key, standard: 0, exceptions: 0 };
-    if (s.type === 'standard') dailyMap[key].standard++;
+    if (s.type === 'standard' && s.source !== 'manual') dailyMap[key].standard++;
     else dailyMap[key].exceptions++;
   }
   for (const ex of exceptions) {
@@ -344,7 +344,7 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
   for (const s of scans) {
     const pod = s.podId || 'Unknown';
     if (!podMap[pod]) podMap[pod] = { standard: 0, exceptions: 0 };
-    if (s.type === 'standard') podMap[pod].standard++;
+    if (s.type === 'standard' && s.source !== 'manual') podMap[pod].standard++;
     else podMap[pod].exceptions++;
   }
   const podRows = Object.entries(podMap)
@@ -358,7 +358,7 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
   for (const s of scans) {
     const op = s.scannerId || 'Unknown';
     if (!opMap[op]) opMap[op] = { standard: 0, exceptions: 0 };
-    if (s.type === 'standard') opMap[op].standard++;
+    if (s.type === 'standard' && s.source !== 'manual') opMap[op].standard++;
     else opMap[op].exceptions++;
   }
   const opRows = Object.entries(opMap)
