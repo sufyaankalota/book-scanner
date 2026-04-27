@@ -80,6 +80,8 @@ export function exportPerPO(scans, exceptions, jobMeta) {
     })),
     { Metric: 'Total Standard Scans', Value: scans.filter((s) => s.type === 'standard').length },
     { Metric: 'Total Exceptions', Value: allExcs.length },
+    { Metric: '', Value: '' },
+    { Metric: 'DISCLAIMER', Value: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
 
@@ -140,6 +142,8 @@ function buildWorkbook(scans, exceptions, jobMeta, label) {
       Metric: `Pod ${pod} Scans`,
       Value: scans.filter((s) => s.podId === pod).length,
     })),
+    { Metric: '', Value: '' },
+    { Metric: 'DISCLAIMER', Value: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
   ];
   const ws3 = XLSX.utils.json_to_sheet(summaryData);
   XLSX.utils.book_append_sheet(wb, ws3, 'Summary');
@@ -229,6 +233,8 @@ export function exportExceptionsXLSX(scans, exceptions, jobMeta) {
     { Metric: 'Not in Manifest', Value: exceptionScans.length },
     { Metric: 'Manual Exceptions', Value: exceptions.length },
     { Metric: 'Export Date', Value: new Date().toLocaleString() },
+    { Metric: '', Value: '' },
+    { Metric: 'DISCLAIMER', Value: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
   ]);
   XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

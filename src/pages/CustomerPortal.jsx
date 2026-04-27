@@ -423,6 +423,10 @@ export default function CustomerPortal() {
       })),
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No exceptions' }]), 'Exceptions');
+    const disclaimer = XLSX.utils.json_to_sheet([
+      { Note: 'DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
+    ]);
+    XLSX.utils.book_append_sheet(wb, disclaimer, 'Disclaimer');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     downloadBlob(buf, 'exceptions_' + date + '.xlsx');
   };
