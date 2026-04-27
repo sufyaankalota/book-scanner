@@ -469,6 +469,85 @@ export default function CustomerPortal() {
     downloadBlob(buf, 'exceptions_' + date + '.xlsx');
   };
 
+  // Generate HTML exception report with embedded photos for verification
+  const openPhotoReport = (filterDate) => {
+    // Gather all exceptions (or filter by date)
+    const allExcs = [];
+    for (const s of allScans) {
+      if (s.type !== 'exception') continue;
+      const d = s.timestamp?.toDate?.();
+      if (!d) continue;
+      if (filterDate && d.toISOString().slice(0, 10) !== filterDate) continue;
+      allExcs.push({
+        isbn: s.isbn, reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest',
+        title: '', photo: null, time: d, podId: s.podId,
+      });
+    }
+    for (const ex of allExceptions) {
+      const d = ex.timestamp?.toDate?.();
+      if (!d) continue;
+      if (filterDate && d.toISOString().slice(0, 10) !== filterDate) continue;
+      allExcs.push({
+        isbn: ex.isbn || '', reason: ex.reason, title: ex.title || '',
+        photo: ex.photo || null, time: d, podId: ex.podId,
+      });
+    }
+    allExcs.sort((a, b) => b.time.getTime() - a.time.getTime());
+
+    if (allExcs.length === 0) { alert('No exceptions to display.'); return; }
+
+    const jobName = job?.meta?.name || 'Unknown Job';
+    const dateLabel = filterDate || 'All Dates';
+    const withPhotos = allExcs.filter((e) => e.photo);
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Exception Photo Report — ${jobName}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #fff; color: #222; padding: 32px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 14px; margin-bottom: 24px; }
+  .summary { display: flex; gap: 24px; margin-bottom: 24px; padding: 16px; background: #f5f5f5; border-radius: 8px; }
+  .summary div { text-align: center; }
+  .summary .num { font-size: 28px; font-weight: 800; }
+  .summary .lbl { font-size: 11px; color: #888; text-transform: uppercase; }
+  .exc { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e5e5e5; page-break-inside: avoid; }
+  .exc img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; flex-shrink: 0; }
+  .exc .no-photo { width: 120px; height: 120px; border-radius: 8px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 12px; background: #fafafa; flex-shrink: 0; }
+  .exc .info { flex: 1; }
+  .exc .reason { display: inline-block; padding: 2px 10px; border-radius: 4px; background: #fee2e2; color: #dc2626; font-size: 12px; font-weight: 600; }
+  .exc .isbn { font-family: monospace; font-size: 14px; color: #333; margin-top: 4px; }
+  .exc .title { color: #666; font-size: 13px; margin-top: 2px; font-style: italic; }
+  .exc .time { color: #999; font-size: 12px; margin-top: 4px; }
+  .disclaimer { margin-top: 32px; padding: 12px 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; color: #9a3412; font-size: 12px; }
+  .print-btn { position: fixed; top: 16px; right: 16px; padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; z-index: 100; }
+  @media print { .print-btn { display: none; } .exc img { width: 100px; height: 100px; } }
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button>
+<h1>Exception Photo Report</h1>
+<p class="meta">${jobName} · ${dateLabel} · Generated ${new Date().toLocaleString()}</p>
+<div class="summary">
+  <div><div class="num">${allExcs.length}</div><div class="lbl">Total Exceptions</div></div>
+  <div><div class="num">${withPhotos.length}</div><div class="lbl">With Photos</div></div>
+  <div><div class="num">${allExcs.length - withPhotos.length}</div><div class="lbl">No Photo</div></div>
+</div>
+${allExcs.map((exc, i) => `<div class="exc">
+  ${exc.photo ? `<img src="${exc.photo}" alt="Exception ${i + 1}">` : '<div class="no-photo">No photo</div>'}
+  <div class="info">
+    <span class="reason">${exc.reason}</span>
+    ${exc.isbn ? `<div class="isbn">ISBN: ${exc.isbn}</div>` : ''}
+    ${exc.title ? `<div class="title">"${exc.title}"</div>` : ''}
+    <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' · Pod ' + exc.podId : ''}</div>
+  </div>
+</div>`).join('\n')}
+<div class="disclaimer">⚠️ DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  };
+
   const handleLogout = () => {
     sessionStorage.removeItem('customer-auth');
     setAuthenticated(false);
@@ -652,6 +731,14 @@ export default function CustomerPortal() {
 
       {activeTab === 'exceptions' && (
         <div>
+          {dailyExceptions.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+              <button onClick={() => openPhotoReport(null)}
+                style={{ ...st.smallBtn, padding: '10px 18px', borderColor: '#7c3aed', color: '#a78bfa', fontSize: 13 }}>
+                📸 Photo Report (All Dates)
+              </button>
+            </div>
+          )}
           {dailyExceptions.length === 0 && (
             <div style={st.card}><p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions recorded.</p></div>
           )}
@@ -662,6 +749,7 @@ export default function CustomerPortal() {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{excs.length} exception{excs.length > 1 ? 's' : ''}</span>
                   <button onClick={() => exportDailyExceptions(date)} style={st.smallBtn}>Export</button>
+                  <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>📸 Photos</button>
                 </div>
               </div>
               {excs.map((exc, i) => (
