@@ -251,7 +251,9 @@ export default function CustomerPortal() {
         photo: ex.photo || null, time: d, podId: ex.podId,
       });
     }
-    return Object.entries(byDay).sort((a, b) => b[0].localeCompare(a[0]));
+    return Object.entries(byDay)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, excs]) => [date, excs.sort((a, b) => b.time.getTime() - a.time.getTime())]);
   }, [allScans, allExceptions]);
 
   const totalProcessed = allScans.filter((s) => s.type === 'standard').length;

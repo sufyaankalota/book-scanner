@@ -327,6 +327,24 @@ export default function Dashboard() {
     exportExceptionsXLSX(allScans, allExceptions, job.meta);
   };
 
+  // Combined exception log — merged and sorted newest-first for live feed
+  const combinedExceptions = useMemo(() => {
+    const auto = allScans.filter((s) => s.type === 'exception').map((s) => ({
+      id: s.id, kind: 'auto', isbn: s.isbn, podId: s.podId, scannerId: s.scannerId,
+      label: s.poName === 'EXCEPTIONS' ? 'NOT IN MANIFEST' : s.source === 'manual' ? 'MANUAL ENTRY' : 'EXCEPTION',
+      title: null, photo: null, timestamp: s.timestamp,
+    }));
+    const manual = allExceptions.map((ex) => ({
+      id: ex.id, kind: 'manual', isbn: ex.isbn || '', podId: ex.podId, scannerId: ex.scannerId,
+      label: ex.reason, title: ex.title || null, photo: ex.photo || null, timestamp: ex.timestamp,
+    }));
+    return [...auto, ...manual].sort((a, b) => {
+      const ta = a.timestamp?.toDate?.()?.getTime() || 0;
+      const tb = b.timestamp?.toDate?.()?.getTime() || 0;
+      return tb - ta;
+    });
+  }, [allScans, allExceptions]);
+
   // Leaderboard
   const leaderboard = useMemo(() => {
     const byOp = {};
@@ -688,35 +706,32 @@ export default function Dashboard() {
               📥 Export for Customer
             </button>
           </div>
-          {allScans.filter((s) => s.type === 'exception').map((s) => (
-            <div key={s.id} style={st.exRow}>
-              <span style={st.exTag}>{s.poName === 'EXCEPTIONS' ? 'NOT IN MANIFEST' : s.source === 'manual' ? 'MANUAL ENTRY' : 'EXCEPTION'}</span>
-              <span style={st.exDetail}>ISBN: {s.isbn} · Pod {s.podId} · {s.scannerId}</span>
-              <span style={st.exTime}>{s.timestamp?.toDate?.()?.toLocaleTimeString() || '—'}</span>
-            </div>
-          ))}
-          {allExceptions.map((ex) => (
+          {combinedExceptions.map((ex) => (
             <div key={ex.id} style={st.exRow}>
-              <input type="checkbox" checked={selectedExceptions.has(ex.id)}
-                onChange={() => toggleException(ex.id)}
-                style={{ accentColor: '#3B82F6', cursor: 'pointer', width: 16, height: 16 }} />
+              {ex.kind === 'manual' && (
+                <input type="checkbox" checked={selectedExceptions.has(ex.id)}
+                  onChange={() => toggleException(ex.id)}
+                  style={{ accentColor: '#3B82F6', cursor: 'pointer', width: 16, height: 16 }} />
+              )}
               {ex.photo && (
                 <img src={ex.photo} alt="Exception"
                   onClick={() => setViewingPhoto(ex.photo)}
                   style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', border: '1px solid #444', cursor: 'pointer', flexShrink: 0 }} />
               )}
-              <span style={st.exTag}>{ex.reason}</span>
+              <span style={st.exTag}>{ex.label}</span>
               <span style={st.exDetail}>
                 {ex.isbn ? `ISBN: ${ex.isbn}` : ''}{ex.title ? ` "${ex.title}"` : ''} · Pod {ex.podId} · {ex.scannerId}
               </span>
               <span style={st.exTime}>{ex.timestamp?.toDate?.()?.toLocaleTimeString() || '—'}</span>
-              <button onClick={() => removeException(ex.id)}
-                style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}>
-                🗑 Remove
-              </button>
+              {ex.kind === 'manual' && (
+                <button onClick={() => removeException(ex.id)}
+                  style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}>
+                  🗑 Remove
+                </button>
+              )}
             </div>
           ))}
-          {totalExceptions === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions today</p>}
+          {combinedExceptions.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions today</p>}
         </div>
       )}
 
