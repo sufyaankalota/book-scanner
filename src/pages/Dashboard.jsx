@@ -133,6 +133,8 @@ export default function Dashboard() {
       const fifteenMinAgo = now - 15 * 60 * 1000;
       for (const podId of job.meta.pods || []) {
         const podScans = scans.filter((s) => s.podId === podId);
+        const standardScans = podScans.filter((s) => s.type === 'standard');
+        const autoExc = podScans.filter((s) => s.type === 'exception');
         const recentScans = podScans.filter((s) => {
           const ts = s.timestamp?.toDate?.(); return ts && ts.getTime() > fifteenMinAgo;
         });
@@ -141,8 +143,8 @@ export default function Dashboard() {
         const pace = minutes > 0 && recentScans.length > 0
           ? Math.round((recentScans.length / Math.min(15, minutes)) * 60) : 0;
         const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 5));
-        pods[podId] = { id: podId, scanCount: podScans.length,
-          exceptionCount: podScans.filter((s) => s.type === 'exception').length, pace, targetPerHour, scanners };
+        pods[podId] = { id: podId, scanCount: standardScans.length,
+          exceptionCount: autoExc.length, pace, targetPerHour, scanners };
         const byOp = {};
         for (const s of podScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
         opStats[podId] = byOp;
@@ -437,7 +439,7 @@ export default function Dashboard() {
   const totalExceptions = totalAutoExceptions + allExceptions.length;
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
   const dailyTarget = job?.meta?.dailyTarget || 22000;
-  const remaining = Math.max(0, dailyTarget - totalScans);
+  const remaining = Math.max(0, dailyTarget - (totalScans + totalAutoExceptions));
   const estHoursLeft = totalPace > 0 ? (remaining / totalPace).toFixed(1) : '—';
 
   const handleExportToday = async () => {
@@ -708,10 +710,13 @@ export default function Dashboard() {
 
       {/* Pod grid */}
       <div style={st.podGrid}>
-        {(job.meta.pods || []).map((podId) => (
+        {(job.meta.pods || []).map((podId) => {
+          const manualExc = allExceptions.filter((e) => e.podId === podId).length;
+          const pod = podData[podId] || { id: podId, scanCount: 0, exceptionCount: 0, pace: 0, targetPerHour: 0, scanners: [] };
+          return (
           <div key={podId}>
             <PodCard
-              pod={podData[podId] || { id: podId, scanCount: 0, exceptionCount: 0, pace: 0, targetPerHour: 0, scanners: [] }}
+              pod={{ ...pod, exceptionCount: pod.exceptionCount + manualExc }}
               presence={presence[podId]}
               operatorStats={operatorStats[podId]}
               notes={podNotes[podId] || presence[podId]?.notes || ''}
@@ -729,10 +734,8 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-        ))}
+        )})}
       </div>
-
-      {/* Pending PO uploads from customer */}
       {pendingPOUploads.length > 0 && (
         <div style={{ backgroundColor: '#1a1a2e', border: '1px solid #3B82F6', borderRadius: 10, padding: 16, marginTop: 16 }}>
           <p style={{ color: '#93C5FD', fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>

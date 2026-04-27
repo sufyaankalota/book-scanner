@@ -295,9 +295,10 @@ export default function Pod() {
       where('podId', '==', podId), where('timestamp', '>=', Timestamp.fromDate(today))
     );
     const unsub = onSnapshot(q, (snap) => {
-      setFirestoreCount(snap.size);
+      const standardCount = snap.docs.filter((d) => d.data().type === 'standard').length;
+      setFirestoreCount(standardCount);
       // Count auto-exceptions (scans not in manifest)
-      setAutoExceptionCount(snap.docs.filter((d) => d.data().type === 'exception').length);
+      setAutoExceptionCount(snap.size - standardCount);
       const now = Date.now();
       const startRef = scanStartTimeRef.current || now;
       const fifteenMinAgo = now - 15 * 60 * 1000;
