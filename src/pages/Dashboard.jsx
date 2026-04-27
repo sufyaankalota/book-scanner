@@ -143,8 +143,9 @@ export default function Dashboard() {
         const pace = minutes > 0 && recentScans.length > 0
           ? Math.round((recentScans.length / Math.min(15, minutes)) * 60) : 0;
         const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 5));
+        const manualScans = podScans.filter((s) => s.source === 'manual');
         pods[podId] = { id: podId, scanCount: standardScans.length,
-          exceptionCount: autoExc.length, pace, targetPerHour, scanners };
+          exceptionCount: autoExc.length, manualCount: manualScans.length, pace, targetPerHour, scanners };
         const byOp = {};
         for (const s of podScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
         opStats[podId] = byOp;
@@ -435,6 +436,7 @@ export default function Dashboard() {
 
   // Totals
   const totalScans = Object.values(podData).reduce((sum, p) => sum + p.scanCount, 0);
+  const totalManual = Object.values(podData).reduce((sum, p) => sum + (p.manualCount || 0), 0);
   const totalAutoExceptions = Object.values(podData).reduce((sum, p) => sum + p.exceptionCount, 0);
   const totalExceptions = totalAutoExceptions + allExceptions.length;
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
@@ -593,6 +595,10 @@ export default function Dashboard() {
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalExceptions > 0 ? '#F97316' : '#888' }}>{totalExceptions}</div>
           <div style={st.summaryLabel}>Total Exceptions</div>
+        </div>
+        <div style={st.summaryItem}>
+          <div style={{ ...st.summaryValue, color: totalManual > 0 ? '#3B82F6' : '#888' }}>{totalManual}</div>
+          <div style={st.summaryLabel}>Manual Entries</div>
         </div>
         <div style={st.summaryItem}>
           <div style={st.summaryValue}>{totalPace}</div>

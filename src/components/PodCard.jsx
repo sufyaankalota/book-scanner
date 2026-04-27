@@ -45,6 +45,12 @@ function PodCard({ pod, presence, operatorStats, notes, onNotesChange }) {
           <div style={styles.statLabel}>Scans/hr</div>
         </div>
         <div style={styles.stat}>
+          <div style={{ ...styles.statValue, color: (pod.manualCount || 0) > 0 ? '#3B82F6' : '#888' }}>
+            {pod.manualCount || 0}
+          </div>
+          <div style={styles.statLabel}>Manual</div>
+        </div>
+        <div style={styles.stat}>
           <div style={{ ...styles.statValue, color: pod.exceptionCount > 0 ? '#F97316' : '#888' }}>
             {pod.exceptionCount}
           </div>

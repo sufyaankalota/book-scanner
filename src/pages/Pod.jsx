@@ -55,6 +55,7 @@ export default function Pod() {
   const [firestoreCount, setFirestoreCount] = useState(0);
   const [exceptionCount, setExceptionCount] = useState(0);
   const [autoExceptionCount, setAutoExceptionCount] = useState(0);
+  const [manualEntryCount, setManualEntryCount] = useState(0);
   const [pace, setPace] = useState(0);
   const [flashColor, setFlashColor] = useState(null);
   const [flashText, setFlashText] = useState('');
@@ -296,7 +297,9 @@ export default function Pod() {
     );
     const unsub = onSnapshot(q, (snap) => {
       const standardCount = snap.docs.filter((d) => d.data().type === 'standard').length;
+      const manualCount = snap.docs.filter((d) => d.data().source === 'manual').length;
       setFirestoreCount(standardCount);
+      setManualEntryCount(manualCount);
       // Count auto-exceptions (scans not in manifest)
       setAutoExceptionCount(snap.size - standardCount);
       const now = Date.now();
@@ -1047,6 +1050,12 @@ export default function Pod() {
         <div style={styles.stat}>
           <div style={{ ...styles.statValue, color: paceColor }}>{pace}</div>
           <div style={styles.statLabel}>{t('pacePerHour')} ({t('goal')}: {targetPerHour})</div>
+        </div>
+        <div style={styles.stat}>
+          <div style={{ ...styles.statValue, color: manualEntryCount > 0 ? '#3B82F6' : 'var(--text-secondary, #666)' }}>
+            {manualEntryCount}
+          </div>
+          <div style={styles.statLabel}>Manual</div>
         </div>
         <div style={{ ...styles.stat, cursor: 'pointer' }} onClick={() => setShowExceptionModal(true)}>
           <div style={{ ...styles.statValue, color: (autoExceptionCount + exceptionCount) > 0 ? '#F97316' : 'var(--text-secondary, #666)' }}>
