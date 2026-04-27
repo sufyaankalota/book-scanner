@@ -293,6 +293,8 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
     { Item: 'Exceptions', Detail: '', Qty: totalExceptions, Rate: `$${RATE_EXCEPTION.toFixed(2)}`, Amount: `$${exceptionAmount.toFixed(2)}` },
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
     { Item: 'TOTAL UNITS', Detail: '', Qty: standardScans.length + totalExceptions, Rate: '', Amount: `$${totalAmount.toFixed(2)}` },
+    { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
+    { Item: 'DISCLAIMER', Detail: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.', Qty: '', Rate: '', Amount: '' },
   ];
   const ws1 = XLSX.utils.json_to_sheet(summaryRows);
   // Widen columns

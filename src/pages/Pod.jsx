@@ -17,8 +17,8 @@ import ExceptionModal from '../components/ExceptionModal';
 const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
   '#22C55E': 'GREEN', '#F97316': 'ORANGE', '#A855F7': 'PURPLE',
-  '#EC4899': 'PINK', '#14B8A6': 'TEAL', '#6366F1': 'INDIGO',
-  '#84CC16': 'LIME',
+  '#EC4899': 'PINK', '#14B8A6': 'TEAL', '#92400E': 'BROWN',
+  '#CA8A04': 'GOLD',
 };
 function getColorName(hex) { return COLOR_NAMES[hex] || hex; }
 

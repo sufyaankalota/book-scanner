@@ -26,6 +26,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   const titleRef = useRef(null);
   const fileRef = useRef(null);
   const [ocrStatus, setOcrStatus] = useState(''); // '' | 'reading' | 'done' | 'failed'
+  const ocrImageRef = useRef(null); // high-res image for OCR
 
   // Run OCR when photo is captured to auto-fill title
   useEffect(() => {
@@ -34,20 +35,42 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     setOcrStatus('reading');
     (async () => {
       try {
+        // Use the high-res image if available, otherwise fall back to photoData
+        const imgSrc = ocrImageRef.current || photoData;
         const worker = await createWorker('eng');
-        const { data } = await worker.recognize(photoData);
+        const { data } = await worker.recognize(imgSrc);
         await worker.terminate();
         if (cancelled) return;
-        // Pick the best candidate for book title: longest line that looks like a title
-        const lines = (data.text || '').split('\n').map((l) => l.trim()).filter((l) => l.length > 2);
+        // Use word confidence to find the best title candidate
+        // Book titles are typically large text with high confidence
+        const lines = (data.lines || []).filter((l) => l.words && l.words.length > 0);
         if (lines.length > 0) {
-          // Title is usually one of the first prominent lines; pick the longest of first 5 lines
-          const candidates = lines.slice(0, 5);
-          const best = candidates.reduce((a, b) => a.length >= b.length ? a : b, '');
-          setTitle(best);
-          setOcrStatus('done');
+          // Score each line: prefer high confidence, reasonable length (2-80 chars), and early position
+          const scored = lines.map((line, idx) => {
+            const text = line.text.trim();
+            const avgConf = line.words.reduce((s, w) => s + w.confidence, 0) / line.words.length;
+            // Filter out lines that are likely noise
+            if (text.length < 3 || text.length > 100) return null;
+            if (avgConf < 40) return null;
+            // Prefer longer text with high confidence, penalize lines far down the page
+            const score = (avgConf / 100) * Math.min(text.length, 60) * (1 - idx * 0.05);
+            return { text, score, conf: avgConf };
+          }).filter(Boolean).sort((a, b) => b.score - a.score);
+          if (scored.length > 0) {
+            setTitle(scored[0].text);
+            setOcrStatus('done');
+          } else {
+            setOcrStatus('failed');
+          }
         } else {
-          setOcrStatus('failed');
+          // Fallback to raw text
+          const rawLines = (data.text || '').split('\n').map((l) => l.trim()).filter((l) => l.length > 2);
+          if (rawLines.length > 0) {
+            setTitle(rawLines[0]);
+            setOcrStatus('done');
+          } else {
+            setOcrStatus('failed');
+          }
         }
       } catch {
         if (!cancelled) setOcrStatus('failed');
@@ -101,6 +124,16 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
+        // High-res version for OCR (800px max)
+        const ocrCanvas = document.createElement('canvas');
+        const OCR_MAX = 800;
+        const ocrScale = Math.min(OCR_MAX / img.width, OCR_MAX / img.height, 1);
+        ocrCanvas.width = img.width * ocrScale;
+        ocrCanvas.height = img.height * ocrScale;
+        ocrCanvas.getContext('2d').drawImage(img, 0, 0, ocrCanvas.width, ocrCanvas.height);
+        ocrImageRef.current = ocrCanvas.toDataURL('image/png');
+
+        // Compressed version for Firestore storage
         const canvas = document.createElement('canvas');
         const MAX = 400;
         const scale = Math.min(MAX / img.width, MAX / img.height, 1);

@@ -292,7 +292,7 @@ export default function Dashboard() {
       const existingColors = job.poColors || {};
       const newColors = { ...existingColors };
       let colorIdx = Object.keys(existingColors).length;
-      const DEFAULT_CLR = ['#EF4444','#3B82F6','#EAB308','#22C55E','#F97316','#A855F7','#EC4899','#14B8A6','#6366F1','#84CC16'];
+      const DEFAULT_CLR = ['#EF4444','#3B82F6','#EAB308','#22C55E','#F97316','#A855F7','#EC4899','#14B8A6','#92400E','#CA8A04'];
       const savedColors = upload.poColors || {};
       (upload.poNames || []).forEach((po) => {
         if (!newColors[po]) { newColors[po] = savedColors[po] || DEFAULT_CLR[colorIdx % DEFAULT_CLR.length]; colorIdx++; }

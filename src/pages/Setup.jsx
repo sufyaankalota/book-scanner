@@ -14,7 +14,7 @@ const DEFAULT_COLORS = [
   { name: 'Yellow', hex: '#EAB308' }, { name: 'Green', hex: '#22C55E' },
   { name: 'Orange', hex: '#F97316' }, { name: 'Purple', hex: '#A855F7' },
   { name: 'Pink', hex: '#EC4899' }, { name: 'Teal', hex: '#14B8A6' },
-  { name: 'Indigo', hex: '#6366F1' }, { name: 'Lime', hex: '#84CC16' },
+  { name: 'Brown', hex: '#92400E' }, { name: 'Gold', hex: '#CA8A04' },
 ];
 const DEFAULT_PODS = ['A', 'B', 'C', 'D', 'E'];
 
