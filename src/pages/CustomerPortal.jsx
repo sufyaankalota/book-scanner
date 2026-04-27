@@ -248,7 +248,7 @@ export default function CustomerPortal() {
       const key = d.toISOString().slice(0, 10);
       if (!byDay[key]) byDay[key] = [];
       byDay[key].push({
-        isbn: s.isbn, reason: 'Not in Manifest', title: '',
+        isbn: s.isbn, reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest', title: '',
         photo: null, time: d, podId: s.podId,
       });
     }
@@ -453,7 +453,7 @@ export default function CustomerPortal() {
     const wb = XLSX.utils.book_new();
     const data = [
       ...dayAutoExc.map((s) => ({
-        ISBN: s.isbn, Reason: 'Not in Manifest', Title: '', Timestamp: toDateStr(s.timestamp),
+        ISBN: s.isbn, Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest', Title: '', Timestamp: toDateStr(s.timestamp),
       })),
       ...dayManualExc.map((ex) => ({
         ISBN: ex.isbn || '', Reason: ex.reason, Title: ex.title || '',

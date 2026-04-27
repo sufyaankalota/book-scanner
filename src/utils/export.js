@@ -57,7 +57,7 @@ export function exportPerPO(scans, exceptions, jobMeta) {
   const exceptionScans = scans.filter((s) => s.type === 'exception');
   const allExcs = [
     ...exceptionScans.map((s) => ({
-      ISBN: s.isbn, Title: '', Reason: 'Not in Manifest', PO: s.poName || '',
+      ISBN: s.isbn, Title: '', Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest', PO: s.poName || '',
       Pod: s.podId, Scanner: s.scannerId, 'Has Photo': 'No',
       Timestamp: toDateString(s.timestamp),
     })),
@@ -111,7 +111,7 @@ function buildWorkbook(scans, exceptions, jobMeta, label) {
     ...exceptionScans.map((s) => ({
       ISBN: s.isbn,
       Title: '',
-      Reason: 'Not in Manifest',
+      Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest',
       PO: s.poName || '',
       Pod: s.podId,
       Scanner: s.scannerId,
@@ -216,7 +216,7 @@ export function exportExceptionsXLSX(scans, exceptions, jobMeta) {
   const exceptionScans = scans.filter((s) => s.type === 'exception');
   const allExceptions = [
     ...exceptionScans.map((s) => ({
-      ISBN: s.isbn, Reason: 'Not in Manifest', Pod: s.podId,
+      ISBN: s.isbn, Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest', Pod: s.podId,
       Scanner: s.scannerId, 'Has Photo': 'No', Timestamp: toDateString(s.timestamp),
     })),
     ...exceptions.map((ex) => ({
