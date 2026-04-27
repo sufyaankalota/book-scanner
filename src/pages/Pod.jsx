@@ -54,6 +54,7 @@ export default function Pod() {
   const [localCount, setLocalCount] = useState(0);
   const [firestoreCount, setFirestoreCount] = useState(0);
   const [exceptionCount, setExceptionCount] = useState(0);
+  const [autoExceptionCount, setAutoExceptionCount] = useState(0);
   const [pace, setPace] = useState(0);
   const [flashColor, setFlashColor] = useState(null);
   const [flashText, setFlashText] = useState('');
@@ -295,6 +296,8 @@ export default function Pod() {
     );
     const unsub = onSnapshot(q, (snap) => {
       setFirestoreCount(snap.size);
+      // Count auto-exceptions (scans not in manifest)
+      setAutoExceptionCount(snap.docs.filter((d) => d.data().type === 'exception').length);
       const now = Date.now();
       const startRef = scanStartTimeRef.current || now;
       const fifteenMinAgo = now - 15 * 60 * 1000;
@@ -310,7 +313,7 @@ export default function Pod() {
     return unsub;
   }, [job, podId]);
 
-  // ─── Exception count ───
+  // ─── Manual exception count ───
   useEffect(() => {
     if (!job) return;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -557,7 +560,7 @@ export default function Pod() {
     const elapsed = scanStartTimeRef.current ? ((Date.now() - scanStartTimeRef.current) / 3600000).toFixed(1) : '0';
     const stats = {
       operator: operatorName, pod: podId, total: totalScans,
-      exceptions: exceptionCount, pace,
+      exceptions: autoExceptionCount + exceptionCount, pace,
       hours: elapsed, job: job?.meta?.name || 'Unknown',
       breakMinutes: breakMinutesUsed,
     };
@@ -1045,8 +1048,8 @@ export default function Pod() {
           <div style={styles.statLabel}>{t('pacePerHour')} ({t('goal')}: {targetPerHour})</div>
         </div>
         <div style={{ ...styles.stat, cursor: 'pointer' }} onClick={() => setShowExceptionModal(true)}>
-          <div style={{ ...styles.statValue, color: exceptionCount > 0 ? '#F97316' : 'var(--text-secondary, #666)' }}>
-            {exceptionCount}
+          <div style={{ ...styles.statValue, color: (autoExceptionCount + exceptionCount) > 0 ? '#F97316' : 'var(--text-secondary, #666)' }}>
+            {autoExceptionCount + exceptionCount}
           </div>
           <div style={styles.statLabel}>{t('exceptions')}</div>
         </div>
