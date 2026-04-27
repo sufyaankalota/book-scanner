@@ -57,6 +57,7 @@ export default function Dashboard() {
     d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7);
     return d.toISOString().slice(0, 10);
   });
+  const [allJobScans, setAllJobScans] = useState([]);
 
   // Load active job
   useEffect(() => {
@@ -68,13 +69,11 @@ export default function Dashboard() {
         if (picked) {
           setJob(picked);
           // Load manifest for completion tracking
-          if (picked.meta.mode === 'multi') {
-            getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
-              const cache = {};
-              ms.forEach((m) => { cache[m.id] = m.data().poName; });
-              setManifestData(cache);
-            });
-          }
+          getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
+            const cache = {};
+            ms.forEach((m) => { cache[m.id] = m.data().poName; });
+            setManifestData(cache);
+          });
         } else setJob(null);
       } else setJob(null);
       setLoading(false);
@@ -200,6 +199,16 @@ export default function Dashboard() {
     const unsub = onSnapshot(q, (snap) => {
       setBols(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+    });
+    return unsub;
+  }, [job]);
+
+  // All job scans (full job progress)
+  useEffect(() => {
+    if (!job) return;
+    const q = query(collection(db, 'scans'), where('jobId', '==', job.id));
+    const unsub = onSnapshot(q, (snap) => {
+      setAllJobScans(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return unsub;
   }, [job]);
@@ -380,6 +389,33 @@ export default function Dashboard() {
     }
     return { total, found, pct: Math.round((found / total) * 100), byPO };
   }, [manifestData, allScans]);
+
+  // Total job progress
+  const jobProgress = useMemo(() => {
+    const standard = allJobScans.filter((s) => s.type === 'standard');
+    const exceptionScans = allJobScans.filter((s) => s.type === 'exception');
+    const totalScanned = standard.length;
+    const totalExceptions = exceptionScans.length;
+    const totalExpected = Object.keys(manifestData).length || null;
+    const byPO = {};
+    for (const s of standard) {
+      const po = s.poName || 'Unassigned';
+      if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
+      byPO[po].scanned++;
+    }
+    if (totalExpected) {
+      const poExpected = {};
+      for (const po of Object.values(manifestData)) {
+        poExpected[po] = (poExpected[po] || 0) + 1;
+      }
+      for (const [po, count] of Object.entries(poExpected)) {
+        if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
+        byPO[po].expected = count;
+      }
+    }
+    const pct = totalExpected ? Math.round((totalScanned / totalExpected) * 100) : null;
+    return { totalScanned, totalExceptions, totalExpected, pct, byPO };
+  }, [allJobScans, manifestData]);
 
   // Labor efficiency
   const laborMetrics = useMemo(() => {
@@ -591,6 +627,53 @@ export default function Dashboard() {
         <button onClick={enableNotifications} style={{ ...st.exportBtn, marginBottom: 16 }}>
           🔔 Enable Push Alerts
         </button>
+      )}
+
+      {/* Job Progress */}
+      {allJobScans.length > 0 && (
+        <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h3 style={{ color: '#ccc', fontSize: 14, margin: 0 }}>📊 Total Job Progress</h3>
+            <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
+              {jobProgress.totalScanned.toLocaleString()} scanned
+              {jobProgress.totalExpected ? ` / ${jobProgress.totalExpected.toLocaleString()} expected (${jobProgress.pct}%)` : ''}
+            </span>
+          </div>
+          {jobProgress.totalExpected && (
+            <div style={{ height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
+              <div style={{ height: '100%', backgroundColor: jobProgress.pct >= 100 ? '#22C55E' : '#3B82F6', width: `${Math.min(100, jobProgress.pct)}%`, borderRadius: 3, transition: 'width 0.5s ease' }} />
+            </div>
+          )}
+          {job.meta.mode === 'multi' && Object.keys(jobProgress.byPO).length > 1 && (
+            <div style={{ marginTop: 8 }}>
+              {Object.entries(jobProgress.byPO)
+                .filter(([po]) => po !== 'EXCEPTIONS' && po !== 'Unassigned')
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([po, data]) => {
+                  const poPct = data.expected > 0 ? Math.round((data.scanned / data.expected) * 100) : null;
+                  const color = job.poColors?.[po] || '#3B82F6';
+                  return (
+                    <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+                      <span style={{ color: '#aaa', fontSize: 13, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po}</span>
+                      <div style={{ flex: 1, height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', backgroundColor: poPct !== null && poPct >= 100 ? '#22C55E' : color, width: `${poPct !== null ? Math.min(100, poPct) : 100}%`, borderRadius: 3 }} />
+                      </div>
+                      <span style={{ color: '#888', fontSize: 12, minWidth: 100, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {data.scanned.toLocaleString()}{data.expected > 0 ? ` / ${data.expected.toLocaleString()}` : ''}
+                        {poPct !== null ? ` (${poPct}%)` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+          {jobProgress.totalExceptions > 0 && (
+            <div style={{ marginTop: 8, color: '#F97316', fontSize: 13 }}>
+              ⚠ {jobProgress.totalExceptions.toLocaleString()} exception scan{jobProgress.totalExceptions !== 1 ? 's' : ''} (not in manifest)
+            </div>
+          )}
+        </div>
       )}
 
       {/* Manifest completion */}
