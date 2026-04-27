@@ -296,12 +296,14 @@ export default function Pod() {
       where('podId', '==', podId), where('timestamp', '>=', Timestamp.fromDate(today))
     );
     const unsub = onSnapshot(q, (snap) => {
-      const standardCount = snap.docs.filter((d) => d.data().type === 'standard').length;
-      const manualCount = snap.docs.filter((d) => d.data().source === 'manual').length;
+      const docs = snap.docs.map((d) => d.data());
+      const standardCount = docs.filter((d) => d.type === 'standard').length;
+      const manualCount = docs.filter((d) => d.source === 'manual').length;
+      const autoExcCount = docs.filter((d) => d.type === 'exception' && d.source !== 'manual').length;
       setFirestoreCount(standardCount);
       setManualEntryCount(manualCount);
-      // Count auto-exceptions (scans not in manifest)
-      setAutoExceptionCount(snap.size - standardCount);
+      // Count auto-exceptions (not-in-manifest, excluding manual entries)
+      setAutoExceptionCount(autoExcCount);
       const now = Date.now();
       const startRef = scanStartTimeRef.current || now;
       const fifteenMinAgo = now - 15 * 60 * 1000;

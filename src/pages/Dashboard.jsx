@@ -134,7 +134,8 @@ export default function Dashboard() {
       for (const podId of job.meta.pods || []) {
         const podScans = scans.filter((s) => s.podId === podId);
         const standardScans = podScans.filter((s) => s.type === 'standard');
-        const autoExc = podScans.filter((s) => s.type === 'exception');
+        const autoExc = podScans.filter((s) => s.type === 'exception' && s.source !== 'manual');
+        const manualScans = podScans.filter((s) => s.source === 'manual');
         const recentScans = podScans.filter((s) => {
           const ts = s.timestamp?.toDate?.(); return ts && ts.getTime() > fifteenMinAgo;
         });
@@ -143,7 +144,6 @@ export default function Dashboard() {
         const pace = minutes > 0 && recentScans.length > 0
           ? Math.round((recentScans.length / Math.min(15, minutes)) * 60) : 0;
         const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 5));
-        const manualScans = podScans.filter((s) => s.source === 'manual');
         pods[podId] = { id: podId, scanCount: standardScans.length,
           exceptionCount: autoExc.length, manualCount: manualScans.length, pace, targetPerHour, scanners };
         const byOp = {};

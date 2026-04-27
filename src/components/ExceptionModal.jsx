@@ -35,27 +35,71 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     setOcrStatus('reading');
     (async () => {
       try {
-        // Use the high-res image if available, otherwise fall back to photoData
+        // Use the high-res image if available, otherwise use original photoData
         const imgSrc = ocrImageRef.current || photoData;
+
+        // Upscale image for better OCR accuracy — Tesseract works best at 300+ DPI
+        const upscaled = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const TARGET = 1600; // upscale to 1600px for OCR
+            const scale = Math.max(TARGET / img.width, TARGET / img.height, 1);
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext('2d');
+            // Sharpen: use high-quality scaling
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // Increase contrast for text detection
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const d = imageData.data;
+            for (let i = 0; i < d.length; i += 4) {
+              // Convert to grayscale
+              const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+              // Increase contrast
+              const enhanced = gray < 128 ? Math.max(0, gray * 0.7) : Math.min(255, gray * 1.2 + 30);
+              d[i] = d[i + 1] = d[i + 2] = enhanced;
+            }
+            ctx.putImageData(imageData, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          };
+          img.onerror = () => resolve(imgSrc); // fallback to original
+          img.src = imgSrc;
+        });
+
         const worker = await createWorker('eng');
-        const { data } = await worker.recognize(imgSrc);
+        const { data } = await worker.recognize(upscaled);
         await worker.terminate();
         if (cancelled) return;
-        // Use word confidence to find the best title candidate
-        // Book titles are typically large text with high confidence
+
+        // Extract best title candidate from OCR results
+        // Book titles are typically the largest text, often in the top half of the cover
         const lines = (data.lines || []).filter((l) => l.words && l.words.length > 0);
         if (lines.length > 0) {
-          // Score each line: prefer high confidence, reasonable length (2-80 chars), and early position
           const scored = lines.map((line, idx) => {
-            const text = line.text.trim();
+            const text = line.text.trim()
+              .replace(/[|_~`{}[\]]/g, '') // remove OCR noise characters
+              .replace(/\s{2,}/g, ' ')     // collapse multiple spaces
+              .trim();
+            if (text.length < 2 || text.length > 120) return null;
+
             const avgConf = line.words.reduce((s, w) => s + w.confidence, 0) / line.words.length;
-            // Filter out lines that are likely noise
-            if (text.length < 3 || text.length > 100) return null;
-            if (avgConf < 40) return null;
-            // Prefer longer text with high confidence, penalize lines far down the page
-            const score = (avgConf / 100) * Math.min(text.length, 60) * (1 - idx * 0.05);
-            return { text, score, conf: avgConf };
+            if (avgConf < 30) return null;
+
+            // Estimate font size from line bounding box height
+            const lineHeight = line.bbox ? (line.bbox.y1 - line.bbox.y0) : 20;
+
+            // Score: larger text (bigger font) + higher confidence + position bonus (top half)
+            const positionInPage = lines.length > 1 ? idx / (lines.length - 1) : 0.5;
+            const positionBonus = positionInPage < 0.6 ? 1.2 : 0.8; // favor top 60%
+            const lengthBonus = Math.min(text.length, 50) / 50; // favor reasonable length
+            const score = (avgConf / 100) * lineHeight * positionBonus * (0.5 + lengthBonus * 0.5);
+
+            return { text, score, conf: avgConf, height: lineHeight };
           }).filter(Boolean).sort((a, b) => b.score - a.score);
+
           if (scored.length > 0) {
             setTitle(scored[0].text);
             setOcrStatus('done');
@@ -64,7 +108,8 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
           }
         } else {
           // Fallback to raw text
-          const rawLines = (data.text || '').split('\n').map((l) => l.trim()).filter((l) => l.length > 2);
+          const rawText = (data.text || '').trim();
+          const rawLines = rawText.split('\n').map((l) => l.trim()).filter((l) => l.length > 2 && l.length < 120);
           if (rawLines.length > 0) {
             setTitle(rawLines[0]);
             setOcrStatus('done');
@@ -84,7 +129,22 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     if (!uploadToken || !phoneWaiting) return;
     const unsub = onSnapshot(doc(db, 'photo-uploads', uploadToken), (snap) => {
       if (snap.exists() && snap.data().photo) {
-        setPhotoData(snap.data().photo);
+        const rawPhoto = snap.data().photo;
+        // Store full-res for OCR, then compress for display/storage
+        ocrImageRef.current = rawPhoto;
+        // Compress for Firestore storage
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 400;
+          const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          setPhotoData(canvas.toDataURL('image/jpeg', 0.6));
+        };
+        img.onerror = () => setPhotoData(rawPhoto);
+        img.src = rawPhoto;
         setPhoneWaiting(false);
         setPhotoMode(null);
         deleteDoc(doc(db, 'photo-uploads', uploadToken)).catch(() => {});
@@ -124,9 +184,9 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // High-res version for OCR (800px max)
+        // High-res version for OCR (1200px max)
         const ocrCanvas = document.createElement('canvas');
-        const OCR_MAX = 800;
+        const OCR_MAX = 1200;
         const ocrScale = Math.min(OCR_MAX / img.width, OCR_MAX / img.height, 1);
         ocrCanvas.width = img.width * ocrScale;
         ocrCanvas.height = img.height * ocrScale;
