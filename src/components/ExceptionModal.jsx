@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { t } from '../utils/locale';
+import { createWorker } from 'tesseract.js';
 
 const EXCEPTION_REASON_KEYS = [
   'reasonDamaged',
@@ -24,6 +25,36 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   const [phoneWaiting, setPhoneWaiting] = useState(false);
   const titleRef = useRef(null);
   const fileRef = useRef(null);
+  const [ocrStatus, setOcrStatus] = useState(''); // '' | 'reading' | 'done' | 'failed'
+
+  // Run OCR when photo is captured to auto-fill title
+  useEffect(() => {
+    if (!photoData || title.trim()) return; // skip if already has title
+    let cancelled = false;
+    setOcrStatus('reading');
+    (async () => {
+      try {
+        const worker = await createWorker('eng');
+        const { data } = await worker.recognize(photoData);
+        await worker.terminate();
+        if (cancelled) return;
+        // Pick the best candidate for book title: longest line that looks like a title
+        const lines = (data.text || '').split('\n').map((l) => l.trim()).filter((l) => l.length > 2);
+        if (lines.length > 0) {
+          // Title is usually one of the first prominent lines; pick the longest of first 5 lines
+          const candidates = lines.slice(0, 5);
+          const best = candidates.reduce((a, b) => a.length >= b.length ? a : b, '');
+          setTitle(best);
+          setOcrStatus('done');
+        } else {
+          setOcrStatus('failed');
+        }
+      } catch {
+        if (!cancelled) setOcrStatus('failed');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [photoData]);
 
   // Listen for phone upload
   useEffect(() => {
@@ -150,8 +181,17 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
 
             <p style={styles.fieldLabel}>{t('bookTitle')}</p>
             <input ref={titleRef} type="text" value={title}
-              onChange={(e) => setTitle(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder={t('bookTitlePlaceholder')} style={styles.input} />
+              onChange={(e) => { setTitle(e.target.value); setOcrStatus(''); }} onKeyDown={handleKeyDown}
+              placeholder={ocrStatus === 'reading' ? 'Reading text from photo...' : t('bookTitlePlaceholder')} style={styles.input} />
+            {ocrStatus === 'reading' && (
+              <p style={{ color: '#93c5fd', fontSize: 12, marginTop: 4, marginBottom: 0 }}>🔍 Extracting title from photo...</p>
+            )}
+            {ocrStatus === 'done' && title.trim() && (
+              <p style={{ color: '#22C55E', fontSize: 12, marginTop: 4, marginBottom: 0 }}>✓ Title extracted from photo — you can edit it above</p>
+            )}
+            {ocrStatus === 'failed' && (
+              <p style={{ color: '#F97316', fontSize: 12, marginTop: 4, marginBottom: 0 }}>Could not read title — please type it manually</p>
+            )}
 
             <p style={{ ...styles.fieldLabel, marginTop: 16, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
               📸 {t('photo')} {needsPhoto ? t('photoRequired') : t('photoOptional')}:
@@ -163,7 +203,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
                 <img src={photoData} alt="Exception photo"
                   style={{ width: 90, height: 90, borderRadius: 12, objectFit: 'cover', border: '2px solid #555' }} />
                 <span style={{ color: '#22C55E', fontSize: 15, fontWeight: 700 }}>✓ {t('photoCaptured')}</span>
-                <button onClick={() => setPhotoData(null)}
+                <button onClick={() => { setPhotoData(null); setOcrStatus(''); }}
                   style={{ background: 'none', border: 'none', color: '#888', fontSize: 18, cursor: 'pointer', padding: 6 }}>✕</button>
               </div>
             )}
