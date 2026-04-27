@@ -58,6 +58,8 @@ export default function Dashboard() {
     return d.toISOString().slice(0, 10);
   });
   const [allJobScans, setAllJobScans] = useState([]);
+  const [poAlertsDismissed, setPOAlertsDismissed] = useState(new Set());
+  const poAlertsNotifiedRef = useRef(new Set());
 
   // Load active job
   useEffect(() => {
@@ -434,6 +436,61 @@ export default function Dashboard() {
     return { totalHours: totalHours.toFixed(1), scansPerHour: totalHours > 0 ? Math.round(allScans.length / totalHours) : 0 };
   }, [shifts, allScans]);
 
+  // PO Completion Alerts
+  const poAlerts = useMemo(() => {
+    if (!manifestCompletion?.byPO) return [];
+    const alerts = [];
+    for (const [po, data] of Object.entries(manifestCompletion.byPO)) {
+      const pct = data.total > 0 ? Math.round((data.found / data.total) * 100) : 0;
+      if (pct >= 95) {
+        alerts.push({ po, pct, found: data.found, total: data.total, complete: pct >= 100 });
+      }
+    }
+    return alerts.sort((a, b) => b.pct - a.pct);
+  }, [manifestCompletion]);
+
+  // Push browser notification for PO completion milestones
+  useEffect(() => {
+    if (!notificationsEnabled || !poAlerts.length) return;
+    for (const alert of poAlerts) {
+      const key = `${alert.po}_${alert.complete ? '100' : '95'}`;
+      if (!poAlertsNotifiedRef.current.has(key)) {
+        poAlertsNotifiedRef.current.add(key);
+        try {
+          new Notification(`PO ${alert.po} — ${alert.pct}%`, {
+            body: alert.complete ? `✅ Complete! ${alert.found}/${alert.total} scanned` : `Almost done: ${alert.found}/${alert.total} scanned`,
+            tag: `po_${alert.po}_${alert.pct}`,
+          });
+        } catch {}
+      }
+    }
+  }, [poAlerts, notificationsEnabled]);
+
+  // Exception trend (hourly exception rate)
+  const exceptionTrend = useMemo(() => {
+    const hours = {};
+    const scanHours = {};
+    for (const s of allScans) {
+      const d = s.timestamp?.toDate?.(); if (!d) continue;
+      const h = d.getHours();
+      scanHours[h] = (scanHours[h] || 0) + 1;
+      if (s.type === 'exception') hours[h] = (hours[h] || 0) + 1;
+    }
+    for (const ex of allExceptions) {
+      const d = ex.timestamp?.toDate?.(); if (!d) continue;
+      const h = d.getHours();
+      hours[h] = (hours[h] || 0) + 1;
+    }
+    const arr = [];
+    for (let h = 6; h <= 22; h++) {
+      const excCount = hours[h] || 0;
+      const totalCount = scanHours[h] || 0;
+      const rate = totalCount > 0 ? Math.round((excCount / totalCount) * 100) : 0;
+      arr.push({ hour: h, exceptions: excCount, total: totalCount, rate });
+    }
+    return arr;
+  }, [allScans, allExceptions]);
+
   // Totals
   const totalScans = Object.values(podData).reduce((sum, p) => sum + p.scanCount, 0);
   const totalManual = Object.values(podData).reduce((sum, p) => sum + (p.manualCount || 0), 0);
@@ -510,6 +567,62 @@ export default function Dashboard() {
     setShowBilling(false);
   };
 
+  // ─── Daily Summary (save to Firestore for email integration) ───
+  const generateDailySummary = async () => {
+    if (!job) return;
+    const today = new Date().toLocaleDateString();
+    const standardCount = allScans.filter((s) => s.type === 'standard' && s.source !== 'manual').length;
+    const manualCount = allScans.filter((s) => s.source === 'manual').length;
+    const exceptionCount = allScans.filter((s) => s.type === 'exception').length + allExceptions.length;
+
+    // PO progress
+    const poProgress = {};
+    if (manifestCompletion?.byPO) {
+      for (const [po, d] of Object.entries(manifestCompletion.byPO)) {
+        poProgress[po] = { scanned: d.found, total: d.total, pct: d.total > 0 ? Math.round((d.found / d.total) * 100) : 0 };
+      }
+    }
+
+    // Labor
+    let laborHours = 0;
+    for (const s of shifts) {
+      if (s.startTime && s.endTime) {
+        const start = s.startTime.toDate ? s.startTime.toDate() : new Date(s.startTime);
+        const end = s.endTime.toDate ? s.endTime.toDate() : new Date(s.endTime);
+        laborHours += (end - start) / 3600000;
+      }
+    }
+
+    // Top operators
+    const byOp = {};
+    for (const s of allScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
+    const topOperators = Object.entries(byOp).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+
+    const summary = {
+      jobId: job.id,
+      jobName: job.meta.name || 'Unknown',
+      date: today,
+      totalScans: standardCount + manualCount + exceptionCount,
+      standardScans: standardCount,
+      manualEntries: manualCount,
+      exceptions: exceptionCount,
+      dailyTarget: job.meta.dailyTarget || 22000,
+      pctOfTarget: Math.round(((standardCount + manualCount + exceptionCount) / (job.meta.dailyTarget || 22000)) * 100),
+      poProgress,
+      laborHours: parseFloat(laborHours.toFixed(1)),
+      scansPerHour: laborHours > 0 ? Math.round(allScans.length / laborHours) : 0,
+      topOperators,
+      createdAt: serverTimestamp(),
+    };
+
+    try {
+      await addDoc(collection(db, 'daily-summaries'), summary);
+      alert(`✅ Daily summary saved for ${today}. Connect a Firebase email extension to auto-send.`);
+      logAudit('daily_summary', { date: today, totalScans: summary.totalScans });
+    } catch (err) { alert('Failed to save summary: ' + err.message); }
+  };
+
   if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;
   if (!job) return (
     <div style={st.container}>
@@ -542,6 +655,7 @@ export default function Dashboard() {
           {manifestCompletion && (
             <button onClick={handleExportReconciliation} style={st.exportBtn}>📋 Reconciliation</button>
           )}
+          <button onClick={generateDailySummary} style={{ ...st.exportBtn, borderColor: '#A855F7', color: '#A855F7' }}>📧 Daily Summary</button>
           <Link to="/kiosk" style={{ ...st.exportBtn, textDecoration: 'none' }}>📺 Kiosk</Link>
           <Link to="/setup" style={st.setupLink}>Setup</Link>
         </div>
@@ -765,12 +879,39 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* PO Completion Alerts */}
+      {poAlerts.length > 0 && (
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {poAlerts.filter((a) => !poAlertsDismissed.has(a.po)).map((a) => (
+            <div key={a.po} style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 10,
+              backgroundColor: a.complete ? '#052e16' : '#422006',
+              border: `1px solid ${a.complete ? '#22C55E' : '#F59E0B'}`,
+            }}>
+              <span style={{ fontSize: 20 }}>{a.complete ? '✅' : '⏳'}</span>
+              <div style={{ flex: 1 }}>
+                <span style={{ color: a.complete ? '#86efac' : '#fde68a', fontWeight: 800, fontSize: 14 }}>
+                  {a.po} — {a.pct}%
+                </span>
+                <span style={{ color: '#999', fontSize: 13, marginLeft: 8 }}>
+                  {a.found.toLocaleString()}/{a.total.toLocaleString()} scanned
+                  {a.complete ? ' · Ready to close gaylord!' : ' · Almost done'}
+                </span>
+              </div>
+              <button onClick={() => setPOAlertsDismissed((prev) => new Set([...prev, a.po]))}
+                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: 16, padding: 4 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Panel toggles */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
         {[
           ['exceptions', `Exceptions (${combinedExceptions.length})`],
           ['leaderboard', '🏆 Leaderboard'],
           ['hourly', '📊 Hourly'],
+          ['excTrend', '📈 Exception Trend'],
           ['shifts', '⏱ Shifts'],
           ['bols', `🚛 BOLs (${bols.length})`],
         ].map(([key, label]) => (
@@ -897,6 +1038,50 @@ export default function Dashboard() {
       )}
 
       {/* BOLs panel */}
+      {/* Exception Trend panel */}
+      {showPanel === 'excTrend' && (
+        <div style={st.panel}>
+          <div style={{ padding: '12px 16px' }}>
+            <p style={{ color: '#888', fontSize: 13, margin: '0 0 12px' }}>
+              Exception rate by hour — spikes may indicate manifest issues, wrong gaylord, or process problems
+            </p>
+            <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 120 }}>
+              {exceptionTrend.map((d) => {
+                const maxRate = Math.max(1, ...exceptionTrend.map((x) => x.rate));
+                const barH = d.total > 0 ? Math.max(4, (d.rate / maxRate) * 100) : 0;
+                const isSpike = d.rate > 15;
+                return (
+                  <div key={d.hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{ fontSize: 9, color: isSpike ? '#EF4444' : '#888', fontWeight: 700, marginBottom: 2 }}>
+                      {d.total > 0 ? `${d.rate}%` : ''}
+                    </div>
+                    <div style={{
+                      width: '80%', height: `${barH}%`, minHeight: d.total > 0 ? 4 : 1,
+                      backgroundColor: isSpike ? '#EF4444' : d.rate > 8 ? '#F59E0B' : '#3B82F6',
+                      borderRadius: '3px 3px 0 0', transition: 'height 0.3s',
+                    }} title={`${d.hour}:00 — ${d.exceptions} exceptions / ${d.total} scans (${d.rate}%)`} />
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{d.hour}h</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginTop: 12, justifyContent: 'center' }}>
+              <span style={{ fontSize: 11, color: '#3B82F6' }}>● Normal (&lt;8%)</span>
+              <span style={{ fontSize: 11, color: '#F59E0B' }}>● Elevated (8-15%)</span>
+              <span style={{ fontSize: 11, color: '#EF4444' }}>● Spike (&gt;15%)</span>
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {exceptionTrend.filter((d) => d.rate > 15 && d.total > 10).map((d) => (
+                <div key={d.hour} style={{ backgroundColor: '#2a1010', border: '1px solid #EF4444', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
+                  <span style={{ color: '#EF4444', fontWeight: 700 }}>⚠ {d.hour}:00</span>
+                  <span style={{ color: '#ccc', marginLeft: 6 }}>{d.exceptions} exceptions ({d.rate}% rate)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPanel === 'bols' && (
         <div style={st.panel}>
           {bols.map((bol) => (

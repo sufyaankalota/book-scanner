@@ -53,6 +53,44 @@ export function playSuccessBeep() {
   playTone(880, 0.12, 0.2);
 }
 
+// Distinct "already scanned" tone — two short descending beeps
+export function playDuplicateBeep() {
+  try {
+    const vol = getVolume() / 100;
+    if (vol === 0) return;
+    const ctx = getAudioContext();
+    // First beep
+    const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
+    osc1.type = 'square'; osc1.frequency.setValueAtTime(600, ctx.currentTime);
+    g1.gain.setValueAtTime(0.3 * vol, ctx.currentTime);
+    g1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+    osc1.connect(g1); g1.connect(ctx.destination);
+    osc1.start(ctx.currentTime); osc1.stop(ctx.currentTime + 0.1);
+    // Second beep (lower)
+    const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
+    osc2.type = 'square'; osc2.frequency.setValueAtTime(400, ctx.currentTime + 0.15);
+    g2.gain.setValueAtTime(0.3 * vol, ctx.currentTime + 0.15);
+    g2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+    osc2.connect(g2); g2.connect(ctx.destination);
+    osc2.start(ctx.currentTime + 0.15); osc2.stop(ctx.currentTime + 0.25);
+  } catch {}
+}
+
+// Distinct "not in manifest" tone — long low buzz
+export function playNotInManifestBeep() {
+  try {
+    const vol = getVolume() / 100;
+    if (vol === 0) return;
+    const ctx = getAudioContext();
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(220, ctx.currentTime);
+    g.gain.setValueAtTime(0.4 * vol, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+  } catch {}
+}
+
 const COLOR_TONES = {
   '#EF4444': 523,
   '#3B82F6': 587,

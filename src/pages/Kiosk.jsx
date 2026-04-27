@@ -102,6 +102,17 @@ export default function Kiosk() {
   const pct = Math.min(100, Math.round((totalScans / dailyTarget) * 100));
   const remaining = Math.max(0, dailyTarget - totalScans);
 
+  // Countdown timer
+  const estHoursLeft = totalPace > 0 ? remaining / totalPace : null;
+  const etaTime = estHoursLeft != null ? new Date(Date.now() + estHoursLeft * 3600000) : null;
+  const countdownColor = estHoursLeft == null ? '#666'
+    : estHoursLeft <= (job?.meta?.workingHours || 8) ? '#22C55E'
+    : estHoursLeft <= (job?.meta?.workingHours || 8) * 1.2 ? '#EAB308'
+    : '#EF4444';
+  const countdownLabel = estHoursLeft == null ? '—'
+    : estHoursLeft < 1 ? `${Math.round(estHoursLeft * 60)}m`
+    : `${estHoursLeft.toFixed(1)}h`;
+
   // Hourly breakdown
   const hourlyData = useMemo(() => {
     const hours = {};
@@ -150,11 +161,23 @@ export default function Kiosk() {
           <div style={k.bigVal}>{remaining.toLocaleString()}</div>
           <div style={k.bigLbl}>REMAINING</div>
         </div>
+        <div style={k.bigStat}>
+          <div style={{ ...k.bigVal, color: countdownColor }}>{countdownLabel}</div>
+          <div style={k.bigLbl}>EST. TIME LEFT</div>
+        </div>
+        {etaTime && (
+          <div style={k.bigStat}>
+            <div style={{ ...k.bigVal, color: countdownColor, fontSize: 'clamp(24px, 4vw, 38px)' }}>
+              {etaTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+            <div style={k.bigLbl}>ETA COMPLETE</div>
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}
       <div style={k.progressContainer}>
-        <div style={{ ...k.progressBar, width: `${pct}%` }} />
+        <div style={{ ...k.progressBar, width: `${pct}%`, backgroundColor: countdownColor === '#666' ? '#22C55E' : countdownColor }} />
         <span style={k.progressText}>{pct}%</span>
       </div>
 

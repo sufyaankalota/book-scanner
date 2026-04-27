@@ -6,7 +6,7 @@ import {
   query, where, onSnapshot, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
 import { isValidISBN, cleanISBN, detectBarcodeType } from '../utils/isbn';
-import { playErrorBeep, playSuccessBeep, playColorBeep, getVolume, setVolume } from '../utils/audio';
+import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, getVolume, setVolume } from '../utils/audio';
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
@@ -31,6 +31,7 @@ const PHASE_PAUSED = 'paused';
 const DEBOUNCE_MS = 5000;
 const BARCODE_TIMEOUT_MS = 3000;
 const IDLE_WARNING_MS = 120000;
+const AUTO_CLOSE_SHIFT_MS = 30 * 60 * 1000; // 30 minutes idle → auto-close shift
 
 export default function Pod() {
   const [searchParams] = useSearchParams();
@@ -103,6 +104,8 @@ export default function Pod() {
   const dayRef = useRef(new Date().getDate());
   const shiftDocRef = useRef(null);
   const breakIntervalRef = useRef(null);
+  const jobIsbnCountsRef = useRef({}); // { isbn: count } for dedup across entire job
+  const [pendingOffline, setPendingOffline] = useState(0);
 
   const totalScans = Math.max(localCount, firestoreCount);
   const isScanning = phase === PHASE_SCANNING;
@@ -176,6 +179,51 @@ export default function Pod() {
     }, 10000);
     return () => clearInterval(interval);
   }, [isScanning, lastScanTime]);
+
+  // ─── Auto-close idle shift (30 min no scans) ───
+  useEffect(() => {
+    if (!isScanning || !shiftDocRef.current) return;
+    const interval = setInterval(async () => {
+      const ref = lastScanTime ? lastScanTime.getTime() : (scanStartTimeRef.current || Date.now());
+      if (Date.now() - ref > AUTO_CLOSE_SHIFT_MS) {
+        try {
+          await updateDoc(doc(db, 'shifts', shiftDocRef.current), {
+            endTime: serverTimestamp(), totalScans: totalScans, autoEnded: true,
+          });
+          logAudit('shift_auto_close', { operator: operatorName, podId, totalScans, reason: '30min_idle' });
+          shiftDocRef.current = null;
+        } catch {}
+      }
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [isScanning, lastScanTime]); // eslint-disable-line
+
+  // ─── Job-wide ISBN dedup counts ───
+  useEffect(() => {
+    if (!job) return;
+    const q = query(collection(db, 'scans'), where('jobId', '==', job.id), where('type', '==', 'standard'));
+    const unsub = onSnapshot(q, (snap) => {
+      const counts = {};
+      snap.docs.forEach((d) => {
+        const isbn = d.data().isbn;
+        counts[isbn] = (counts[isbn] || 0) + 1;
+      });
+      jobIsbnCountsRef.current = counts;
+    });
+    return unsub;
+  }, [job]);
+
+  // ─── Offline pending count (Firestore cache indicator) ───
+  useEffect(() => {
+    if (!isOnline) {
+      const interval = setInterval(() => {
+        setPendingOffline((prev) => prev); // trigger re-render to check status
+      }, 5000);
+      return () => clearInterval(interval);
+    } else {
+      setPendingOffline(0);
+    }
+  }, [isOnline]);
 
   // ─── Barcode input timeout ───
   useEffect(() => {
@@ -388,10 +436,19 @@ export default function Pod() {
 
     // Same ISBN as last scan — always confirm
     if (isbn === lastScannedRef.current.isbn) {
-      playErrorBeep();
+      playDuplicateBeep();
       setDuplicateConfirm({ isbn, isManual });
       return;
     }
+
+    // Job-wide dedup: warn if ISBN already scanned (expected qty = 1 per manifest entry)
+    const existingCount = jobIsbnCountsRef.current[isbn] || 0;
+    if (existingCount > 0 && job?.meta?.mode === 'multi') {
+      playDuplicateBeep();
+      setDuplicateConfirm({ isbn, isManual, overScan: true, count: existingCount });
+      return;
+    }
+
     lastScannedRef.current = { isbn, time: Date.now() };
     processScan(isbn, isManual);
   };
@@ -497,7 +554,7 @@ export default function Pod() {
         playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
     } else {
-      playErrorBeep();
+      playNotInManifestBeep();
       flash('#F97316', t('notInManifest'), 2000);
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true }, ...prev].slice(0, 20));
@@ -1036,8 +1093,11 @@ export default function Pod() {
 
       {/* Offline queue indicator */}
       {!isOnline && (
-        <div style={{ textAlign: 'center', color: '#fca5a5', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-          📤 Scans will sync when back online
+        <div style={{ textAlign: 'center', backgroundColor: '#7f1d1d', border: '1px solid #EF4444', borderRadius: 8, padding: '8px 16px', marginBottom: 8 }}>
+          <div style={{ color: '#fca5a5', fontSize: 15, fontWeight: 700 }}>📡 OFFLINE MODE</div>
+          <div style={{ color: '#f87171', fontSize: 13, marginTop: 2 }}>
+            Scans are cached locally and will auto-sync when WiFi reconnects
+          </div>
         </div>
       )}
 
@@ -1187,18 +1247,24 @@ export default function Pod() {
       {/* Duplicate confirmation modal */}
       {duplicateConfirm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-          <div style={{ backgroundColor: '#1a1a1a', border: '3px solid #EAB308', borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
-            <h2 style={{ color: '#EAB308', margin: '0 0 8px', fontSize: 24, fontWeight: 800 }}>{t('duplicateIsbn')}</h2>
-            <p style={{ color: '#ccc', fontSize: 16, margin: '0 0 4px' }}>{t('duplicateJustScanned')}</p>
+          <div style={{ backgroundColor: '#1a1a1a', border: `3px solid ${duplicateConfirm.overScan ? '#EF4444' : '#EAB308'}`, borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>{duplicateConfirm.overScan ? '🔴' : '⚠️'}</div>
+            <h2 style={{ color: duplicateConfirm.overScan ? '#EF4444' : '#EAB308', margin: '0 0 8px', fontSize: 24, fontWeight: 800 }}>
+              {duplicateConfirm.overScan ? 'Already Scanned' : t('duplicateIsbn')}
+            </h2>
+            <p style={{ color: '#ccc', fontSize: 16, margin: '0 0 4px' }}>
+              {duplicateConfirm.overScan
+                ? `This ISBN has been scanned ${duplicateConfirm.count} time${duplicateConfirm.count > 1 ? 's' : ''} already in this job`
+                : t('duplicateJustScanned')}
+            </p>
             <p style={{ color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', margin: '8px 0 20px', padding: '10px 16px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
             <p style={{ color: '#999', fontSize: 15, margin: '0 0 24px', fontWeight: 500 }}>
-              {t('duplicateDifferentCopy')}
+              {duplicateConfirm.overScan ? 'Is this a different copy of the same book?' : t('duplicateDifferentCopy')}
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
               <button onClick={confirmDuplicate}
                 style={{ padding: '14px 28px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
-                ✓ {t('scanAgain')}
+                ✓ {duplicateConfirm.overScan ? 'Yes, Scan It' : t('scanAgain')}
               </button>
               <button onClick={cancelDuplicate}
                 style={{ padding: '14px 28px', borderRadius: 10, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
