@@ -310,7 +310,7 @@ export default function Pod() {
       const windowStart = Math.max(fifteenMinAgo, startRef);
       const recent = snap.docs.filter((d) => {
         const ts = d.data().timestamp?.toDate?.();
-        return ts && ts.getTime() > windowStart;
+        return ts && ts.getTime() > windowStart && d.data().type === 'standard';
       });
       const elapsed = (now - windowStart) / 60000;
       if (elapsed > 0.5 && recent.length > 0) setPace(Math.round((recent.length / elapsed) * 60));

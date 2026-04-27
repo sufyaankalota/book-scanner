@@ -136,13 +136,13 @@ export default function Dashboard() {
         const standardScans = podScans.filter((s) => s.type === 'standard');
         const autoExc = podScans.filter((s) => s.type === 'exception' && s.source !== 'manual');
         const manualScans = podScans.filter((s) => s.source === 'manual');
-        const recentScans = podScans.filter((s) => {
-          const ts = s.timestamp?.toDate?.(); return ts && ts.getTime() > fifteenMinAgo;
+        const recentStandard = podScans.filter((s) => {
+          const ts = s.timestamp?.toDate?.(); return ts && ts.getTime() > fifteenMinAgo && s.type === 'standard';
         });
         const scanners = [...new Set(podScans.map((s) => s.scannerId).filter(Boolean))];
         const minutes = Math.min(15, (now - today.getTime()) / 60000);
-        const pace = minutes > 0 && recentScans.length > 0
-          ? Math.round((recentScans.length / Math.min(15, minutes)) * 60) : 0;
+        const pace = minutes > 0 && recentStandard.length > 0
+          ? Math.round((recentStandard.length / Math.min(15, minutes)) * 60) : 0;
         const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 5));
         pods[podId] = { id: podId, scanCount: standardScans.length,
           exceptionCount: autoExc.length, manualCount: manualScans.length, pace, targetPerHour, scanners };
@@ -441,7 +441,7 @@ export default function Dashboard() {
   const totalExceptions = totalAutoExceptions + allExceptions.length;
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
   const dailyTarget = job?.meta?.dailyTarget || 22000;
-  const remaining = Math.max(0, dailyTarget - (totalScans + totalAutoExceptions));
+  const remaining = Math.max(0, dailyTarget - (totalScans + totalAutoExceptions + totalManual));
   const estHoursLeft = totalPace > 0 ? (remaining / totalPace).toFixed(1) : '—';
 
   const handleExportToday = async () => {
@@ -768,7 +768,7 @@ export default function Dashboard() {
       {/* Panel toggles */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
         {[
-          ['exceptions', `Exceptions (${totalExceptions})`],
+          ['exceptions', `Exceptions (${combinedExceptions.length})`],
           ['leaderboard', '🏆 Leaderboard'],
           ['hourly', '📊 Hourly'],
           ['shifts', '⏱ Shifts'],
