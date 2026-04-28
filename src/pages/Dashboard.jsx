@@ -23,6 +23,7 @@ import {
 import PodCard from '../components/PodCard';
 import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
+import { copyManifestChunks } from '../utils/manifestStore';
 
 export default function Dashboard() {
   const [job, setJob] = useState(null);
@@ -71,12 +72,14 @@ export default function Dashboard() {
         const picked = { id: d.id, ...d.data() };
         if (picked) {
           setJob(picked);
-          // Load manifest for completion tracking
-          getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
-            const cache = {};
-            ms.forEach((m) => { cache[m.id] = m.data().poName; });
-            setManifestData(cache);
-          });
+          // Load manifest for completion tracking (skip for chunked — uses metadata)
+          if (!picked.manifestMeta?.chunked) {
+            getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
+              const cache = {};
+              ms.forEach((m) => { cache[m.id] = m.data().poName; });
+              setManifestData(cache);
+            });
+          }
         } else setJob(null);
       } else setJob(null);
       setLoading(false);
@@ -301,23 +304,34 @@ export default function Dashboard() {
     if (!confirm(`Add ${(upload.poNames || []).join(', ')} (${(upload.isbnCount || 0).toLocaleString()} ISBNs) to the current job?`)) return;
     setAddingPO(upload.id);
     try {
-      // Read ISBNs from po-upload manifest
-      const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
-      const actualCount = snap.size;
-      // Correct metadata if count is wrong
-      if (upload.isbnCount !== actualCount) {
-        updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
+      if (upload.manifestMeta?.chunked) {
+        // Chunked manifest: copy chunks directly
+        await copyManifestChunks(`po-uploads/${upload.id}`, `jobs/${job.id}`);
+        // Merge manifest metadata into job
+        const existingMeta = job.manifestMeta || {};
+        const newPoCounts = { ...(existingMeta.poCounts || {}), ...(upload.manifestMeta.poCounts || {}) };
+        const newTotalIsbns = (existingMeta.totalIsbns || 0) + (upload.manifestMeta.totalIsbns || 0);
+        const newMeta = { chunked: true, totalIsbns: newTotalIsbns, numChunks: (existingMeta.numChunks || 0) + upload.manifestMeta.numChunks, chunkSize: upload.manifestMeta.chunkSize, poCounts: newPoCounts };
+        await setDoc(doc(db, 'jobs', job.id), { manifestMeta: newMeta }, { merge: true });
+      } else {
+        // Legacy per-doc manifest
+        const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
+        const BATCH_SIZE = 400;
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+          const batch = writeBatch(db);
+          docs.slice(i, i + BATCH_SIZE).forEach((d) => {
+            batch.set(doc(db, 'jobs', job.id, 'manifest', d.id), d.data());
+          });
+          await batch.commit();
+        }
+        // Refresh manifest cache
+        const ms = await getDocs(collection(db, 'jobs', job.id, 'manifest'));
+        const cache = {};
+        ms.forEach((m) => { cache[m.id] = m.data().poName; });
+        setManifestData(cache);
       }
-      const BATCH_SIZE = 400;
-      const docs = snap.docs;
-      for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-        const batch = writeBatch(db);
-        docs.slice(i, i + BATCH_SIZE).forEach((d) => {
-          batch.set(doc(db, 'jobs', job.id, 'manifest', d.id), d.data());
-        });
-        await batch.commit();
-      }
-      // Assign colors for new POs (use customer-chosen colors if available)
+      // Assign colors for new POs
       const existingColors = job.poColors || {};
       const newColors = { ...existingColors };
       let colorIdx = Object.keys(existingColors).length;
@@ -329,11 +343,6 @@ export default function Dashboard() {
       await setDoc(doc(db, 'jobs', job.id), { poColors: newColors }, { merge: true });
       // Mark upload as added
       await updateDoc(doc(db, 'po-uploads', upload.id), { status: 'added', jobId: job.id, addedAt: serverTimestamp() });
-      // Refresh manifest cache
-      const ms = await getDocs(collection(db, 'jobs', job.id, 'manifest'));
-      const cache = {};
-      ms.forEach((m) => { cache[m.id] = m.data().poName; });
-      setManifestData(cache);
       logAudit('add_po_to_job', { uploadId: upload.id, poNames: upload.poNames, jobId: job.id });
     } catch (err) {
       alert('Failed to add PO: ' + err.message);
@@ -396,6 +405,28 @@ export default function Dashboard() {
 
   // Manifest completion
   const manifestCompletion = useMemo(() => {
+    // Chunked manifest: use metadata + scan counts
+    if (job?.manifestMeta?.chunked) {
+      const poCounts = job.manifestMeta.poCounts || {};
+      const total = job.manifestMeta.totalIsbns || 0;
+      if (!total) return null;
+      const seenIsbns = new Set();
+      const scannedByPO = {};
+      let found = 0;
+      for (const s of allScans) {
+        if (s.type !== 'standard' || seenIsbns.has(s.isbn)) continue;
+        seenIsbns.add(s.isbn);
+        const po = s.poName || 'Unknown';
+        scannedByPO[po] = (scannedByPO[po] || 0) + 1;
+        found++;
+      }
+      const byPO = {};
+      for (const [po, poTotal] of Object.entries(poCounts)) {
+        byPO[po] = { total: poTotal, found: scannedByPO[po] || 0 };
+      }
+      return { total, found, pct: Math.round((found / total) * 100), byPO };
+    }
+    // Legacy per-doc manifest
     if (!Object.keys(manifestData).length) return null;
     const scannedIsbns = new Set(allScans.filter((s) => s.type === 'standard').map((s) => s.isbn));
     const total = Object.keys(manifestData).length;
@@ -408,7 +439,7 @@ export default function Dashboard() {
       if (scannedIsbns.has(isbn)) byPO[po].found++;
     }
     return { total, found, pct: Math.round((found / total) * 100), byPO };
-  }, [manifestData, allScans]);
+  }, [manifestData, allScans, job]);
 
   // Total job progress
   const jobProgress = useMemo(() => {
@@ -416,14 +447,23 @@ export default function Dashboard() {
     const exceptionScans = allJobScans.filter((s) => s.type === 'exception');
     const totalScanned = standard.length;
     const totalExceptions = exceptionScans.length;
-    const totalExpected = Object.keys(manifestData).length || null;
     const byPO = {};
     for (const s of standard) {
       const po = s.poName || 'Unassigned';
       if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
       byPO[po].scanned++;
     }
-    if (totalExpected) {
+    // Use chunked metadata or legacy per-doc manifest for expected counts
+    const poCounts = job?.manifestMeta?.chunked ? job.manifestMeta.poCounts : null;
+    const totalExpected = poCounts
+      ? Object.values(poCounts).reduce((s, n) => s + n, 0)
+      : (Object.keys(manifestData).length || null);
+    if (poCounts) {
+      for (const [po, count] of Object.entries(poCounts)) {
+        if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
+        byPO[po].expected = count;
+      }
+    } else if (totalExpected) {
       const poExpected = {};
       for (const po of Object.values(manifestData)) {
         poExpected[po] = (poExpected[po] || 0) + 1;
@@ -435,7 +475,7 @@ export default function Dashboard() {
     }
     const pct = totalExpected ? Math.round((totalScanned / totalExpected) * 100) : null;
     return { totalScanned, totalExceptions, totalExpected, pct, byPO };
-  }, [allJobScans, manifestData]);
+  }, [allJobScans, manifestData, job]);
 
   // Labor efficiency
   const laborMetrics = useMemo(() => {

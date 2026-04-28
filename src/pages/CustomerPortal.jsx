@@ -7,6 +7,7 @@ import {
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
 import { verifyPassword } from '../utils/crypto';
+import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStore';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -181,6 +182,11 @@ export default function CustomerPortal() {
   // Load manifest for job progress tracking
   useEffect(() => {
     if (!authenticated || !job) return;
+    // Chunked manifests use metadata (no need to load millions of docs)
+    if (job.manifestMeta?.chunked) {
+      setManifestData({}); // Don't load full manifest
+      return;
+    }
     getDocs(collection(db, 'jobs', job.id, 'manifest')).then((ms) => {
       const cache = {};
       ms.forEach((m) => { cache[m.id] = m.data().poName; });
@@ -287,14 +293,23 @@ export default function CustomerPortal() {
     const exceptionScans = allScans.filter((s) => s.type === 'exception');
     const totalScanned = standard.length;
     const totalExceptions = exceptionScans.length + allExceptions.length;
-    const totalExpected = Object.keys(manifestData).length || null;
     const byPO = {};
     for (const s of standard) {
       const po = s.poName || 'Unassigned';
       if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
       byPO[po].scanned++;
     }
-    if (totalExpected) {
+    // Use chunked metadata or legacy per-doc manifest for expected counts
+    const poCounts = job?.manifestMeta?.chunked ? job.manifestMeta.poCounts : null;
+    const totalExpected = poCounts
+      ? Object.values(poCounts).reduce((s, n) => s + n, 0)
+      : (Object.keys(manifestData).length || null);
+    if (poCounts) {
+      for (const [po, count] of Object.entries(poCounts)) {
+        if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
+        byPO[po].expected = count;
+      }
+    } else if (totalExpected) {
       const poExpected = {};
       for (const po of Object.values(manifestData)) {
         poExpected[po] = (poExpected[po] || 0) + 1;
@@ -306,7 +321,7 @@ export default function CustomerPortal() {
     }
     const pct = totalExpected ? Math.round((totalScanned / totalExpected) * 100) : null;
     return { totalScanned, totalExceptions, totalExpected, pct, byPO };
-  }, [allScans, allExceptions, manifestData]);
+  }, [allScans, allExceptions, manifestData, job]);
 
   const toDateStr = (ts) => {
     if (!ts) return '';
@@ -376,27 +391,16 @@ export default function CustomerPortal() {
     try {
       const entries = Object.entries(manifest);
       const uploadId = `po_${Date.now()}`;
-      // Create metadata doc (isbnCount set to 0 until writes complete)
       await setDoc(doc(db, 'po-uploads', uploadId), {
-        poNames, isbnCount: 0, poColors,
+        poNames, isbnCount: entries.length, poColors,
         uploadedAt: serverTimestamp(), status: 'pending', jobId: null,
       });
-      // Store ISBNs in subcollection with progress
-      const BATCH_SIZE = 400;
-      let written = 0;
-      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-        const batch = writeBatch(db);
-        const chunk = entries.slice(i, i + BATCH_SIZE);
-        chunk.forEach(([isbn, poName]) => {
-          batch.set(doc(db, 'po-uploads', uploadId, 'manifest', isbn), { poName });
-        });
-        await batch.commit();
-        written += chunk.length;
-        setUploadStatus(`Uploading... ${written.toLocaleString()} / ${entries.length.toLocaleString()} ISBNs`);
-      }
-      // Update metadata with actual count after all writes complete
-      await updateDoc(doc(db, 'po-uploads', uploadId), { isbnCount: written });
-      setUploadStatus('Uploaded ' + written.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
+      // Write manifest as chunks (scales to millions of ISBNs)
+      const meta = await writeManifestChunks(`po-uploads/${uploadId}`, manifest, (written, total) => {
+        setUploadStatus(`Uploading chunks... ${written} / ${total}`);
+      });
+      await updateDoc(doc(db, 'po-uploads', uploadId), { manifestMeta: meta });
+      setUploadStatus('Uploaded ' + entries.length.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
       setManifest(null); setPoNames([]); setPoColors({});
       await loadUploadedPOs();
     } catch (err) {

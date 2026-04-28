@@ -12,6 +12,7 @@ import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
 import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
+import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import ExceptionModal from '../components/ExceptionModal';
 
 const COLOR_NAMES = {
@@ -272,12 +273,14 @@ export default function Pod() {
         const picked = { id: d.id, ...d.data() };
         if (picked) {
           setJob(picked);
-          if (picked.meta.mode === 'multi') {
+          if (picked.meta.mode === 'multi' && !picked.manifestMeta?.chunked) {
             getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
               const cache = {};
               ms.forEach((d) => { cache[d.id] = d.data().poName; });
               setManifestCache(cache);
             });
+          } else if (picked.manifestMeta?.chunked) {
+            clearChunkCache();
           }
         } else setJob(null);
       } else setJob(null);
@@ -469,7 +472,7 @@ export default function Pod() {
   };
 
   // ─── Process scan (after validation/confirmation) ───
-  const processScan = (isbn, isManual = false) => {
+  const processScan = async (isbn, isManual = false) => {
     const now = Date.now();
 
     if (!isValidISBN(isbn)) {
@@ -531,7 +534,12 @@ export default function Pod() {
     }
 
     // Multi-PO
-    const poName = manifestCache[isbn];
+    let poName;
+    if (job.manifestMeta?.chunked) {
+      poName = await lookupIsbn(`jobs/${job.id}`, isbn, job.manifestMeta.numChunks);
+    } else {
+      poName = manifestCache[isbn];
+    }
     if (poName) {
       const color = job.poColors?.[poName] || '#22C55E';
       if (isManual) {

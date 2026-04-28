@@ -8,6 +8,7 @@ import {
 import { parseManifestFile } from '../utils/manifest';
 import { logAudit } from '../utils/audit';
 import { hashPassword } from '../utils/crypto';
+import { writeManifestChunks, copyManifestChunks, deleteManifestChunks, readChunkPreview } from '../utils/manifestStore';
 
 const DEFAULT_COLORS = [
   { name: 'Red', hex: '#EF4444' }, { name: 'Blue', hex: '#3B82F6' },
@@ -174,19 +175,26 @@ export default function Setup() {
   const useCustomerUpload = async (upload) => {
     setFileError('');
     try {
-      const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
-      const man = {};
-      snap.forEach((d) => { man[d.id] = d.data().poName; });
-      setManifest(man);
-      setPoNames(upload.poNames || []);
-      setManifestPreview(Object.entries(man).slice(0, 50));
-      // Correct isbnCount if metadata doesn't match actual subcollection
-      const actualCount = snap.size;
-      if (upload.isbnCount !== actualCount) {
-        updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
-        setCustomerPOUploads((prev) => prev.map((u) => u.id === upload.id ? { ...u, isbnCount: actualCount } : u));
+      if (upload.manifestMeta?.chunked) {
+        // Chunked manifest — load preview only (no need to load millions of docs)
+        const preview = await readChunkPreview(`po-uploads/${upload.id}`);
+        setManifest(null); // Will copy chunks directly during job creation
+        setPoNames(upload.poNames || []);
+        setManifestPreview(preview);
+      } else {
+        // Legacy per-doc manifest
+        const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
+        const man = {};
+        snap.forEach((d) => { man[d.id] = d.data().poName; });
+        setManifest(man);
+        setPoNames(upload.poNames || []);
+        setManifestPreview(Object.entries(man).slice(0, 50));
+        const actualCount = snap.size;
+        if (upload.isbnCount !== actualCount) {
+          updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
+          setCustomerPOUploads((prev) => prev.map((u) => u.id === upload.id ? { ...u, isbnCount: actualCount } : u));
+        }
       }
-      // Use customer-chosen colors if available, otherwise auto-assign
       const colors = {};
       const savedColors = upload.poColors || {};
       (upload.poNames || []).forEach((po, i) => {
@@ -225,16 +233,19 @@ export default function Setup() {
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
       });
-      if (mode === 'multi' && manifest) {
-        const BATCH_SIZE = 400; const entries = Object.entries(manifest);
-        for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-          const batch = writeBatch(db);
-          entries.slice(i, i + BATCH_SIZE).forEach(([isbn, poName]) => {
-            batch.set(doc(db, 'jobs', jobId, 'manifest', isbn), { poName });
-          });
-          await batch.commit();
+      if (mode === 'multi') {
+        if (manifest) {
+          // Write manifest as chunks (scales to millions of ISBNs)
+          const meta = await writeManifestChunks(`jobs/${jobId}`, manifest);
+          await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: meta });
+        } else if (selectedUploadId) {
+          // Chunked customer upload — copy chunks directly
+          const upload = customerPOUploads.find((u) => u.id === selectedUploadId);
+          if (upload?.manifestMeta?.chunked) {
+            await copyManifestChunks(`po-uploads/${selectedUploadId}`, `jobs/${jobId}`);
+            await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: upload.manifestMeta });
+          }
         }
-        // Mark customer upload as added if used
         if (selectedUploadId) {
           await updateDoc(doc(db, 'po-uploads', selectedUploadId), { status: 'added', jobId, addedAt: serverTimestamp() });
           setSelectedUploadId(null);
@@ -293,14 +304,16 @@ export default function Setup() {
           queued: true, queueOrder: Date.now(), location: qLocation.trim() || '', createdAt: serverTimestamp() },
         poColors: qMode === 'multi' ? qPoColors : {},
       });
-      if (qMode === 'multi' && qManifest) {
-        const BATCH_SIZE = 400; const entries = Object.entries(qManifest);
-        for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-          const batch = writeBatch(db);
-          entries.slice(i, i + BATCH_SIZE).forEach(([isbn, poName]) => {
-            batch.set(doc(db, 'jobs', jobId, 'manifest', isbn), { poName });
-          });
-          await batch.commit();
+      if (qMode === 'multi') {
+        if (qManifest) {
+          const meta = await writeManifestChunks(`jobs/${jobId}`, qManifest);
+          await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: meta });
+        } else if (qSelectedUploadId) {
+          const upload = customerPOUploads.find((u) => u.id === qSelectedUploadId);
+          if (upload?.manifestMeta?.chunked) {
+            await copyManifestChunks(`po-uploads/${qSelectedUploadId}`, `jobs/${jobId}`);
+            await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: upload.manifestMeta });
+          }
         }
         if (qSelectedUploadId) {
           await updateDoc(doc(db, 'po-uploads', qSelectedUploadId), { status: 'queued', jobId, addedAt: serverTimestamp() });
@@ -351,17 +364,23 @@ export default function Setup() {
   const useCustomerUploadForQueue = async (upload) => {
     setQFileError('');
     try {
-      const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
-      const man = {};
-      snap.forEach((d) => { man[d.id] = d.data().poName; });
-      // Correct isbnCount if metadata doesn't match actual subcollection
-      const actualCount = snap.size;
-      if (upload.isbnCount !== actualCount) {
-        updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
-        setCustomerPOUploads((prev) => prev.map((u) => u.id === upload.id ? { ...u, isbnCount: actualCount } : u));
+      if (upload.manifestMeta?.chunked) {
+        const preview = await readChunkPreview(`po-uploads/${upload.id}`);
+        setQManifest(null);
+        setQPoNames(upload.poNames || []);
+        setQManifestPreview(preview);
+      } else {
+        const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
+        const man = {};
+        snap.forEach((d) => { man[d.id] = d.data().poName; });
+        const actualCount = snap.size;
+        if (upload.isbnCount !== actualCount) {
+          updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
+          setCustomerPOUploads((prev) => prev.map((u) => u.id === upload.id ? { ...u, isbnCount: actualCount } : u));
+        }
+        setQManifest(man); setQPoNames(upload.poNames || []);
+        setQManifestPreview(Object.entries(man).slice(0, 50));
       }
-      setQManifest(man); setQPoNames(upload.poNames || []);
-      setQManifestPreview(Object.entries(man).slice(0, 50));
       const colors = {};
       const savedColors = upload.poColors || {};
       (upload.poNames || []).forEach((po, i) => {
@@ -837,6 +856,11 @@ export default function Setup() {
                       ✓ Loaded {Object.keys(qManifest).length.toLocaleString()} ISBNs across {qPoNames.length} POs
                     </p>
                   )}
+                  {!qManifest && qSelectedUploadId && qPoNames.length > 0 && (
+                    <p style={{ color: '#22C55E', marginTop: 4 }}>
+                      ✓ Using customer upload: {(customerPOUploads.find((u) => u.id === qSelectedUploadId)?.isbnCount || 0).toLocaleString()} ISBNs across {qPoNames.length} POs (chunked)
+                    </p>
+                  )}
                   {qPoNames.length > 0 && (
                     <div style={{ marginTop: 12 }}>
                       <label style={s.label}>PO → Color Mapping</label>
@@ -942,6 +966,11 @@ export default function Setup() {
               <p style={{ color: '#22C55E', marginTop: 4 }}>
                 ✓ Loaded {Object.keys(manifest).length.toLocaleString()} ISBNs across {poNames.length} POs
                 {poNames.length > 10 && <span style={{ color: '#EAB308' }}> (Warning: {poNames.length} POs — only 10 colors)</span>}
+              </p>
+            )}
+            {!manifest && selectedUploadId && poNames.length > 0 && (
+              <p style={{ color: '#22C55E', marginTop: 4 }}>
+                ✓ Using customer upload: {(customerPOUploads.find((u) => u.id === selectedUploadId)?.isbnCount || 0).toLocaleString()} ISBNs across {poNames.length} POs (chunked)
               </p>
             )}
             {poNames.length > 0 && (
