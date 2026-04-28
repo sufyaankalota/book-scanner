@@ -62,7 +62,7 @@ export default function CustomerPortal() {
   // Billing reports
   const [billingReports, setBillingReports] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
-  // Reports tab — default to last 7 days
+  // Reports tab ï¿½ default to last 7 days
   const [reportsShowAll, setReportsShowAll] = useState(false);
   // Branding
   const [brandLogo, setBrandLogo] = useState('');
@@ -146,7 +146,7 @@ export default function CustomerPortal() {
           setJob(null);
         }
       } else {
-        // No active job — load most recently closed job for historical data
+        // No active job ï¿½ load most recently closed job for historical data
         try {
           const closedSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
           if (!closedSnap.empty) {
@@ -365,27 +365,40 @@ export default function CustomerPortal() {
   }, [authenticated]);
 
   // Delete a PO upload (remove the po-upload doc, legacy manifest subcollection, and manifest chunks)
-  const deletePO = async (uploadId) => {
-    if (!confirm('Remove this PO upload and all its ISBNs?')) return;
+  const deletePO = async (uploadId, isAdded = false) => {
+    const msg = isAdded
+      ? 'This PO has already been attached to a job. Removing the upload record will not affect data already collected against the job. Continue?'
+      : 'Remove this PO upload and all its ISBNs?';
+    if (!confirm(msg)) return;
     setPODeleting(uploadId);
     try {
-      // Delete manifest chunks (if chunked)
+      // Delete manifest chunks (if chunked) â€” best-effort; continue even if some chunks are missing
       const uploadSnap = await getDoc(doc(db, 'po-uploads', uploadId));
       const uploadData = uploadSnap.exists() ? uploadSnap.data() : {};
       if (uploadData.manifestMeta?.chunked) {
-        await deleteManifestChunks(`po-uploads/${uploadId}`, uploadData.manifestMeta.numChunks);
+        try {
+          await deleteManifestChunks(`po-uploads/${uploadId}`, uploadData.manifestMeta.numChunks);
+        } catch (chunkErr) {
+          console.warn('Chunk deletion partial failure:', chunkErr);
+        }
       }
       // Delete legacy manifest docs
-      const snap = await getDocs(collection(db, 'po-uploads', uploadId, 'manifest'));
-      const BATCH_SIZE = 400;
-      for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {
-        const batch = writeBatch(db);
-        snap.docs.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref));
-        await batch.commit();
+      try {
+        const snap = await getDocs(collection(db, 'po-uploads', uploadId, 'manifest'));
+        const BATCH_SIZE = 400;
+        for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {
+          const batch = writeBatch(db);
+          snap.docs.slice(i, i + BATCH_SIZE).forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (legacyErr) {
+        console.warn('Legacy manifest deletion partial failure:', legacyErr);
       }
       await deleteDoc(doc(db, 'po-uploads', uploadId));
       await loadUploadedPOs();
+      toast('PO upload removed', 'success');
     } catch (err) {
+      console.error('deletePO error:', err);
       toast('Failed to delete: ' + err.message, 'error');
     }
     setPODeleting(null);
@@ -546,7 +559,7 @@ export default function CustomerPortal() {
     const withPhotos = allExcs.filter((e) => e.photo);
 
     const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Exception Photo Report — ${jobName}</title>
+<html><head><meta charset="utf-8"><title>Exception Photo Report ï¿½ ${jobName}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #fff; color: #222; padding: 32px; max-width: 900px; margin: 0 auto; }
@@ -570,7 +583,7 @@ export default function CustomerPortal() {
 </style></head><body>
 <button class="print-btn" onclick="window.print()">?? Print / Save PDF</button>
 <h1>Exception Photo Report</h1>
-<p class="meta">${jobName} · ${dateLabel} · Generated ${new Date().toLocaleString()}</p>
+<p class="meta">${jobName} ï¿½ ${dateLabel} ï¿½ Generated ${new Date().toLocaleString()}</p>
 <div class="summary">
   <div><div class="num">${allExcs.length}</div><div class="lbl">Total Exceptions</div></div>
   <div><div class="num">${withPhotos.length}</div><div class="lbl">With Photos</div></div>
@@ -582,7 +595,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
     <span class="reason">${exc.reason}</span>
     ${exc.isbn ? `<div class="isbn">ISBN: ${exc.isbn}</div>` : ''}
     ${exc.title ? `<div class="title">"${exc.title}"</div>` : ''}
-    <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' · Pod ' + exc.podId : ''}</div>
+    <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' ï¿½ Pod ' + exc.podId : ''}</div>
   </div>
 </div>`).join('\n')}
 <div class="disclaimer">?? DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
@@ -608,7 +621,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <img src={brandLogo || '/icon.svg'} alt="Logo" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8, objectFit: 'contain' }} />
             <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
-            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort — Sign in to your portal</p>
+            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort ï¿½ Sign in to your portal</p>
           </div>
           <input type="email" value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
@@ -676,7 +689,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={st.statLbl}>Total Processed</div>
           </div>
           <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}–${Math.ceil((todayData?.standard || 0) / 1500)}` : '—'}</div>
+            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}ï¿½${Math.ceil((todayData?.standard || 0) / 1500)}` : 'ï¿½'}</div>
             <div style={st.statLbl}>Today's Est. Gaylords</div>
           </div>
         </div>
@@ -773,7 +786,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                 )}
                 {d.standard > 0 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>?? {Math.ceil(d.standard / 2000)}–{Math.ceil(d.standard / 1500)} gaylords</span>
+                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>?? {Math.ceil(d.standard / 2000)}ï¿½{Math.ceil(d.standard / 1500)} gaylords</span>
                   </div>
                 )}
                 {d.exceptions > 0 && (
@@ -917,7 +930,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                     <div>
                       <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
-                        {start ? start.toLocaleDateString() : '?'} – {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
+                        {start ? start.toLocaleDateString() : '?'} ï¿½ {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
                         {report.archived && <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginLeft: 8 }}>(Archived)</span>}
                       </div>
                       <div style={{ color: '#888', fontSize: 13 }}>
@@ -1120,6 +1133,15 @@ ${allExcs.map((exc, i) => `<div class="exc">
                               onClick={() => deletePO(up.id)}
                               disabled={poDeleting === up.id}
                               style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', fontWeight: 600, opacity: poDeleting === up.id ? 0.5 : 1 }}>
+                              {poDeleting === up.id ? 'Removing...' : '\ud83d\uddd1 Remove'}
+                            </button>
+                          )}
+                          {up.status === 'added' && (
+                            <button
+                              onClick={() => deletePO(up.id, true)}
+                              disabled={poDeleting === up.id}
+                              title="This PO has been attached to a job. Removing only deletes the upload record; existing job data is unaffected."
+                              style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid var(--text-tertiary, #666)', backgroundColor: 'transparent', color: 'var(--text-secondary, #888)', fontSize: 11, cursor: 'pointer', fontWeight: 600, opacity: poDeleting === up.id ? 0.5 : 1 }}>
                               {poDeleting === up.id ? 'Removing...' : '\ud83d\uddd1 Remove'}
                             </button>
                           )}

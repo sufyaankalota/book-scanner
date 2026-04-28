@@ -12,6 +12,11 @@ service cloud.firestore {
       match /manifest/{isbn} {
         allow read, write: if true;
       }
+
+      // Chunked manifest storage (used for large manifests)
+      match /manifest-chunks/{chunkId} {
+        allow read, write: if true;
+      }
     }
 
     // Scans — pods write, dashboard/portal read
@@ -94,6 +99,11 @@ service cloud.firestore {
       allow update, delete: if true;
 
       match /manifest/{isbn} {
+        allow read, write: if true;
+      }
+
+      // Chunked manifest storage (used for uploads > a few thousand ISBNs)
+      match /manifest-chunks/{chunkId} {
         allow read, write: if true;
       }
     }
