@@ -1074,6 +1074,9 @@ ${allExcs.map((exc, i) => `<div class="exc">
                                   onChange={(e) => setPoColors({ ...poColors, [po]: e.target.value })}
                                   style={{ backgroundColor: '#1a1a1a', color: '#ccc', border: '1px solid #444', borderRadius: 4, padding: '2px 4px', fontSize: 12 }}>
                                   {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                                  {poColors[po] && !DEFAULT_COLORS.some((c) => c.hex === poColors[po]) && (
+                                    <option key={poColors[po]} value={poColors[po]}>Custom ({poColors[po]})</option>
+                                  )}
                                 </select>
                               </div>
                             </td>

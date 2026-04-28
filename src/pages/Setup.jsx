@@ -924,6 +924,9 @@ export default function Setup() {
                           <select value={qPoColors[po] || DEFAULT_COLORS[0].hex}
                             onChange={(e) => setQPoColors({ ...qPoColors, [po]: e.target.value })} style={{ ...s.input, flex: 1 }}>
                             {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                            {qPoColors[po] && !DEFAULT_COLORS.some((c) => c.hex === qPoColors[po]) && (
+                              <option key={qPoColors[po]} value={qPoColors[po]}>Custom ({qPoColors[po]})</option>
+                            )}
                           </select>
                           <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: qPoColors[po] || DEFAULT_COLORS[0].hex, border: '1px solid #555', flexShrink: 0 }} />
                         </div>
@@ -1056,6 +1059,9 @@ export default function Setup() {
                     <select value={poColors[po] || DEFAULT_COLORS[0].hex}
                       onChange={(e) => setPoColors({ ...poColors, [po]: e.target.value })} style={{ ...s.input, flex: 1 }}>
                       {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                      {poColors[po] && !DEFAULT_COLORS.some((c) => c.hex === poColors[po]) && (
+                        <option key={poColors[po]} value={poColors[po]}>Custom ({poColors[po]})</option>
+                      )}
                     </select>
                     <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: poColors[po] || DEFAULT_COLORS[0].hex, border: '1px solid #555', flexShrink: 0 }} />
                   </div>

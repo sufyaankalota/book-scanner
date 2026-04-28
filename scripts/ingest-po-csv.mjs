@@ -38,9 +38,9 @@ const CHUNK_SIZE = 5000;
 const WRITE_BATCH = BATCH_OVERRIDE || 10;
 
 const DEFAULT_COLORS = [
-  '#3B82F6', '#22C55E', '#EAB308', '#A855F7',
-  '#F97316', '#EF4444', '#14B8A6', '#F59E0B',
-  '#8B5CF6', '#EC4899', '#10B981', '#06B6D4',
+  '#EF4444', '#3B82F6', '#EAB308', '#22C55E',
+  '#F97316', '#A855F7', '#EC4899', '#14B8A6',
+  '#92400E', '#CA8A04',
 ];
 
 function hashIsbn(isbn, numChunks) {
