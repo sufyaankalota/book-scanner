@@ -506,6 +506,11 @@ export default function Dashboard() {
 
   // Push browser notification for PO completion milestones
   useEffect(() => {
+    // Reset notification tracker when job changes
+    poAlertsNotifiedRef.current.clear();
+  }, [job?.id]);
+
+  useEffect(() => {
     if (!notificationsEnabled || !poAlerts.length) return;
     for (const alert of poAlerts) {
       const key = `${alert.po}_${alert.complete ? '100' : '95'}`;

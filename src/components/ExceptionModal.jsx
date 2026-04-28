@@ -70,8 +70,12 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
         });
 
         const worker = await createWorker('eng');
-        const { data } = await worker.recognize(upscaled);
-        await worker.terminate();
+        let data;
+        try {
+          ({ data } = await worker.recognize(upscaled));
+        } finally {
+          try { await worker.terminate(); } catch {}
+        }
         if (cancelled) return;
 
         // Extract best title candidate from OCR results

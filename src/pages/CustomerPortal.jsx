@@ -25,6 +25,8 @@ export default function CustomerPortal() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(0);
 
   // Data
   const [job, setJob] = useState(null);
@@ -74,6 +76,11 @@ export default function CustomerPortal() {
   // Customer Login
   const handleLogin = async () => {
     if (!loginEmail.trim() || !password.trim()) return;
+    if (lockoutUntil && Date.now() < lockoutUntil) {
+      const mins = Math.ceil((lockoutUntil - Date.now()) / 60000);
+      setAuthError(`Too many failed attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`);
+      return;
+    }
     setAuthLoading(true);
     setAuthError('');
     try {
@@ -95,8 +102,18 @@ export default function CustomerPortal() {
           if (match) {
             setAuthenticated(true);
             sessionStorage.setItem('customer-auth', 'true');
+            setLoginAttempts(0);
+            setLockoutUntil(0);
           } else {
-            setAuthError('Invalid email or password.');
+            const next = loginAttempts + 1;
+            setLoginAttempts(next);
+            if (next >= 5) {
+              const until = Date.now() + 5 * 60 * 1000;
+              setLockoutUntil(until);
+              setAuthError('Too many failed attempts. Locked for 5 minutes.');
+            } else {
+              setAuthError(`Invalid email or password. (${5 - next} attempt${5 - next === 1 ? '' : 's'} left)`);
+            }
           }
         }
       }

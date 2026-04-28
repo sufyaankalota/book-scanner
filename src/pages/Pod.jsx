@@ -278,6 +278,9 @@ export default function Pod() {
               const cache = {};
               ms.forEach((d) => { cache[d.id] = d.data().poName; });
               setManifestCache(cache);
+            }).catch((err) => {
+              console.error('Failed to load manifest:', err);
+              flash('#EF4444', 'Manifest load failed — retry by reloading the page', 4000);
             });
           } else if (picked.manifestMeta?.chunked) {
             clearChunkCache();

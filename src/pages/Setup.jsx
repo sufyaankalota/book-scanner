@@ -405,6 +405,13 @@ export default function Setup() {
     if (!window.confirm(`DELETE job "${name}" and ALL its data (scans, exceptions, shifts, BOLs, manifest)? This cannot be undone.`)) return;
     if (!window.confirm('Are you absolutely sure? This is permanent.')) return;
     try {
+      // Verify job still exists (another admin may have deleted it)
+      const latest = await getDoc(doc(db, 'jobs', activeJob.id));
+      if (!latest.exists()) {
+        alert('This job no longer exists. Refreshing.');
+        setActiveJob(null);
+        return;
+      }
       // Close job first if active
       if (activeJob.meta.active) {
         await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.active': false, 'meta.closedAt': serverTimestamp() });
