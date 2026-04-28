@@ -1165,7 +1165,7 @@ export default function Pod() {
       </div>
 
       {lastScanTime && (
-        <p style={{ textAlign: 'center', color: '#666', fontSize: 14, marginTop: 12, fontWeight: 500 }}>
+        <p style={{ textAlign: 'center', color: 'var(--text-tertiary, #666)', fontSize: 14, marginTop: 12, fontWeight: 500 }}>
           Last scan: {lastScanTime.toLocaleTimeString()}
         </p>
       )}

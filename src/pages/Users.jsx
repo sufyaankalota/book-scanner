@@ -204,7 +204,7 @@ export default function Users() {
               <input type="file" accept=".csv,text/csv" onChange={handleCsvImport} disabled={importing} style={{ display: 'none' }} />
             </label>
           </div>
-          <p style={{ color: '#666', fontSize: 11, marginTop: 0, marginBottom: 16 }}>
+          <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 11, marginTop: 0, marginBottom: 16 }}>
             CSV columns: <code style={{ color: '#888' }}>name,email,password,role</code> (role: admin/manager/operator). Header row optional.
           </p>
         </>
@@ -238,8 +238,8 @@ export default function Users() {
       ) : users.length === 0 ? (
         <div style={{ ...s.card, textAlign: 'center', padding: 32 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>👥</div>
-          <p style={{ color: '#aaa', fontSize: 15, marginBottom: 4 }}>No users yet</p>
-          <p style={{ color: '#666', fontSize: 13 }}>Click <strong style={{ color: '#3B82F6' }}>+ Add User</strong> above to create your first account.</p>
+          <p style={{ color: 'var(--text-secondary, #aaa)', fontSize: 15, marginBottom: 4 }}>No users yet</p>
+          <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 13 }}>Click <strong style={{ color: '#3B82F6' }}>+ Add User</strong> above to create your first account.</p>
         </div>
       ) : (
         <div>
@@ -252,7 +252,7 @@ export default function Users() {
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, backgroundColor: roleColor(u.role) + '22', color: roleColor(u.role) }}>
                       {u.role}
                     </span>
-                    {u.id === currentUser?.id && <span style={{ fontSize: 11, color: '#666' }}>(you)</span>}
+                    {u.id === currentUser?.id && <span style={{ fontSize: 11, color: 'var(--text-tertiary, #666)' }}>(you)</span>}
                   </div>
                   <div style={{ color: '#888', fontSize: 13, marginTop: 2 }}>{u.email}</div>
                   <div style={{ color: '#555', fontSize: 11, marginTop: 2 }}>
@@ -309,10 +309,10 @@ const s = {
   backLink: { color: '#555', textDecoration: 'none', fontSize: 13, display: 'inline-block', marginBottom: 14, fontWeight: 600 },
   title: { fontSize: 22, fontWeight: 800, margin: '0 0 8px', color: '#f0f0f0', letterSpacing: '-0.3px' },
   card: { backgroundColor: '#141414', borderRadius: 12, padding: '14px 16px', border: '1px solid #1e1e1e', marginBottom: 10 },
-  cardTitle: { fontSize: 14, fontWeight: 700, color: '#aaa', marginTop: 0, marginBottom: 10, letterSpacing: '-0.2px' },
+  cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text-secondary, #aaa)', marginTop: 0, marginBottom: 10, letterSpacing: '-0.2px' },
   input: { width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: '#1a1a1a', color: '#f0f0f0', fontSize: 14, boxSizing: 'border-box', fontWeight: 500 },
   addBtn: { padding: '10px 20px', borderRadius: 8, border: '1px dashed #2a2a2a', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 14 },
   primaryBtn: { padding: '10px 20px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
-  cancelBtn: { padding: '10px 20px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: '#666', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  smallBtn: { padding: '4px 10px', borderRadius: 4, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: '#666', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  cancelBtn: { padding: '10px 20px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: 'var(--text-tertiary, #666)', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  smallBtn: { padding: '4px 10px', borderRadius: 4, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: 'var(--text-tertiary, #666)', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
 };

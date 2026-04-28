@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import {
   collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
@@ -62,7 +62,7 @@ export default function CustomerPortal() {
   // Billing reports
   const [billingReports, setBillingReports] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
-  // Reports tab — default to last 7 days
+  // Reports tab � default to last 7 days
   const [reportsShowAll, setReportsShowAll] = useState(false);
   // Branding
   const [brandLogo, setBrandLogo] = useState('');
@@ -146,7 +146,7 @@ export default function CustomerPortal() {
           setJob(null);
         }
       } else {
-        // No active job — load most recently closed job for historical data
+        // No active job � load most recently closed job for historical data
         try {
           const closedSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
           if (!closedSnap.empty) {
@@ -546,7 +546,7 @@ export default function CustomerPortal() {
     const withPhotos = allExcs.filter((e) => e.photo);
 
     const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Exception Photo Report — ${jobName}</title>
+<html><head><meta charset="utf-8"><title>Exception Photo Report � ${jobName}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #fff; color: #222; padding: 32px; max-width: 900px; margin: 0 auto; }
@@ -568,9 +568,9 @@ export default function CustomerPortal() {
   .print-btn { position: fixed; top: 16px; right: 16px; padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; z-index: 100; }
   @media print { .print-btn { display: none; } .exc img { width: 100px; height: 100px; } }
 </style></head><body>
-<button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button>
+<button class="print-btn" onclick="window.print()">?? Print / Save PDF</button>
 <h1>Exception Photo Report</h1>
-<p class="meta">${jobName} · ${dateLabel} · Generated ${new Date().toLocaleString()}</p>
+<p class="meta">${jobName} � ${dateLabel} � Generated ${new Date().toLocaleString()}</p>
 <div class="summary">
   <div><div class="num">${allExcs.length}</div><div class="lbl">Total Exceptions</div></div>
   <div><div class="num">${withPhotos.length}</div><div class="lbl">With Photos</div></div>
@@ -582,10 +582,10 @@ ${allExcs.map((exc, i) => `<div class="exc">
     <span class="reason">${exc.reason}</span>
     ${exc.isbn ? `<div class="isbn">ISBN: ${exc.isbn}</div>` : ''}
     ${exc.title ? `<div class="title">"${exc.title}"</div>` : ''}
-    <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' · Pod ' + exc.podId : ''}</div>
+    <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' � Pod ' + exc.podId : ''}</div>
   </div>
 </div>`).join('\n')}
-<div class="disclaimer">⚠️ DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
+<div class="disclaimer">?? DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
 </body></html>`;
 
     const w = window.open('', '_blank');
@@ -608,7 +608,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <img src={brandLogo || '/icon.svg'} alt="Logo" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8, objectFit: 'contain' }} />
             <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
-            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort — Sign in to your portal</p>
+            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort � Sign in to your portal</p>
           </div>
           <input type="email" value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
@@ -636,7 +636,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
       <div style={st.topBar}>
         <div>
           <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>BookFlow Portal</span>
-          {job && <span style={{ color: '#666', fontSize: 14, marginLeft: 12 }}>{job.meta.name}{!job.meta.active ? ' (completed)' : ''}</span>}
+          {job && <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 14, marginLeft: 12 }}>{job.meta.name}{!job.meta.active ? ' (completed)' : ''}</span>}
         </div>
         <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
       </div>
@@ -676,7 +676,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={st.statLbl}>Total Processed</div>
           </div>
           <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}–${Math.ceil((todayData?.standard || 0) / 1500)}` : '—'}</div>
+            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}�${Math.ceil((todayData?.standard || 0) / 1500)}` : '�'}</div>
             <div style={st.statLbl}>Today's Est. Gaylords</div>
           </div>
         </div>
@@ -692,7 +692,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
       {job && totalProcessed > 0 && (
         <div style={{ ...st.card, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ ...st.cardTitle, marginBottom: 0 }}>📊 Job Progress</h3>
+            <h3 style={{ ...st.cardTitle, marginBottom: 0 }}>?? Job Progress</h3>
             <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
               {jobProgress.totalScanned.toLocaleString()} scanned
               {jobProgress.totalExpected ? ` / ${jobProgress.totalExpected.toLocaleString()} expected (${jobProgress.pct}%)` : ''}
@@ -714,7 +714,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   return (
                     <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
-                      <span style={{ color: '#aaa', fontSize: 13, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po}</span>
+                      <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po}</span>
                       <div style={{ flex: 1, height: 6, backgroundColor: '#222', borderRadius: 3, overflow: 'hidden' }}>
                         <div style={{ height: '100%', backgroundColor: poPct !== null && poPct >= 100 ? '#22C55E' : color, width: `${poPct !== null ? Math.min(100, poPct) : 100}%`, borderRadius: 3 }} />
                       </div>
@@ -729,7 +729,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
           )}
           {jobProgress.totalExceptions > 0 && (
             <div style={{ marginTop: 8, color: '#F97316', fontSize: 13 }}>
-              ⚠ {jobProgress.totalExceptions.toLocaleString()} total exception{jobProgress.totalExceptions !== 1 ? 's' : ''}
+              ? {jobProgress.totalExceptions.toLocaleString()} total exception{jobProgress.totalExceptions !== 1 ? 's' : ''}
             </div>
           )}
         </div>
@@ -768,12 +768,12 @@ ${allExcs.map((exc, i) => `<div class="exc">
               <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
                 {d.standard > 0 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>✓ {d.standard.toLocaleString()} scanned</span>
+                    <span style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>? {d.standard.toLocaleString()} scanned</span>
                   </div>
                 )}
                 {d.standard > 0 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>📦 {Math.ceil(d.standard / 2000)}–{Math.ceil(d.standard / 1500)} gaylords</span>
+                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>?? {Math.ceil(d.standard / 2000)}�{Math.ceil(d.standard / 1500)} gaylords</span>
                   </div>
                 )}
                 {d.exceptions > 0 && (
@@ -804,7 +804,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
               <button onClick={() => openPhotoReport(null)}
                 style={{ ...st.smallBtn, padding: '10px 18px', borderColor: '#7c3aed', color: '#a78bfa', fontSize: 13 }}>
-                📸 Photo Report (All Dates)
+                ?? Photo Report (All Dates)
               </button>
             </div>
           )}
@@ -822,7 +822,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   {excCount > 0 && <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{excCount} exception{excCount > 1 ? 's' : ''}</span>}
                   {manualCount > 0 && <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>{manualCount} manual</span>}
                   <button onClick={() => exportDailyExceptions(date)} style={st.smallBtn}>Export</button>
-                  <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>📸 Photos</button>
+                  <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>?? Photos</button>
                 </div>
               </div>
               {excs.map((exc, i) => (
@@ -842,8 +842,8 @@ ${allExcs.map((exc, i) => `<div class="exc">
                       </span>
                       {exc.isbn && <span style={{ color: '#ccc', fontFamily: 'monospace', fontSize: 13 }}>{exc.isbn}</span>}
                     </div>
-                    {exc.title && <div style={{ color: '#aaa', fontSize: 13, marginTop: 2 }}>"{exc.title}"</div>}
-                    <div style={{ color: '#666', fontSize: 12, marginTop: 2 }}>{exc.time.toLocaleTimeString()}</div>
+                    {exc.title && <div style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, marginTop: 2 }}>"{exc.title}"</div>}
+                    <div style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 2 }}>{exc.time.toLocaleTimeString()}</div>
                   </div>
                 </div>
               ))}
@@ -871,9 +871,9 @@ ${allExcs.map((exc, i) => `<div class="exc">
               <div style={{ ...st.card, border: '1px solid #2D2B6B', background: 'linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                   <div>
-                    <div style={{ color: '#aaa', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Estimated Invoice Total</div>
+                    <div style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Estimated Invoice Total</div>
                     <div style={{ color: '#EAB308', fontSize: 36, fontWeight: 900, fontFamily: 'monospace', marginTop: 4 }}>${totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                    <div style={{ color: '#666', fontSize: 12, marginTop: 4 }}>Across {active.length} billing report{active.length !== 1 ? 's' : ''}</div>
+                    <div style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>Across {active.length} billing report{active.length !== 1 ? 's' : ''}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                     <div style={{ textAlign: 'center' }}>
@@ -894,17 +894,17 @@ ${allExcs.map((exc, i) => `<div class="exc">
 
           <div style={st.card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={st.cardTitle}>💰 Weekly Billing Reports</h3>
+              <h3 style={st.cardTitle}>?? Weekly Billing Reports</h3>
               <button onClick={() => setShowArchived(!showArchived)}
-                style={{ ...st.smallBtn, color: showArchived ? '#3B82F6' : '#666' }}>
-                {showArchived ? '📂 Hide Archived' : '📁 Show Archived'}
+                style={{ ...st.smallBtn, color: showArchived ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
+                {showArchived ? '?? Hide Archived' : '?? Show Archived'}
               </button>
             </div>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
               Billing reports are generated weekly by the warehouse. Each report contains unit counts broken down by day, pod, and operator.
             </p>
             {billingReports.filter((r) => showArchived || !r.archived).length === 0 && (
-              <p style={{ color: '#666', fontSize: 14, textAlign: 'center', padding: 20 }}>
+              <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 14, textAlign: 'center', padding: 20 }}>
                 {billingReports.length > 0 && !showArchived ? 'All reports are archived. Click "Show Archived" to view.' : 'No billing reports available yet.'}
               </p>
             )}
@@ -917,8 +917,8 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                     <div>
                       <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
-                        {start ? start.toLocaleDateString() : '?'} – {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
-                        {report.archived && <span style={{ color: '#666', fontSize: 12, marginLeft: 8 }}>(Archived)</span>}
+                        {start ? start.toLocaleDateString() : '?'} � {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
+                        {report.archived && <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginLeft: 8 }}>(Archived)</span>}
                       </div>
                       <div style={{ color: '#888', fontSize: 13 }}>
                         Generated: {created ? created.toLocaleDateString() + ' ' + created.toLocaleTimeString() : 'Unknown'}
@@ -931,15 +931,15 @@ ${allExcs.map((exc, i) => `<div class="exc">
                           downloadBlob(bytes, report.fileName);
                         } catch { toast('Download failed', 'error'); }
                       }} style={{ ...st.smallBtn, padding: '8px 20px' }}>
-                        📥 Download
+                        ?? Download
                       </button>
                       <button onClick={() => updateDoc(doc(db, 'billing-reports', report.id), { archived: !report.archived })}
                         style={{ ...st.smallBtn, padding: '8px 12px' }}>
-                        {report.archived ? '📂 Unarchive' : '📁 Archive'}
+                        {report.archived ? '?? Unarchive' : '?? Archive'}
                       </button>
                       <button onClick={() => { if (confirm('Delete this report permanently?')) deleteDoc(doc(db, 'billing-reports', report.id)); }}
                         style={{ ...st.smallBtn, padding: '8px 12px', color: '#EF4444', borderColor: '#7f1d1d' }}>
-                        🗑
+                        ??
                       </button>
                     </div>
                   </div>
@@ -974,14 +974,14 @@ ${allExcs.map((exc, i) => `<div class="exc">
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <button onClick={() => setReportsShowAll(!reportsShowAll)}
-              style={{ ...st.smallBtn, color: reportsShowAll ? '#3B82F6' : '#666' }}>
-              {reportsShowAll ? '📅 Show Recent Only' : '📅 Show All Dates'}
+              style={{ ...st.smallBtn, color: reportsShowAll ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
+              {reportsShowAll ? '?? Show Recent Only' : '?? Show All Dates'}
             </button>
           </div>
           <div style={st.card}>
             <h3 style={st.cardTitle}>Daily Scan Reports</h3>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Download a list of all items scanned on each day.</p>
-            {dailyBreakdown.length === 0 && <p style={{ color: '#666', fontSize: 14 }}>No data yet.</p>}
+            {dailyBreakdown.length === 0 && <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 14 }}>No data yet.</p>}
             {(reportsShowAll ? dailyBreakdown : dailyBreakdown.slice(0, 7)).map((d) => (
               <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
                 <div>
@@ -992,7 +992,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
               </div>
             ))}
             {!reportsShowAll && dailyBreakdown.length > 7 && (
-              <p style={{ color: '#666', fontSize: 13, textAlign: 'center', padding: '8px 0', cursor: 'pointer' }}
+              <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 13, textAlign: 'center', padding: '8px 0', cursor: 'pointer' }}
                 onClick={() => setReportsShowAll(true)}>
                 + {dailyBreakdown.length - 7} older days hidden
               </p>
@@ -1001,7 +1001,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
           <div style={st.card}>
             <h3 style={st.cardTitle}>Daily Exception Reports</h3>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Download exception details for each day.</p>
-            {dailyBreakdown.filter((d) => d.exceptions > 0).length === 0 && <p style={{ color: '#666', fontSize: 14 }}>No exceptions.</p>}
+            {dailyBreakdown.filter((d) => d.exceptions > 0).length === 0 && <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 14 }}>No exceptions.</p>}
             {(reportsShowAll ? dailyBreakdown : dailyBreakdown.slice(0, 7)).filter((d) => d.exceptions > 0).map((d) => (
               <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
                 <div>
@@ -1111,7 +1111,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                           <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
                             backgroundColor: up.status === 'added' ? '#166534' : '#92400e',
                             color: up.status === 'added' ? '#4ADE80' : '#FCD34D' }}>
-                            {up.status === 'added' ? '✓ Added to Job' : '⏳ Pending'}
+                            {up.status === 'added' ? '? Added to Job' : '? Pending'}
                           </span>
                         </td>
                         <td style={{ ...st.td, textAlign: 'right' }}>
@@ -1188,7 +1188,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                     }} style={st.smallBtn}>Download</button>
                   </div>
                   {bol.notes && <p style={{ color: '#888', fontSize: 13, marginTop: 4, marginBottom: 0 }}>{bol.notes}</p>}
-                  <p style={{ color: '#666', fontSize: 11, marginTop: 2, marginBottom: 0 }}>{bol.fileName}</p>
+                  <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 11, marginTop: 2, marginBottom: 0 }}>{bol.fileName}</p>
                 </div>
               ))}
             </div>
@@ -1233,7 +1233,7 @@ const st = {
   },
   logoutBtn: {
     padding: '6px 14px', borderRadius: 6, border: '1px solid #2a2a2a',
-    backgroundColor: 'transparent', color: '#666', fontSize: 12, cursor: 'pointer', fontWeight: 600,
+    backgroundColor: 'transparent', color: 'var(--text-tertiary, #666)', fontSize: 12, cursor: 'pointer', fontWeight: 600,
   },
   text: { color: '#888', fontSize: 14 },
   statsRow: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 },
@@ -1246,14 +1246,14 @@ const st = {
   tabBar: { display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap' },
   tab: {
     padding: '8px 14px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#1e1e1e',
-    backgroundColor: '#0f0f0f', color: '#666', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    backgroundColor: '#0f0f0f', color: 'var(--text-tertiary, #666)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
   },
   tabActive: { borderColor: 'rgba(59,130,246,0.3)', color: '#93c5fd', backgroundColor: 'rgba(59,130,246,0.06)' },
   card: {
     backgroundColor: '#141414', borderRadius: 12, padding: '18px 20px', border: '1px solid #1e1e1e', marginBottom: 12,
   },
-  cardTitle: { fontSize: 14, fontWeight: 700, color: '#aaa', marginTop: 0, marginBottom: 12, letterSpacing: '-0.2px' },
-  label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 6, marginTop: 14, textTransform: 'uppercase', letterSpacing: '0.3px' },
+  cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text-secondary, #aaa)', marginTop: 0, marginBottom: 12, letterSpacing: '-0.2px' },
+  label: { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary, #666)', marginBottom: 6, marginTop: 14, textTransform: 'uppercase', letterSpacing: '0.3px' },
   input: {
     width: '100%', padding: '11px 14px', borderRadius: 8, border: '1px solid #2a2a2a',
     backgroundColor: '#1a1a1a', color: '#f0f0f0', fontSize: 14, boxSizing: 'border-box', fontWeight: 500,
@@ -1268,6 +1268,6 @@ const st = {
     backgroundColor: '#22C55E', color: '#fff', fontSize: 15, fontWeight: 700,
     cursor: 'pointer', width: '100%',
   },
-  th: { padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #1e1e1e', color: '#666', fontWeight: 600, position: 'sticky', top: 0, backgroundColor: '#0f0f0f', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.3px' },
+  th: { padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #1e1e1e', color: 'var(--text-tertiary, #666)', fontWeight: 600, position: 'sticky', top: 0, backgroundColor: '#0f0f0f', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.3px' },
   td: { padding: '6px 12px', borderBottom: '1px solid #1a1a1a', color: '#bbb', fontSize: 13 },
 };

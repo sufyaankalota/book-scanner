@@ -110,7 +110,7 @@ export default function Home() {
         </div>
         {currentUser && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ color: '#666', fontSize: 13 }}>{currentUser.name}</span>
+            <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 13 }}>{currentUser.name}</span>
             <span style={{ color: '#444', fontSize: 13 }}>({currentUser.role})</span>
             <button onClick={logout} style={styles.signOutBtn}>Sign Out</button>
           </div>
@@ -217,7 +217,7 @@ export default function Home() {
 
               {/* Operator */}
               {operator && isOnline && (
-                <p style={{ color: '#aaa', fontSize: 13, margin: '0 0 8px' }}>
+                <p style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, margin: '0 0 8px' }}>
                   Operator: <strong style={{ color: '#fff' }}>{operator}</strong>
                   {isPaused && <span style={{ color: '#EAB308', marginLeft: 8 }}>⏸ Paused</span>}
                 </p>
@@ -341,7 +341,7 @@ const styles = {
   },
 
   loader: {
-    color: '#666',
+    color: 'var(--text-tertiary, #666)',
     fontSize: 16,
     textAlign: 'center',
     marginTop: 100,

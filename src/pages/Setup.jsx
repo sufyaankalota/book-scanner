@@ -23,6 +23,10 @@ const DEFAULT_PODS = ['A', 'B', 'C', 'D', 'E'];
 
 export default function Setup() {
   const { show: toast } = useToast();
+  const [fieldError, setFieldError] = useState({});
+  const FieldError = ({ name }) => fieldError[name]
+    ? <p style={{ color: '#EF4444', fontSize: 12, marginTop: 4, marginBottom: 0 }}>{fieldError[name]}</p>
+    : null;
   const [jobName, setJobName] = useState('');
   const [mode, setMode] = useState('single');
   const [dailyTarget, setDailyTarget] = useState(22000);
@@ -216,12 +220,15 @@ export default function Setup() {
   };
 
   const handleActivateJob = async () => {
-    if (!jobName.trim()) return toast('Enter a job name', 'error');
-    if (mode === 'multi' && !manifest && !selectedUploadId) return toast('Upload a manifest for Multi-PO mode', 'error');
-    if (pods.length === 0) return toast('Configure at least one pod', 'error');
+    const errs = {};
+    if (!jobName.trim()) errs.jobName = 'Enter a job name';
+    if (mode === 'multi' && !manifest && !selectedUploadId) errs.manifest = 'Upload a manifest for Multi-PO mode';
+    if (pods.length === 0) errs.pods = 'Configure at least one pod';
     const target = Number(dailyTarget); const hours = Number(workingHours);
-    if (!target || target <= 0) return toast('Enter a valid daily target', 'error');
-    if (!hours || hours <= 0 || hours > 24) return toast('Enter valid working hours (1-24)', 'error');
+    if (!target || target <= 0) errs.dailyTarget = 'Enter a valid daily target';
+    if (!hours || hours <= 0 || hours > 24) errs.workingHours = 'Enter valid working hours (1-24)';
+    setFieldError(errs);
+    if (Object.keys(errs).length) return;
 
     setSaving(true);
     try {
@@ -294,12 +301,15 @@ export default function Setup() {
   };
 
   const handleQueueJob = async () => {
-    if (!qJobName.trim()) return toast('Enter a job name', 'error');
-    if (qMode === 'multi' && !qManifest && !qSelectedUploadId) return toast('Upload a manifest for Multi-PO mode', 'error');
-    if (qPods.length === 0) return toast('Configure at least one pod', 'error');
+    const errs = {};
+    if (!qJobName.trim()) errs.qJobName = 'Enter a job name';
+    if (qMode === 'multi' && !qManifest && !qSelectedUploadId) errs.qManifest = 'Upload a manifest for Multi-PO mode';
+    if (qPods.length === 0) errs.qPods = 'Configure at least one pod';
     const target = Number(qDailyTarget); const hours = Number(qWorkingHours);
-    if (!target || target <= 0) return toast('Enter a valid daily target', 'error');
-    if (!hours || hours <= 0 || hours > 24) return toast('Enter valid working hours (1-24)', 'error');
+    if (!target || target <= 0) errs.qDailyTarget = 'Enter a valid daily target';
+    if (!hours || hours <= 0 || hours > 24) errs.qWorkingHours = 'Enter valid working hours (1-24)';
+    setFieldError(errs);
+    if (Object.keys(errs).length) return;
 
     setQSaving(true);
     try {
@@ -453,11 +463,14 @@ export default function Setup() {
   };
 
   const handleEditSave = async () => {
+    const errs = {};
     const target = Number(editTarget); const hours = Number(editHours);
-    if (!target || target <= 0) return toast('Enter a valid daily target', 'error');
-    if (!hours || hours <= 0 || hours > 24) return toast('Enter valid working hours', 'error');
+    if (!target || target <= 0) errs.editTarget = 'Enter a valid daily target';
+    if (!hours || hours <= 0 || hours > 24) errs.editHours = 'Enter valid working hours';
     const newPods = [...new Set(editPods.split(',').map((s) => s.trim()).filter(Boolean))];
-    if (newPods.length === 0) return toast('Need at least one pod', 'error');
+    if (newPods.length === 0) errs.editPods = 'Need at least one pod';
+    setFieldError(errs);
+    if (Object.keys(errs).length) return;
     try {
       await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods });
       logAudit('job_edited', { jobId: activeJob.id });
@@ -609,11 +622,14 @@ export default function Setup() {
             <>
               <h2 style={{ color: '#fff', fontSize: 20, marginBottom: 16, marginTop: 0 }}>Edit Job Settings</h2>
               <label style={s.label}>Daily Target</label>
-              <input type="number" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} style={s.input} />
+              <input type="number" value={editTarget} onChange={(e) => { setEditTarget(e.target.value); setFieldError((p) => ({ ...p, editTarget: undefined })); }} style={s.input} />
+              <FieldError name="editTarget" />
               <label style={s.label}>Working Hours Per Day</label>
-              <input type="number" value={editHours} onChange={(e) => setEditHours(e.target.value)} min={1} max={24} style={s.input} />
+              <input type="number" value={editHours} onChange={(e) => { setEditHours(e.target.value); setFieldError((p) => ({ ...p, editHours: undefined })); }} min={1} max={24} style={s.input} />
+              <FieldError name="editHours" />
               <label style={s.label}>Pod IDs (comma-separated)</label>
-              <input type="text" value={editPods} onChange={(e) => setEditPods(e.target.value)} style={s.input} />
+              <input type="text" value={editPods} onChange={(e) => { setEditPods(e.target.value); setFieldError((p) => ({ ...p, editPods: undefined })); }} style={s.input} />
+              <FieldError name="editPods" />
               <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
                 <button onClick={handleEditSave} style={s.primaryBtn}>Save Changes</button>
                 <button onClick={() => setEditMode(false)} style={s.secondaryBtn}>Cancel</button>
@@ -658,11 +674,11 @@ export default function Setup() {
               {brandLogo ? (
                 <img src={brandLogo} alt="Logo" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'contain', border: '1px solid #333', backgroundColor: '#0a0a0a' }} />
               ) : (
-                <div style={{ width: 64, height: 64, borderRadius: 12, border: '1px dashed #444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12 }}>No logo</div>
+                <div style={{ width: 64, height: 64, borderRadius: 12, border: '1px dashed #444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary, #666)', fontSize: 12 }}>No logo</div>
               )}
               <div style={{ flex: 1 }}>
                 <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ ...s.input, padding: 8 }} />
-                <p style={{ color: '#666', fontSize: 11, marginTop: 4 }}>PNG, JPG, or SVG — max 500 KB</p>
+                <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 11, marginTop: 4 }}>PNG, JPG, or SVG — max 500 KB</p>
                 {brandLogo && (
                   <button onClick={() => setBrandLogo('')}
                     style={{ padding: '2px 10px', borderRadius: 4, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', marginTop: 4 }}>
@@ -682,11 +698,11 @@ export default function Setup() {
             <label style={s.label}>Idle Timeout (minutes)</label>
             <input type="number" value={idleTimeout} onChange={(e) => setIdleTimeout(e.target.value)}
               min={1} max={30} style={s.input} />
-            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>Alert when a pod has no scans for this many minutes</p>
+            <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>Alert when a pod has no scans for this many minutes</p>
             <label style={s.label}>Pace Warning Threshold (%)</label>
             <input type="number" value={paceWarning} onChange={(e) => setPaceWarning(e.target.value)}
               min={10} max={100} style={s.input} />
-            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>Warn when pace drops below this % of target</p>
+            <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>Warn when pace drops below this % of target</p>
             <button onClick={handleAlertsSave}
               style={{ ...s.primaryBtn, marginTop: 12 }}>{alertsSaved ? '✓ Saved!' : 'Save Alert Settings'}</button>
           </div>
@@ -701,7 +717,7 @@ export default function Setup() {
                   <img src={getQrUrl(podId)} alt={`QR for Pod ${podId}`} width={150} height={150}
                     style={{ borderRadius: 8, border: '1px solid #333' }} />
                   <p style={{ color: '#ccc', fontSize: 14, fontWeight: 600, marginTop: 4 }}>Pod {podId}</p>
-                  <p style={{ color: '#666', fontSize: 10, wordBreak: 'break-all', maxWidth: 150 }}>{getPodUrl(podId)}</p>
+                  <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 10, wordBreak: 'break-all', maxWidth: 150 }}>{getPodUrl(podId)}</p>
                 </div>
               ))}
             </div>
@@ -725,13 +741,13 @@ export default function Setup() {
             <label style={s.label}>Export Time</label>
             <input type="time" value={autoExportTime} onChange={(e) => setAutoExportTime(e.target.value)}
               style={s.input} />
-            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
+            <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>
               Report will auto-download on any open Dashboard tab at this time
             </p>
             <label style={{ ...s.label, marginTop: 16 }}>📧 EOD Report Email</label>
             <input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)}
               placeholder="e.g. supervisor@company.com" style={s.input} />
-            <p style={{ color: '#666', fontSize: 12, marginTop: 4 }}>
+            <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>
               Daily scan &amp; exception reports in Excel format will be emailed at the scheduled time
             </p>
             <button onClick={handleScheduleSave}
@@ -766,7 +782,7 @@ export default function Setup() {
                       {log.user?.name && <span style={{ color: '#A855F7', marginRight: 6 }}>{log.user.name}</span>}
                       {Object.entries(log).filter(([k]) => !['id', 'action', 'timestamp', 'user'].includes(k)).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
                     </span>
-                    <span style={{ color: '#666', whiteSpace: 'nowrap' }}>{log.timestamp?.toDate?.()?.toLocaleString() || '—'}</span>
+                    <span style={{ color: 'var(--text-tertiary, #666)', whiteSpace: 'nowrap' }}>{log.timestamp?.toDate?.()?.toLocaleString() || '—'}</span>
                   </div>
                 ))}
                 {auditLogs.length === 0 && <p style={{ color: '#888' }}>No audit logs yet.</p>}
@@ -807,7 +823,7 @@ export default function Setup() {
             </button>
           </div>
           {queuedJobs.length === 0 && !showQueueForm && (
-            <p style={{ color: '#666', fontSize: 14 }}>No jobs queued. Queue a job to auto-start when the current one closes.</p>
+            <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 14 }}>No jobs queued. Queue a job to auto-start when the current one closes.</p>
           )}
           {queuedJobs.map((qj, idx) => (
             <div key={qj.id} style={{ ...s.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 16 }}>
@@ -815,7 +831,7 @@ export default function Setup() {
                 <span style={{ color: '#555', fontSize: 20, fontWeight: 800, fontFamily: 'monospace' }}>#{idx + 1}</span>
                 <div>
                   <div style={{ color: '#ccc', fontSize: 16, fontWeight: 700 }}>{qj.meta.name}</div>
-                  <div style={{ color: '#666', fontSize: 13, marginTop: 2 }}>
+                  <div style={{ color: 'var(--text-tertiary, #666)', fontSize: 13, marginTop: 2 }}>
                     {qj.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'} · {qj.meta.pods?.length || 0} pods · Target: {(qj.meta.dailyTarget || 22000).toLocaleString()}
                     {qj.meta.location ? ` · ${qj.meta.location}` : ''}
                   </div>
@@ -829,8 +845,9 @@ export default function Setup() {
             <div style={s.card}>
               <h3 style={{ color: '#fff', fontSize: 16, fontWeight: 700, margin: '0 0 12px' }}>Queue a New Job</h3>
               <label style={s.label}>Job Name / PO Label</label>
-              <input type="text" value={qJobName} onChange={(e) => setQJobName(e.target.value)}
+              <input type="text" value={qJobName} onChange={(e) => { setQJobName(e.target.value); setFieldError((p) => ({ ...p, qJobName: undefined })); }}
                 placeholder="e.g. PO-20261028" style={s.input} />
+              <FieldError name="qJobName" />
 
               <label style={s.label}>Warehouse Location (optional)</label>
               <input type="text" value={qLocation} onChange={(e) => setQLocation(e.target.value)}
@@ -875,6 +892,7 @@ export default function Setup() {
                     </div>
                   )}
                   {qFileError && <p style={{ color: '#EF4444', marginTop: 4 }}>{qFileError}</p>}
+                  <FieldError name="qManifest" />
                   {qManifest && (
                     <p style={{ color: '#22C55E', marginTop: 4 }}>
                       ✓ Loaded {Object.keys(qManifest).length.toLocaleString()} ISBNs across {qPoNames.length} POs
@@ -904,12 +922,15 @@ export default function Setup() {
               )}
 
               <label style={{ ...s.label, marginTop: 16 }}>Daily Target</label>
-              <input type="number" value={qDailyTarget} onChange={(e) => setQDailyTarget(e.target.value)} style={s.input} />
+              <input type="number" value={qDailyTarget} onChange={(e) => { setQDailyTarget(e.target.value); setFieldError((p) => ({ ...p, qDailyTarget: undefined })); }} style={s.input} />
+              <FieldError name="qDailyTarget" />
               <label style={s.label}>Working Hours Per Day</label>
-              <input type="number" value={qWorkingHours} onChange={(e) => setQWorkingHours(e.target.value)} min={1} max={24} style={s.input} />
+              <input type="number" value={qWorkingHours} onChange={(e) => { setQWorkingHours(e.target.value); setFieldError((p) => ({ ...p, qWorkingHours: undefined })); }} min={1} max={24} style={s.input} />
+              <FieldError name="qWorkingHours" />
               <label style={s.label}>Pod IDs (comma-separated)</label>
-              <input type="text" value={qPodInput} onChange={(e) => { setQPodInput(e.target.value); setQPods([...new Set(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))]); }}
+              <input type="text" value={qPodInput} onChange={(e) => { setQPodInput(e.target.value); setQPods([...new Set(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))]); setFieldError((p) => ({ ...p, qPods: undefined })); }}
                 placeholder="A, B, C, D, E" style={s.input} />
+              <FieldError name="qPods" />
               <p style={{ color: '#999', fontSize: 14, marginTop: 4 }}>{qPods.length} unique pod(s): {qPods.join(', ')}</p>
 
               <button onClick={handleQueueJob} disabled={qSaving}
@@ -930,8 +951,9 @@ export default function Setup() {
       <h1 style={s.title}>Job Setup</h1>
       <div style={s.card}>
         <label style={s.label}>Job Name / PO Label</label>
-        <input type="text" value={jobName} onChange={(e) => setJobName(e.target.value)}
+        <input type="text" value={jobName} onChange={(e) => { setJobName(e.target.value); setFieldError((p) => ({ ...p, jobName: undefined })); }}
           placeholder="e.g. PO-20261021" style={s.input} />
+        <FieldError name="jobName" />
 
         <label style={s.label}>Warehouse Location (optional)</label>
         <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
@@ -969,7 +991,7 @@ export default function Setup() {
                     <div>
                       <span style={{ color: '#ccc', fontSize: 13 }}>{(up.poNames || []).join(', ')}</span>
                       <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>({(up.isbnCount || 0).toLocaleString()} ISBNs)</span>
-                      <span style={{ color: '#666', fontSize: 11, marginLeft: 8 }}>
+                      <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 11, marginLeft: 8 }}>
                         {up.uploadedAt?.toDate?.()?.toLocaleDateString() || ''}
                       </span>
                     </div>
@@ -986,6 +1008,7 @@ export default function Setup() {
             )}
 
             {fileError && <p style={{ color: '#EF4444', marginTop: 4 }}>{fileError}</p>}
+            <FieldError name="manifest" />
             {manifest && (
               <p style={{ color: '#22C55E', marginTop: 4 }}>
                 ✓ Loaded {Object.keys(manifest).length.toLocaleString()} ISBNs across {poNames.length} POs
@@ -1031,12 +1054,15 @@ export default function Setup() {
         )}
 
         <label style={{ ...s.label, marginTop: 16 }}>Daily Target</label>
-        <input type="number" value={dailyTarget} onChange={(e) => setDailyTarget(e.target.value)} style={s.input} />
+        <input type="number" value={dailyTarget} onChange={(e) => { setDailyTarget(e.target.value); setFieldError((p) => ({ ...p, dailyTarget: undefined })); }} style={s.input} />
+        <FieldError name="dailyTarget" />
         <label style={s.label}>Working Hours Per Day</label>
-        <input type="number" value={workingHours} onChange={(e) => setWorkingHours(e.target.value)} min={1} max={24} style={s.input} />
+        <input type="number" value={workingHours} onChange={(e) => { setWorkingHours(e.target.value); setFieldError((p) => ({ ...p, workingHours: undefined })); }} min={1} max={24} style={s.input} />
+        <FieldError name="workingHours" />
         <label style={s.label}>Pod IDs (comma-separated)</label>
-        <input type="text" value={podInput} onChange={(e) => handlePodInputChange(e.target.value)}
+        <input type="text" value={podInput} onChange={(e) => { handlePodInputChange(e.target.value); setFieldError((p) => ({ ...p, pods: undefined })); }}
           placeholder="A, B, C, D, E" style={s.input} />
+        <FieldError name="pods" />
         <p style={{ color: '#999', fontSize: 14, marginTop: 4 }}>{pods.length} unique pod(s): {pods.join(', ')}</p>
 
         <button onClick={handleActivateJob} disabled={saving}
@@ -1053,7 +1079,7 @@ export default function Setup() {
             <div key={pj.id} style={{ ...s.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 16 }}>
               <div>
                 <div style={{ color: '#ccc', fontSize: 16, fontWeight: 700 }}>{pj.meta.name}</div>
-                <div style={{ color: '#666', fontSize: 13, marginTop: 2 }}>
+                <div style={{ color: 'var(--text-tertiary, #666)', fontSize: 13, marginTop: 2 }}>
                   {pj.meta.mode} · {pj.meta.pods?.length || 0} pods · closed {pj.meta.closedAt?.toDate?.()?.toLocaleDateString() || '—'}
                 </div>
               </div>
@@ -1151,7 +1177,7 @@ export default function Setup() {
                     {log.user?.name && <span style={{ color: '#A855F7', marginRight: 6 }}>{log.user.name}</span>}
                     {Object.entries(log).filter(([k]) => !['id', 'action', 'timestamp', 'user'].includes(k)).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
                   </span>
-                  <span style={{ color: '#666', whiteSpace: 'nowrap' }}>{log.timestamp?.toDate?.()?.toLocaleString() || '—'}</span>
+                  <span style={{ color: 'var(--text-tertiary, #666)', whiteSpace: 'nowrap' }}>{log.timestamp?.toDate?.()?.toLocaleString() || '—'}</span>
                 </div>
               ))}
               {auditLogs.length === 0 && <p style={{ color: '#888' }}>No audit logs yet.</p>}
@@ -1174,10 +1200,10 @@ const s = {
   toggle: { padding: '11px 20px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: '#1a1a1a', color: '#888', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
   activeToggle: { padding: '11px 20px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'rgba(59,130,246,0.1)', color: '#93c5fd', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
   primaryBtn: { padding: '13px 24px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' },
-  secondaryBtn: { padding: '9px 16px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#2a2a2a', backgroundColor: '#161616', color: '#aaa', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  secondaryBtn: { padding: '9px 16px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#2a2a2a', backgroundColor: '#161616', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   dangerBtn: { padding: '11px 20px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)', color: '#f87171', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
   editBtn: { padding: '11px 20px', borderRadius: 8, border: '1px solid rgba(59,130,246,0.3)', backgroundColor: 'rgba(59,130,246,0.06)', color: '#93c5fd', fontSize: 14, fontWeight: 600, cursor: 'pointer' },
   linkBtn: { padding: '11px 20px', borderRadius: 8, backgroundColor: '#3B82F6', color: '#fff', fontSize: 14, fontWeight: 700, textDecoration: 'none', display: 'inline-block', textAlign: 'center' },
-  th: { padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #222', color: '#666', fontWeight: 600, position: 'sticky', top: 0, backgroundColor: '#0f0f0f', fontSize: 12 },
+  th: { padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #222', color: 'var(--text-tertiary, #666)', fontWeight: 600, position: 'sticky', top: 0, backgroundColor: '#0f0f0f', fontSize: 12 },
   td: { padding: '6px 12px', borderBottom: '1px solid #1a1a1a', color: '#bbb', fontSize: 13 },
 };

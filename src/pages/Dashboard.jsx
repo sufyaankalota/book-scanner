@@ -738,7 +738,7 @@ export default function Dashboard() {
               <button onClick={() => setShowBilling(false)}
                 style={{ background: 'none', border: '1px solid #555', borderRadius: 8, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
             </div>
-            <p style={{ color: '#aaa', fontSize: 14, marginTop: 0, marginBottom: 16 }}>
+            <p style={{ color: 'var(--text-secondary, #aaa)', fontSize: 14, marginTop: 0, marginBottom: 16 }}>
               Select the week start date (Monday). The export covers 7 days from that date.
             </p>
             <label style={{ color: '#ccc', fontSize: 14, fontWeight: 600, display: 'block', marginBottom: 6 }}>Week starting:</label>
@@ -748,7 +748,7 @@ export default function Dashboard() {
             <p style={{ color: '#888', fontSize: 13, margin: '0 0 16px' }}>
               📅 {new Date(billingWeek + 'T00:00:00').toLocaleDateString()} – {new Date(new Date(billingWeek + 'T00:00:00').getTime() + 6 * 86400000).toLocaleDateString()}
             </p>
-            <p style={{ color: '#666', fontSize: 12, marginBottom: 20, lineHeight: 1.5 }}>
+            <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginBottom: 20, lineHeight: 1.5 }}>
               The XLSX includes: <strong>Billing Summary</strong> (regular scan count + exception count), <strong>Daily Breakdown</strong>, <strong>By Pod</strong>, and <strong>By Operator</strong> sheets. Fill in your rates in the Rate/Amount columns.
             </p>
             <div style={{ backgroundColor: '#14532d', border: '1px solid #22C55E', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#86efac', fontSize: 13 }}>
@@ -760,7 +760,7 @@ export default function Dashboard() {
                 {exporting ? '⏳ Generating...' : '📥 Download Billing XLSX'}
               </button>
               <button onClick={() => setShowBilling(false)}
-                style={{ padding: '14px 20px', borderRadius: 10, border: '1px solid #555', backgroundColor: 'transparent', color: '#aaa', fontSize: 14, cursor: 'pointer' }}>
+                style={{ padding: '14px 20px', borderRadius: 10, border: '1px solid #555', backgroundColor: 'transparent', color: 'var(--text-secondary, #aaa)', fontSize: 14, cursor: 'pointer' }}>
                 Cancel
               </button>
             </div>
@@ -823,7 +823,7 @@ export default function Dashboard() {
               <div>
                 <span style={{ color: '#ccc', fontSize: 14, fontWeight: 600 }}>{(up.poNames || []).join(', ')}</span>
                 <span style={{ color: '#888', fontSize: 13, marginLeft: 10 }}>{(up.isbnCount || 0).toLocaleString()} ISBNs</span>
-                <span style={{ color: '#666', fontSize: 12, marginLeft: 10 }}>
+                <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginLeft: 10 }}>
                   {up.uploadedAt?.toDate?.()?.toLocaleString() || ''}
                 </span>
               </div>
@@ -878,7 +878,7 @@ export default function Dashboard() {
                   return (
                     <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
-                      <span style={{ color: '#aaa', fontSize: 13, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po}</span>
+                      <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po}</span>
                       <div style={{ flex: 1, height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden' }}>
                         <div style={{ height: '100%', backgroundColor: poPct !== null && poPct >= 100 ? '#22C55E' : color, width: `${poPct !== null ? Math.min(100, poPct) : 100}%`, borderRadius: 3 }} />
                       </div>
@@ -917,7 +917,7 @@ export default function Dashboard() {
             <div style={{ marginTop: 8 }}>
               {Object.entries(manifestCompletion.byPO).sort((a, b) => a[0].localeCompare(b[0])).map(([po, data]) => (
                 <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: '#aaa', fontSize: 13, minWidth: 100 }}>{po}</span>
+                  <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, minWidth: 100 }}>{po}</span>
                   <div style={{ flex: 1, height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden' }}>
                     <div style={{ height: '100%', backgroundColor: data.found === data.total ? '#22C55E' : '#3B82F6', width: `${Math.round((data.found / data.total) * 100)}%` }} />
                   </div>
@@ -978,7 +978,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <button onClick={() => setPOAlertsDismissed((prev) => new Set([...prev, a.po]))}
-                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: 16, padding: 4 }}>✕</button>
+                style={{ background: 'none', border: 'none', color: 'var(--text-tertiary, #666)', cursor: 'pointer', fontSize: 16, padding: 4 }}>✕</button>
             </div>
           ))}
         </div>
@@ -1052,7 +1052,7 @@ export default function Dashboard() {
                 Show 50 more ({combinedExceptions.length - exceptionPageSize} remaining)
               </button>
               <button onClick={() => setExceptionPageSize(combinedExceptions.length)}
-                style={{ padding: '8px 18px', borderRadius: 6, border: '1px solid #444', backgroundColor: 'transparent', color: '#aaa', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                style={{ padding: '8px 18px', borderRadius: 6, border: '1px solid #444', backgroundColor: 'transparent', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                 Show all
               </button>
             </div>
@@ -1076,10 +1076,10 @@ export default function Dashboard() {
                 <span><strong style={{ color: '#fff' }}>Operator:</strong> {viewingPhotoCtx.scannerId || '—'}</span>
                 {viewingPhotoCtx.time && <span style={{ color: '#888' }}>{viewingPhotoCtx.time}</span>}
               </div>
-              {viewingPhotoCtx.title && <div style={{ marginTop: 6, color: '#aaa', fontStyle: 'italic' }}>“{viewingPhotoCtx.title}”</div>}
+              {viewingPhotoCtx.title && <div style={{ marginTop: 6, color: 'var(--text-secondary, #aaa)', fontStyle: 'italic' }}>“{viewingPhotoCtx.title}”</div>}
             </div>
           )}
-          <div style={{ color: '#666', fontSize: 12 }}>Click anywhere to close</div>
+          <div style={{ color: 'var(--text-tertiary, #666)', fontSize: 12 }}>Click anywhere to close</div>
         </div>
       )}
 
@@ -1089,7 +1089,7 @@ export default function Dashboard() {
           {leaderboard.map((l) => (
             <div key={l.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid #222' }}>
               <span style={{ fontSize: 20, width: 36, textAlign: 'center',
-                color: l.rank === 1 ? '#EAB308' : l.rank === 2 ? '#9CA3AF' : l.rank === 3 ? '#D97706' : '#666' }}>
+                color: l.rank === 1 ? '#EAB308' : l.rank === 2 ? '#9CA3AF' : l.rank === 3 ? '#D97706' : 'var(--text-tertiary, #666)' }}>
                 {l.rank <= 3 ? ['🥇', '🥈', '🥉'][l.rank - 1] : `#${l.rank}`}
               </span>
               <span style={{ flex: 1, color: '#ddd', fontSize: 16, fontWeight: 600 }}>{l.name}</span>
@@ -1113,7 +1113,7 @@ export default function Dashboard() {
                   backgroundColor: d.hour === new Date().getHours() ? '#EAB308' : '#3B82F6',
                   borderRadius: '4px 4px 0 0',
                 }} />
-                <div style={{ fontSize: 10, color: '#666', marginTop: 4 }}>{d.hour}h</div>
+                <div style={{ fontSize: 10, color: 'var(--text-tertiary, #666)', marginTop: 4 }}>{d.hour}h</div>
               </div>
             ))}
           </div>
@@ -1136,7 +1136,7 @@ export default function Dashboard() {
                   <span style={{ marginLeft: 'auto', color: '#888', fontSize: 12 }}>
                     {start?.toLocaleTimeString() || '—'} - {end?.toLocaleTimeString() || 'now'} ({end ? `${hours}h` : 'active'})
                   </span>
-                  <span style={{ color: '#666', fontSize: 12 }}>{s.totalScans || 0} scans</span>
+                  <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12 }}>{s.totalScans || 0} scans</span>
                 </div>
               );
             })}
@@ -1167,7 +1167,7 @@ export default function Dashboard() {
                       backgroundColor: isSpike ? '#EF4444' : d.rate > 8 ? '#F59E0B' : '#3B82F6',
                       borderRadius: '3px 3px 0 0', transition: 'height 0.3s',
                     }} title={`${d.hour}:00 — ${d.exceptions} exceptions / ${d.total} scans (${d.rate}%)`} />
-                    <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{d.hour}h</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-tertiary, #666)', marginTop: 2 }}>{d.hour}h</div>
                   </div>
                 );
               })}
@@ -1202,7 +1202,7 @@ export default function Dashboard() {
               }}>
                 {bol.pickedUp ? 'PICKED UP' : 'PENDING'}
               </span>
-              <span style={{ color: '#666', fontSize: 12 }}>{bol.fileName}</span>
+              <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12 }}>{bol.fileName}</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                 <button onClick={() => {
                   const a = document.createElement('a');

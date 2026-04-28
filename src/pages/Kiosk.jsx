@@ -105,7 +105,7 @@ export default function Kiosk() {
   // Countdown timer
   const estHoursLeft = totalPace > 0 ? remaining / totalPace : null;
   const etaTime = estHoursLeft != null ? new Date(Date.now() + estHoursLeft * 3600000) : null;
-  const countdownColor = estHoursLeft == null ? '#666'
+  const countdownColor = estHoursLeft == null ? 'var(--text-tertiary, #666)'
     : estHoursLeft <= (job?.meta?.workingHours || 8) ? '#22C55E'
     : estHoursLeft <= (job?.meta?.workingHours || 8) * 1.2 ? '#EAB308'
     : '#EF4444';
@@ -180,7 +180,7 @@ export default function Kiosk() {
 
       {/* Progress bar */}
       <div style={k.progressContainer}>
-        <div style={{ ...k.progressBar, width: `${pct}%`, backgroundColor: countdownColor === '#666' ? '#22C55E' : countdownColor }} />
+        <div style={{ ...k.progressBar, width: `${pct}%`, backgroundColor: countdownColor === 'var(--text-tertiary, #666)' ? '#22C55E' : countdownColor }} />
         <span style={k.progressText}>{pct}%</span>
       </div>
 
@@ -197,7 +197,7 @@ export default function Kiosk() {
               const isPaused = pr?.status === 'paused';
               const onBreak = pr?.onBreak === true;
               const borderClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#333';
-              const statusClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#666';
+              const statusClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : 'var(--text-tertiary, #666)';
               const statusTxt = onBreak ? '☕ ON BREAK' : isPaused ? '⏸ PAUSED' : isOnline ? '● ONLINE' : '○ OFFLINE';
               return (
                 <div key={podId} style={{
@@ -229,7 +229,7 @@ export default function Kiosk() {
               <div key={l.name} style={k.leaderRow}>
                 <span style={{
                   ...k.rank,
-                  color: l.rank === 1 ? '#EAB308' : l.rank === 2 ? '#9CA3AF' : l.rank === 3 ? '#D97706' : '#666',
+                  color: l.rank === 1 ? '#EAB308' : l.rank === 2 ? '#9CA3AF' : l.rank === 3 ? '#D97706' : 'var(--text-tertiary, #666)',
                 }}>
                   {l.rank <= 3 ? ['🥇', '🥈', '🥉'][l.rank - 1] : `#${l.rank}`}
                 </span>
@@ -237,7 +237,7 @@ export default function Kiosk() {
                 <span style={k.leaderCount}>{l.count.toLocaleString()}</span>
               </div>
             ))}
-            {leaderboard.length === 0 && <p style={{ color: '#666', textAlign: 'center', padding: 20 }}>No scans yet</p>}
+            {leaderboard.length === 0 && <p style={{ color: 'var(--text-tertiary, #666)', textAlign: 'center', padding: 20 }}>No scans yet</p>}
           </div>
         </div>
       </div>
@@ -254,7 +254,7 @@ export default function Kiosk() {
                 backgroundColor: d.hour === new Date().getHours() ? '#EAB308' : '#3B82F6',
                 borderRadius: '3px 3px 0 0',
               }} />
-              <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{d.hour}h</div>
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary, #666)', marginTop: 2 }}>{d.hour}h</div>
             </div>
           ))}
         </div>
@@ -289,13 +289,13 @@ const k = {
   podHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   podName: { fontSize: 16, fontWeight: 800, letterSpacing: '-0.2px' },
   podStatus: { fontSize: 10, fontWeight: 700 },
-  podOp: { fontSize: 11, color: '#666', marginBottom: 6 },
+  podOp: { fontSize: 11, color: 'var(--text-tertiary, #666)', marginBottom: 6 },
   podStats: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' },
   podCount: { fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px' },
   podPace: { fontSize: 12, color: 'var(--text-secondary, #666)' },
   leaderboard: { maxHeight: 280, overflowY: 'auto' },
   leaderRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border, #1e1e1e)' },
-  rank: { fontSize: 16, width: 32, textAlign: 'center', fontWeight: 700, color: '#666' },
+  rank: { fontSize: 16, width: 32, textAlign: 'center', fontWeight: 700, color: 'var(--text-tertiary, #666)' },
   leaderName: { flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text-secondary, #bbb)' },
   leaderCount: { fontSize: 15, fontWeight: 800, color: 'var(--text, #f0f0f0)', fontFamily: 'monospace' },
 };

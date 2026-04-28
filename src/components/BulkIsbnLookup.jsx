@@ -88,10 +88,10 @@ export default function BulkIsbnLookup({ activeJob }) {
           <button onClick={() => { setResults(null); setInput(''); setProgress(0); }}
             style={{
               padding: '10px 16px', borderRadius: 8, border: '1px solid #444',
-              backgroundColor: 'transparent', color: '#aaa', fontSize: 13, cursor: 'pointer',
+              backgroundColor: 'transparent', color: 'var(--text-secondary, #aaa)', fontSize: 13, cursor: 'pointer',
             }}>Clear</button>
         )}
-        <span style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}>
+        <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginLeft: 'auto' }}>
           {parseIsbns(input).length} unique ISBN{parseIsbns(input).length === 1 ? '' : 's'} parsed
         </span>
       </div>
@@ -118,16 +118,16 @@ export default function BulkIsbnLookup({ activeJob }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: 13 }}>
               <thead>
                 <tr style={{ backgroundColor: '#1a1a1a', position: 'sticky', top: 0 }}>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', color: '#aaa', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase' }}>ISBN</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', color: '#aaa', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase' }}>PO</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', color: '#aaa', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase' }}>Status</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--text-secondary, #aaa)', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase' }}>ISBN</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--text-secondary, #aaa)', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase' }}>PO</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--text-secondary, #aaa)', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase' }}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {results.map((r, i) => (
                   <tr key={i} style={{ borderTop: '1px solid #1e1e1e' }}>
                     <td style={{ padding: '6px 12px', color: '#fff' }}>{r.isbn}</td>
-                    <td style={{ padding: '6px 12px', color: r.po ? '#86efac' : '#666' }}>{r.po || '—'}</td>
+                    <td style={{ padding: '6px 12px', color: r.po ? '#86efac' : 'var(--text-tertiary, #666)' }}>{r.po || '—'}</td>
                     <td style={{ padding: '6px 12px' }}>
                       <span style={{
                         padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,

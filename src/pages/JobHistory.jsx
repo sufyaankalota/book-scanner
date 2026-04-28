@@ -161,7 +161,7 @@ export default function JobHistory() {
             <div className="skeleton" style={{ height: 80 }}></div>
             <div className="skeleton" style={{ height: 140 }}></div>
             <div className="skeleton" style={{ height: 100 }}></div>
-            <p style={{ ...s.text, textAlign: 'center', color: '#666' }}>Loading scans, shifts, and trends…</p>
+            <p style={{ ...s.text, textAlign: 'center', color: 'var(--text-tertiary, #666)' }}>Loading scans, shifts, and trends…</p>
           </div>
         ) : (
           <>
@@ -200,7 +200,7 @@ export default function JobHistory() {
                         height: `${(d.count / maxTrend) * 100}%`, minHeight: 4,
                         backgroundColor: '#3B82F6', borderRadius: '4px 4px 0 0',
                       }} />
-                      <div style={{ fontSize: 9, color: '#666', marginTop: 4, transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 9, color: 'var(--text-tertiary, #666)', marginTop: 4, transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
                         {d.date.slice(5)}
                       </div>
                     </div>
@@ -282,7 +282,7 @@ export default function JobHistory() {
       ) : jobs.length === 0 ? (
         <div style={{ ...s.card, textAlign: 'center', padding: 40 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📁</div>
-          <p style={{ ...s.text, marginBottom: 8, fontSize: 16, color: '#aaa' }}>No closed jobs yet</p>
+          <p style={{ ...s.text, marginBottom: 8, fontSize: 16, color: 'var(--text-secondary, #aaa)' }}>No closed jobs yet</p>
           <p style={{ ...s.text, fontSize: 13 }}>Closed jobs will appear here. Active jobs are managed in <Link to="/setup" style={{ color: '#3B82F6' }}>Setup</Link>.</p>
         </div>
       ) : (
@@ -298,7 +298,7 @@ export default function JobHistory() {
                   Closed: {j.meta.closedAt?.toDate?.()?.toLocaleDateString() || '—'}
                 </div>
               </div>
-              <span style={{ color: '#666', fontSize: 20 }}>→</span>
+              <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 20 }}>→</span>
             </button>
           ))}
         </div>

@@ -83,7 +83,7 @@ export default function AuthGate({ children, requiredRole }) {
             <div style={st.card}>
               <h2 style={st.title}>🔒 Access Denied</h2>
               <p style={st.subtitle}>You need <strong>{requiredRole}</strong> access for this page.</p>
-              <p style={{ color: '#666', fontSize: 13, marginTop: 8 }}>Logged in as {currentUser.name} ({currentUser.role})</p>
+              <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 13, marginTop: 8 }}>Logged in as {currentUser.name} ({currentUser.role})</p>
             </div>
           </div>
         );
@@ -150,7 +150,7 @@ const st = {
     border: '1px solid #222', textAlign: 'center',
   },
   title: { color: '#f0f0f0', fontSize: 22, fontWeight: 800, marginTop: 0, marginBottom: 4, letterSpacing: '-0.3px' },
-  subtitle: { color: '#666', fontSize: 14, marginBottom: 24 },
+  subtitle: { color: 'var(--text-tertiary, #666)', fontSize: 14, marginBottom: 24 },
   input: {
     width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #2a2a2a',
     backgroundColor: '#1a1a1a', color: '#f0f0f0', fontSize: 15, boxSizing: 'border-box', fontWeight: 500,

@@ -290,7 +290,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               <p style={{ color: '#F97316', fontSize: 12, marginTop: 4, marginBottom: 0 }}>Could not read title — please type it manually</p>
             )}
 
-            <p style={{ ...styles.fieldLabel, marginTop: 16, color: needsPhoto && !photoData ? '#F97316' : '#aaa' }}>
+            <p style={{ ...styles.fieldLabel, marginTop: 16, color: needsPhoto && !photoData ? '#F97316' : 'var(--text-secondary, #aaa)' }}>
               📸 {t('photo')} {needsPhoto ? t('photoRequired') : t('photoOptional')}:
             </p>
 
@@ -440,7 +440,7 @@ const styles = {
   },
   fieldLabel: {
     fontSize: 15,
-    color: '#aaa',
+    color: 'var(--text-secondary, #aaa)',
     marginBottom: 8,
     fontWeight: 700,
   },
@@ -508,7 +508,7 @@ const styles = {
   },
   photoBtnSmall: {
     padding: '10px 14px', borderRadius: 8, border: '1px solid #555',
-    backgroundColor: '#333', color: '#aaa', fontSize: 13, cursor: 'pointer', fontWeight: 600,
+    backgroundColor: '#333', color: 'var(--text-secondary, #aaa)', fontSize: 13, cursor: 'pointer', fontWeight: 600,
   },
   phoneBox: {
     marginBottom: 12, padding: 16, borderRadius: 10,
