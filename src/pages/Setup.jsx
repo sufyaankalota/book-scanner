@@ -180,6 +180,12 @@ export default function Setup() {
       setManifest(man);
       setPoNames(upload.poNames || []);
       setManifestPreview(Object.entries(man).slice(0, 50));
+      // Correct isbnCount if metadata doesn't match actual subcollection
+      const actualCount = snap.size;
+      if (upload.isbnCount !== actualCount) {
+        updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
+        setCustomerPOUploads((prev) => prev.map((u) => u.id === upload.id ? { ...u, isbnCount: actualCount } : u));
+      }
       // Use customer-chosen colors if available, otherwise auto-assign
       const colors = {};
       const savedColors = upload.poColors || {};
@@ -348,6 +354,12 @@ export default function Setup() {
       const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
       const man = {};
       snap.forEach((d) => { man[d.id] = d.data().poName; });
+      // Correct isbnCount if metadata doesn't match actual subcollection
+      const actualCount = snap.size;
+      if (upload.isbnCount !== actualCount) {
+        updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
+        setCustomerPOUploads((prev) => prev.map((u) => u.id === upload.id ? { ...u, isbnCount: actualCount } : u));
+      }
       setQManifest(man); setQPoNames(upload.poNames || []);
       setQManifestPreview(Object.entries(man).slice(0, 50));
       const colors = {};

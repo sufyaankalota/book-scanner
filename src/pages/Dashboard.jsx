@@ -303,6 +303,11 @@ export default function Dashboard() {
     try {
       // Read ISBNs from po-upload manifest
       const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
+      const actualCount = snap.size;
+      // Correct metadata if count is wrong
+      if (upload.isbnCount !== actualCount) {
+        updateDoc(doc(db, 'po-uploads', upload.id), { isbnCount: actualCount }).catch(() => {});
+      }
       const BATCH_SIZE = 400;
       const docs = snap.docs;
       for (let i = 0; i < docs.length; i += BATCH_SIZE) {

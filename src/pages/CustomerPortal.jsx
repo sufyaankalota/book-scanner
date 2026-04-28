@@ -376,21 +376,27 @@ export default function CustomerPortal() {
     try {
       const entries = Object.entries(manifest);
       const uploadId = `po_${Date.now()}`;
-      // Create metadata doc
+      // Create metadata doc (isbnCount set to 0 until writes complete)
       await setDoc(doc(db, 'po-uploads', uploadId), {
-        poNames, isbnCount: entries.length, poColors,
+        poNames, isbnCount: 0, poColors,
         uploadedAt: serverTimestamp(), status: 'pending', jobId: null,
       });
-      // Store ISBNs in subcollection
+      // Store ISBNs in subcollection with progress
       const BATCH_SIZE = 400;
+      let written = 0;
       for (let i = 0; i < entries.length; i += BATCH_SIZE) {
         const batch = writeBatch(db);
-        entries.slice(i, i + BATCH_SIZE).forEach(([isbn, poName]) => {
+        const chunk = entries.slice(i, i + BATCH_SIZE);
+        chunk.forEach(([isbn, poName]) => {
           batch.set(doc(db, 'po-uploads', uploadId, 'manifest', isbn), { poName });
         });
         await batch.commit();
+        written += chunk.length;
+        setUploadStatus(`Uploading... ${written.toLocaleString()} / ${entries.length.toLocaleString()} ISBNs`);
       }
-      setUploadStatus('Uploaded ' + entries.length.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
+      // Update metadata with actual count after all writes complete
+      await updateDoc(doc(db, 'po-uploads', uploadId), { isbnCount: written });
+      setUploadStatus('Uploaded ' + written.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
       setManifest(null); setPoNames([]); setPoColors({});
       await loadUploadedPOs();
     } catch (err) {
