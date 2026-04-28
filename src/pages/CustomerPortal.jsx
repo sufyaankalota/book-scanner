@@ -238,6 +238,7 @@ export default function CustomerPortal() {
       if (!d) continue;
       const key = d.toISOString().slice(0, 10);
       if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0, manual: 0 };
+      byDay[key].total++;
       byDay[key].exceptions++;
     }
     return Object.entries(byDay)
@@ -273,9 +274,10 @@ export default function CustomerPortal() {
     .map(([date, excs]) => [date, excs.sort((a, b) => b.time.getTime() - a.time.getTime())]);
   }, [allScans, allExceptions]);
 
-  const totalProcessed = allScans.filter((s) => s.type === 'standard').length;
+  const totalScannedCount = allScans.filter((s) => s.type === 'standard').length;
   const totalManualCount = allScans.filter((s) => s.source === 'manual').length;
   const totalExcCount = allScans.filter((s) => s.type === 'exception' && s.source !== 'manual').length + allExceptions.length;
+  const totalProcessed = allScans.length + allExceptions.length;
   const todayKey = new Date().toISOString().slice(0, 10);
   const todayData = dailyBreakdown.find((d) => d.date === todayKey);
 
@@ -606,8 +608,8 @@ ${allExcs.map((exc, i) => `<div class="exc">
       {job && (
         <div style={st.statsRow}>
           <div style={st.statBox}>
-            <div style={st.statVal}>{(todayData?.standard || 0).toLocaleString()}</div>
-            <div style={st.statLbl}>Today's Units</div>
+            <div style={{ ...st.statVal, color: '#22C55E' }}>{(todayData?.standard || 0).toLocaleString()}</div>
+            <div style={st.statLbl}>Today's Scanned</div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: (todayData?.exceptions || 0) > 0 ? '#F97316' : '#888' }}>
@@ -622,8 +624,8 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={st.statLbl}>Today's Manual</div>
           </div>
           <div style={st.statBox}>
-            <div style={st.statVal}>{totalProcessed.toLocaleString()}</div>
-            <div style={st.statLbl}>Total Processed</div>
+            <div style={{ ...st.statVal, color: '#22C55E' }}>{totalScannedCount.toLocaleString()}</div>
+            <div style={st.statLbl}>Total Scanned</div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: totalExcCount > 0 ? '#F97316' : '#888' }}>{totalExcCount}</div>
@@ -632,6 +634,10 @@ ${allExcs.map((exc, i) => `<div class="exc">
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: totalManualCount > 0 ? '#3B82F6' : '#888' }}>{totalManualCount}</div>
             <div style={st.statLbl}>Total Manual</div>
+          </div>
+          <div style={st.statBox}>
+            <div style={st.statVal}>{totalProcessed.toLocaleString()}</div>
+            <div style={st.statLbl}>Total Processed</div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}–${Math.ceil((todayData?.standard || 0) / 1500)}` : '—'}</div>
@@ -718,12 +724,17 @@ ${allExcs.map((exc, i) => `<div class="exc">
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ color: '#fff', fontSize: 24, fontWeight: 800, fontFamily: 'monospace' }}>
-                    {d.standard.toLocaleString()}
+                    {d.total.toLocaleString()}
                   </div>
-                  <div style={{ color: '#888', fontSize: 12 }}>units scanned</div>
+                  <div style={{ color: '#888', fontSize: 12 }}>books processed</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+                {d.standard > 0 && (
+                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 6, display: 'inline-block' }}>
+                    <span style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>✓ {d.standard.toLocaleString()} scanned</span>
+                  </div>
+                )}
                 {d.standard > 0 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
                     <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>📦 {Math.ceil(d.standard / 2000)}–{Math.ceil(d.standard / 1500)} gaylords</span>
