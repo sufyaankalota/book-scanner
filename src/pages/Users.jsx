@@ -5,6 +5,7 @@ import { collection, doc, getDocs, setDoc, deleteDoc, serverTimestamp } from 'fi
 import { hashPassword } from '../utils/crypto';
 import { useAuth } from '../contexts/AuthContext';
 import { logAudit } from '../utils/audit';
+import { useToast } from '../components/Toast';
 
 const ROLES = [
   { value: 'admin', label: 'Admin', desc: 'Full access — setup, dashboard, users, all settings' },
@@ -14,6 +15,7 @@ const ROLES = [
 
 export default function Users() {
   const { currentUser } = useAuth();
+  const { show: toast } = useToast();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -67,39 +69,109 @@ export default function Users() {
   };
 
   const handleDelete = async (user) => {
-    if (user.id === currentUser?.id) return alert("You can't delete your own account");
+    if (user.id === currentUser?.id) return toast("You can't delete your own account", 'error');
     if (!confirm(`Remove user ${user.name} (${user.email})?`)) return;
     try {
       await deleteDoc(doc(db, 'users', user.id));
       logAudit('user_deleted', { userId: user.id, email: user.email, by: currentUser?.email });
       await loadUsers();
-    } catch (err) { alert('Failed: ' + err.message); }
+      toast('User removed', 'success');
+    } catch (err) { toast('Failed: ' + err.message, 'error'); }
   };
 
   const handleUpdateRole = async (user) => {
     if (user.id === currentUser?.id && editRole !== 'admin') {
-      return alert("You can't demote yourself");
+      return toast("You can't demote yourself", 'error');
     }
     try {
       await setDoc(doc(db, 'users', user.id), { role: editRole }, { merge: true });
       logAudit('user_role_changed', { userId: user.id, email: user.email, oldRole: user.role, newRole: editRole, by: currentUser?.email });
       setEditingId(null);
       await loadUsers();
-    } catch (err) { alert('Failed: ' + err.message); }
+      toast('Role updated', 'success');
+    } catch (err) { toast('Failed: ' + err.message, 'error'); }
   };
 
   const handleResetPassword = async (user) => {
-    if (!resetPw.trim() || resetPw.length < 4) return alert('Password must be at least 4 characters');
+    if (!resetPw.trim() || resetPw.length < 4) return toast('Password must be at least 4 characters', 'error');
     try {
       const pwHash = await hashPassword(resetPw.trim());
       await setDoc(doc(db, 'users', user.id), { passwordHash: pwHash }, { merge: true });
       logAudit('user_password_reset', { userId: user.id, email: user.email, by: currentUser?.email });
       setEditingId(null); setResetPw('');
-      alert('Password updated for ' + user.email);
-    } catch (err) { alert('Failed: ' + err.message); }
+      toast('Password updated for ' + user.email, 'success');
+    } catch (err) { toast('Failed: ' + err.message, 'error'); }
   };
 
   const roleColor = (r) => ({ admin: '#EF4444', manager: '#3B82F6', operator: '#22C55E' }[r] || '#888');
+
+  const [importing, setImporting] = useState(false);
+
+  const handleCsvImport = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 1024 * 1024) return toast('CSV must be under 1 MB', 'error');
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      if (lines.length === 0) { toast('CSV is empty', 'error'); setImporting(false); return; }
+      // Detect header
+      const first = lines[0].toLowerCase();
+      const hasHeader = first.includes('email') && first.includes('name');
+      const dataLines = hasHeader ? lines.slice(1) : lines;
+      const validRoles = new Set(['admin', 'manager', 'operator']);
+      const existingEmails = new Set(users.map((u) => (u.email || '').toLowerCase()));
+      const errors = [];
+      const toCreate = [];
+      dataLines.forEach((line, idx) => {
+        const row = idx + (hasHeader ? 2 : 1);
+        // naive CSV split (no quoted commas)
+        const cells = line.split(',').map((c) => c.trim());
+        const [name, email, password, role = 'operator'] = cells;
+        if (!name || !email || !password) { errors.push(`Row ${row}: missing name/email/password`); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errors.push(`Row ${row}: invalid email "${email}"`); return; }
+        if (password.length < 4) { errors.push(`Row ${row}: password too short`); return; }
+        const r = role.toLowerCase();
+        if (!validRoles.has(r)) { errors.push(`Row ${row}: invalid role "${role}"`); return; }
+        const lower = email.toLowerCase();
+        if (existingEmails.has(lower)) { errors.push(`Row ${row}: ${email} already exists`); return; }
+        if (toCreate.some((u) => u.email === lower)) { errors.push(`Row ${row}: duplicate email in CSV`); return; }
+        toCreate.push({ name, email: lower, password, role: r });
+      });
+      let created = 0;
+      for (const u of toCreate) {
+        try {
+          const pwHash = await hashPassword(u.password);
+          const userId = `user_${Date.now()}_${created}`;
+          await setDoc(doc(db, 'users', userId), {
+            name: u.name,
+            email: u.email,
+            passwordHash: pwHash,
+            role: u.role,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser?.email || 'unknown',
+          });
+          created++;
+        } catch (err) {
+          errors.push(`${u.email}: ${err.message}`);
+        }
+      }
+      logAudit('user_bulk_imported', { count: created, errors: errors.length, by: currentUser?.email });
+      await loadUsers();
+      if (created > 0 && errors.length === 0) {
+        toast(`Imported ${created} user${created === 1 ? '' : 's'}`, 'success', 4000);
+      } else if (created > 0) {
+        toast(`Imported ${created}, ${errors.length} skipped. First error: ${errors[0]}`, 'info', 6000);
+      } else {
+        toast(`No users imported. ${errors[0] || 'Check CSV format.'}`, 'error', 6000);
+      }
+    } catch (err) {
+      toast('Import failed: ' + err.message, 'error');
+    }
+    setImporting(false);
+  };
 
   return (
     <div style={s.container}>
@@ -124,7 +196,18 @@ export default function Users() {
 
       {/* Add User */}
       {!showAdd ? (
-        <button onClick={() => setShowAdd(true)} style={s.addBtn}>+ Add User</button>
+        <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => setShowAdd(true)} style={{ ...s.addBtn, marginBottom: 0, flex: '1 1 200px' }}>+ Add User</button>
+            <label style={{ ...s.addBtn, marginBottom: 0, flex: '1 1 200px', textAlign: 'center', cursor: importing ? 'wait' : 'pointer', opacity: importing ? 0.6 : 1, background: '#1a1a1a', borderColor: '#333', color: '#ccc' }}>
+              {importing ? 'Importing…' : '📥 Import CSV'}
+              <input type="file" accept=".csv,text/csv" onChange={handleCsvImport} disabled={importing} style={{ display: 'none' }} />
+            </label>
+          </div>
+          <p style={{ color: '#666', fontSize: 11, marginTop: 0, marginBottom: 16 }}>
+            CSV columns: <code style={{ color: '#888' }}>name,email,password,role</code> (role: admin/manager/operator). Header row optional.
+          </p>
+        </>
       ) : (
         <div style={{ ...s.card, marginBottom: 16 }}>
           <h3 style={s.cardTitle}>New User</h3>

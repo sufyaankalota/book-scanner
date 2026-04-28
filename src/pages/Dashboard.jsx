@@ -24,8 +24,10 @@ import PodCard from '../components/PodCard';
 import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
 import { copyManifestChunks } from '../utils/manifestStore';
+import { useToast } from '../components/Toast';
 
 export default function Dashboard() {
+  const { show: toast } = useToast();
   const [job, setJob] = useState(null);
   const [podData, setPodData] = useState({});
   const [presenceRaw, setPresenceRaw] = useState({});
@@ -302,7 +304,7 @@ export default function Dashboard() {
 
   // Add customer PO upload to active job
   const addPOToJob = async (upload) => {
-    if (!job) return alert('No active job');
+    if (!job) return toast('No active job', 'error');
     if (!confirm(`Add ${(upload.poNames || []).join(', ')} (${(upload.isbnCount || 0).toLocaleString()} ISBNs) to the current job?`)) return;
     setAddingPO(upload.id);
     try {
@@ -347,7 +349,7 @@ export default function Dashboard() {
       await updateDoc(doc(db, 'po-uploads', upload.id), { status: 'added', jobId: job.id, addedAt: serverTimestamp() });
       logAudit('add_po_to_job', { uploadId: upload.id, poNames: upload.poNames, jobId: job.id });
     } catch (err) {
-      alert('Failed to add PO: ' + err.message);
+      toast('Failed to add PO: ' + err.message, 'error');
     }
     setAddingPO(null);
   };
@@ -565,7 +567,7 @@ export default function Dashboard() {
 
   const handleExportToday = async () => {
     if (!job) return; setExporting(true);
-    try { exportTodayXLSX(allScans, allExceptions, job.meta); } catch (err) { alert('Export failed: ' + err.message); }
+    try { exportTodayXLSX(allScans, allExceptions, job.meta); } catch (err) { toast('Export failed: ' + err.message, 'error'); }
     setExporting(false);
   };
   const handleExportAll = async () => {
@@ -579,13 +581,13 @@ export default function Dashboard() {
       if (job.meta.mode === 'multi') {
         exportPerPO(scans, excs, job.meta);
       }
-    } catch (err) { alert('Export failed: ' + err.message); }
+    } catch (err) { toast('Export failed: ' + err.message, 'error'); }
     setExporting(false);
   };
   const handleExportReconciliation = () => {
     if (!job) return;
     if (job.manifestMeta?.chunked) {
-      return alert('Reconciliation export is not available for large chunked manifests. Use the per-PO completion breakdown instead.');
+      return toast('Reconciliation export is not available for large chunked manifests. Use the per-PO completion breakdown instead.', 'info', 5000);
     }
     if (!Object.keys(manifestData).length) return;
     exportReconciliation(allScans, manifestData, job.meta);
@@ -628,7 +630,7 @@ export default function Dashboard() {
         createdAt: serverTimestamp(),
       });
       logAudit('billing_export', { weekStart: weekStart.toISOString(), weekEnd: weekEnd.toISOString(), scans: scans.length, exceptions: excs.length });
-    } catch (err) { alert('Billing export failed: ' + err.message); }
+    } catch (err) { toast('Billing export failed: ' + err.message, 'error'); }
     setExporting(false);
     setShowBilling(false);
   };
@@ -684,9 +686,9 @@ export default function Dashboard() {
 
     try {
       await addDoc(collection(db, 'daily-summaries'), summary);
-      alert(`✅ Daily summary saved for ${today}. Connect a Firebase email extension to auto-send.`);
+      toast(`✅ Daily summary saved for ${today}. Connect a Firebase email extension to auto-send.`, 'success', 5000);
       logAudit('daily_summary', { date: today, totalScans: summary.totalScans });
-    } catch (err) { alert('Failed to save summary: ' + err.message); }
+    } catch (err) { toast('Failed to save summary: ' + err.message, 'error'); }
   };
 
   if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;

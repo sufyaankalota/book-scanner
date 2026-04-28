@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { db } from '../firebase';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { lookupIsbn } from '../utils/manifestStore';
+import { useToast } from './Toast';
 
 /**
  * Bulk ISBN lookup tool. Works for both chunked and legacy manifests.
  * Limits input to 200 ISBNs to keep Firestore reads reasonable.
  */
 export default function BulkIsbnLookup({ activeJob }) {
+  const { show: toast } = useToast();
   const [input, setInput] = useState('');
   const [results, setResults] = useState(null);
   const [running, setRunning] = useState(false);
@@ -25,7 +27,7 @@ export default function BulkIsbnLookup({ activeJob }) {
     const isbns = parseIsbns(input);
     if (!isbns.length) return;
     if (isbns.length > 200) {
-      alert(`Too many ISBNs (${isbns.length}). Maximum is 200 per lookup to control Firestore costs.`);
+      toast(`Too many ISBNs (${isbns.length}). Maximum is 200 per lookup to control Firestore costs.`, 'error', 4500);
       return;
     }
     setRunning(true);

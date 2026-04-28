@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
+import { useToast } from '../components/Toast';
 import { verifyPassword } from '../utils/crypto';
 import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStore';
 import * as XLSX from 'xlsx';
@@ -19,6 +20,7 @@ const DEFAULT_COLORS = [
 ];
 
 export default function CustomerPortal() {
+  const { show: toast } = useToast();
   // Auth
   const [authenticated, setAuthenticated] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -384,7 +386,7 @@ export default function CustomerPortal() {
       await deleteDoc(doc(db, 'po-uploads', uploadId));
       await loadUploadedPOs();
     } catch (err) {
-      alert('Failed to delete: ' + err.message);
+      toast('Failed to delete: ' + err.message, 'error');
     }
     setPODeleting(null);
   };
@@ -437,7 +439,7 @@ export default function CustomerPortal() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 700 * 1024) {
-      alert('File too large. Maximum size is 700 KB. Please compress or reduce the file.');
+      toast('File too large. Maximum size is 700 KB. Please compress or reduce the file.', 'error', 5000);
       e.target.value = '';
       return;
     }
@@ -460,7 +462,7 @@ export default function CustomerPortal() {
       setBolFile(null); setBolTruckId(''); setBolNotes('');
       setBolDate(new Date().toISOString().slice(0, 10));
     } catch (err) {
-      alert('Failed to upload BOL: ' + err.message);
+      toast('Failed to upload BOL: ' + err.message, 'error');
     }
     setBolUploading(false);
   };
@@ -537,7 +539,7 @@ export default function CustomerPortal() {
     }
     allExcs.sort((a, b) => b.time.getTime() - a.time.getTime());
 
-    if (allExcs.length === 0) { alert('No exceptions to display.'); return; }
+    if (allExcs.length === 0) { toast('No exceptions to display.', 'info'); return; }
 
     const jobName = job?.meta?.name || 'Unknown Job';
     const dateLabel = filterDate || 'All Dates';
@@ -927,7 +929,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                         try {
                           const bytes = Uint8Array.from(atob(report.fileData), (c) => c.charCodeAt(0));
                           downloadBlob(bytes, report.fileName);
-                        } catch { alert('Download failed'); }
+                        } catch { toast('Download failed', 'error'); }
                       }} style={{ ...st.smallBtn, padding: '8px 20px' }}>
                         📥 Download
                       </button>

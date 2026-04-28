@@ -10,6 +10,7 @@ import { logAudit } from '../utils/audit';
 import { hashPassword } from '../utils/crypto';
 import { writeManifestChunks, copyManifestChunks, deleteManifestChunks, readChunkPreview, lookupIsbn } from '../utils/manifestStore';
 import BulkIsbnLookup from '../components/BulkIsbnLookup';
+import { useToast } from '../components/Toast';
 
 const DEFAULT_COLORS = [
   { name: 'Red', hex: '#EF4444' }, { name: 'Blue', hex: '#3B82F6' },
@@ -21,6 +22,7 @@ const DEFAULT_COLORS = [
 const DEFAULT_PODS = ['A', 'B', 'C', 'D', 'E'];
 
 export default function Setup() {
+  const { show: toast } = useToast();
   const [jobName, setJobName] = useState('');
   const [mode, setMode] = useState('single');
   const [dailyTarget, setDailyTarget] = useState(22000);
@@ -214,18 +216,18 @@ export default function Setup() {
   };
 
   const handleActivateJob = async () => {
-    if (!jobName.trim()) return alert('Enter a job name');
-    if (mode === 'multi' && !manifest && !selectedUploadId) return alert('Upload a manifest for Multi-PO mode');
-    if (pods.length === 0) return alert('Configure at least one pod');
+    if (!jobName.trim()) return toast('Enter a job name', 'error');
+    if (mode === 'multi' && !manifest && !selectedUploadId) return toast('Upload a manifest for Multi-PO mode', 'error');
+    if (pods.length === 0) return toast('Configure at least one pod', 'error');
     const target = Number(dailyTarget); const hours = Number(workingHours);
-    if (!target || target <= 0) return alert('Enter a valid daily target');
-    if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours (1-24)');
+    if (!target || target <= 0) return toast('Enter a valid daily target', 'error');
+    if (!hours || hours <= 0 || hours > 24) return toast('Enter valid working hours (1-24)', 'error');
 
     setSaving(true);
     try {
       const existing = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', true)));
       if (!existing.empty) {
-        alert('Another job is already active. Close it first.');
+        toast('Another job is already active. Close it first.', 'error');
         const d = existing.docs[0]; setActiveJob({ id: d.id, ...d.data() }); setSaving(false); return;
       }
       const jobId = `job_${Date.now()}`;
@@ -257,7 +259,7 @@ export default function Setup() {
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
       setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
-    } catch (err) { alert('Failed to create job: ' + err.message); }
+    } catch (err) { toast('Failed to create job: ' + err.message, 'error'); }
     setSaving(false);
   };
 
@@ -288,16 +290,16 @@ export default function Setup() {
         setActiveJob(null);
       }
       setEditMode(false);
-    } catch (err) { alert('Failed to close job: ' + err.message); }
+    } catch (err) { toast('Failed to close job: ' + err.message, 'error'); }
   };
 
   const handleQueueJob = async () => {
-    if (!qJobName.trim()) return alert('Enter a job name');
-    if (qMode === 'multi' && !qManifest && !qSelectedUploadId) return alert('Upload a manifest for Multi-PO mode');
-    if (qPods.length === 0) return alert('Configure at least one pod');
+    if (!qJobName.trim()) return toast('Enter a job name', 'error');
+    if (qMode === 'multi' && !qManifest && !qSelectedUploadId) return toast('Upload a manifest for Multi-PO mode', 'error');
+    if (qPods.length === 0) return toast('Configure at least one pod', 'error');
     const target = Number(qDailyTarget); const hours = Number(qWorkingHours);
-    if (!target || target <= 0) return alert('Enter a valid daily target');
-    if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours (1-24)');
+    if (!target || target <= 0) return toast('Enter a valid daily target', 'error');
+    if (!hours || hours <= 0 || hours > 24) return toast('Enter valid working hours (1-24)', 'error');
 
     setQSaving(true);
     try {
@@ -331,7 +333,7 @@ export default function Setup() {
       setQPods(DEFAULT_PODS); setQPodInput(DEFAULT_PODS.join(', ')); setQLocation('');
       setQManifest(null); setQPoNames([]); setQPoColors({}); setQManifestPreview([]);
       setQFileError(''); setShowQueueForm(false);
-    } catch (err) { alert('Failed to queue job: ' + err.message); }
+    } catch (err) { toast('Failed to queue job: ' + err.message, 'error'); }
     setQSaving(false);
   };
 
@@ -354,7 +356,7 @@ export default function Setup() {
       await deleteDoc(doc(db, 'jobs', jobId));
       logAudit('job_removed_from_queue', { jobId });
       setQueuedJobs((prev) => prev.filter((j) => j.id !== jobId));
-    } catch (err) { alert('Failed to remove: ' + err.message); }
+    } catch (err) { toast('Failed to remove: ' + err.message, 'error'); }
   };
 
   const handleQueueFileUpload = async (e) => {
@@ -409,7 +411,7 @@ export default function Setup() {
       // Verify job still exists (another admin may have deleted it)
       const latest = await getDoc(doc(db, 'jobs', activeJob.id));
       if (!latest.exists()) {
-        alert('This job no longer exists. Refreshing.');
+        toast('This job no longer exists. Refreshing.', 'info');
         setActiveJob(null);
         return;
       }
@@ -446,32 +448,33 @@ export default function Setup() {
       await batch.commit();
       logAudit('job_deleted', { jobId: activeJob.id, jobName: name, deletedRecords: count });
       setActiveJob(null); setEditMode(false);
-      alert(`Job "${name}" and ${count} related records deleted.`);
-    } catch (err) { alert('Delete failed: ' + err.message); }
+      toast(`Job "${name}" and ${count} related records deleted.`, 'success', 4000);
+    } catch (err) { toast('Delete failed: ' + err.message, 'error'); }
   };
 
   const handleEditSave = async () => {
     const target = Number(editTarget); const hours = Number(editHours);
-    if (!target || target <= 0) return alert('Enter a valid daily target');
-    if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours');
+    if (!target || target <= 0) return toast('Enter a valid daily target', 'error');
+    if (!hours || hours <= 0 || hours > 24) return toast('Enter valid working hours', 'error');
     const newPods = [...new Set(editPods.split(',').map((s) => s.trim()).filter(Boolean))];
-    if (newPods.length === 0) return alert('Need at least one pod');
+    if (newPods.length === 0) return toast('Need at least one pod', 'error');
     try {
       await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods });
       logAudit('job_edited', { jobId: activeJob.id });
       setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods } });
       setEditMode(false);
-    } catch (err) { alert('Failed to save: ' + err.message); }
+      toast('Job updated', 'success');
+    } catch (err) { toast('Failed to save: ' + err.message, 'error'); }
   };
 
   const handlePinChange = async () => {
-    if (!pinValue || pinValue.length < 4) return alert('PIN must be at least 4 digits');
+    if (!pinValue || pinValue.length < 4) return toast('PIN must be at least 4 digits', 'error');
     try {
       const pinHash = await hashPassword(pinValue);
       await setDoc(doc(db, 'config', 'supervisor'), { pinHash });
       logAudit('pin_changed', {}); setPinSaved(true); setPinValue('');
       setTimeout(() => setPinSaved(false), 3000);
-    } catch (err) { alert('Failed to save PIN: ' + err.message); }
+    } catch (err) { toast('Failed to save PIN: ' + err.message, 'error'); }
   };
 
   const handleBrandingSave = async () => {
@@ -479,14 +482,14 @@ export default function Setup() {
       await setDoc(doc(db, 'config', 'branding'), { name: brandName.trim(), subtitle: brandSubtitle.trim(), logo: brandLogo });
       logAudit('branding_updated', { name: brandName.trim() }); setBrandSaved(true);
       setTimeout(() => setBrandSaved(false), 3000);
-    } catch (err) { alert('Failed to save branding: ' + err.message); }
+    } catch (err) { toast('Failed to save branding: ' + err.message, 'error'); }
   };
 
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 500 * 1024) { alert('Logo must be under 500 KB'); e.target.value = ''; return; }
-    if (!file.type.startsWith('image/')) { alert('Please select an image file'); e.target.value = ''; return; }
+    if (file.size > 500 * 1024) { toast('Logo must be under 500 KB', 'error'); e.target.value = ''; return; }
+    if (!file.type.startsWith('image/')) { toast('Please select an image file', 'error'); e.target.value = ''; return; }
     const reader = new FileReader();
     reader.onload = () => setBrandLogo(reader.result);
     reader.readAsDataURL(file);
@@ -530,7 +533,7 @@ export default function Setup() {
       logAudit('alerts_updated', { idleTimeout, paceWarning });
       setAlertsSaved(true);
       setTimeout(() => setAlertsSaved(false), 3000);
-    } catch (err) { alert('Failed to save: ' + err.message); }
+    } catch (err) { toast('Failed to save: ' + err.message, 'error'); }
   };
 
   const handleScheduleSave = async () => {
@@ -539,7 +542,7 @@ export default function Setup() {
       logAudit('schedule_updated', { enabled: autoExportEnabled, time: autoExportTime });
       setScheduleSaved(true);
       setTimeout(() => setScheduleSaved(false), 3000);
-    } catch (err) { alert('Failed to save: ' + err.message); }
+    } catch (err) { toast('Failed to save: ' + err.message, 'error'); }
   };
 
   const getPodUrl = (podId) => {
@@ -1073,7 +1076,7 @@ export default function Setup() {
                   await batch.commit();
                   logAudit('job_deleted', { jobId: pj.id, jobName: pj.meta.name, deletedRecords: c });
                   setPastJobs((prev) => prev.filter((j) => j.id !== pj.id));
-                } catch (err) { alert('Delete failed: ' + err.message); }
+                } catch (err) { toast('Delete failed: ' + err.message, 'error'); }
               }} style={{ ...s.dangerBtn, fontSize: 13, padding: '8px 16px' }}>🗑 Delete</button>
             </div>
           ))}
