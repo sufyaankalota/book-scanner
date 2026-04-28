@@ -222,16 +222,22 @@ export default function CustomerPortal() {
       const d = s.timestamp?.toDate?.();
       if (!d) continue;
       const key = d.toISOString().slice(0, 10);
-      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0 };
+      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0, manual: 0 };
       byDay[key].total++;
-      if (s.type === 'exception') byDay[key].exceptions++;
-      else byDay[key].standard++;
+      if (s.type === 'exception') {
+        if (s.source === 'manual') byDay[key].manual++;
+        else byDay[key].exceptions++;
+      } else if (s.source === 'manual') {
+        byDay[key].manual++;
+      } else {
+        byDay[key].standard++;
+      }
     }
     for (const ex of allExceptions) {
       const d = ex.timestamp?.toDate?.();
       if (!d) continue;
       const key = d.toISOString().slice(0, 10);
-      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0 };
+      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0, manual: 0 };
       byDay[key].exceptions++;
     }
     return Object.entries(byDay)
@@ -249,7 +255,7 @@ export default function CustomerPortal() {
       if (!byDay[key]) byDay[key] = [];
       byDay[key].push({
         isbn: s.isbn, reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest', title: '',
-        photo: null, time: d, podId: s.podId,
+        photo: null, time: d, podId: s.podId, isManual: s.source === 'manual',
       });
     }
     for (const ex of allExceptions) {
@@ -259,7 +265,7 @@ export default function CustomerPortal() {
       if (!byDay[key]) byDay[key] = [];
       byDay[key].push({
         isbn: ex.isbn || '', reason: ex.reason, title: ex.title || '',
-        photo: ex.photo || null, time: d, podId: ex.podId,
+        photo: ex.photo || null, time: d, podId: ex.podId, isManual: false,
       });
     }
     return Object.entries(byDay)
@@ -268,7 +274,8 @@ export default function CustomerPortal() {
   }, [allScans, allExceptions]);
 
   const totalProcessed = allScans.filter((s) => s.type === 'standard').length;
-  const totalExcCount = allScans.filter((s) => s.type === 'exception').length + allExceptions.length;
+  const totalManualCount = allScans.filter((s) => s.source === 'manual').length;
+  const totalExcCount = allScans.filter((s) => s.type === 'exception' && s.source !== 'manual').length + allExceptions.length;
   const todayKey = new Date().toISOString().slice(0, 10);
   const todayData = dailyBreakdown.find((d) => d.date === todayKey);
 
@@ -609,12 +616,22 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={st.statLbl}>Today's Exceptions</div>
           </div>
           <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: (todayData?.manual || 0) > 0 ? '#3B82F6' : '#888' }}>
+              {todayData?.manual || 0}
+            </div>
+            <div style={st.statLbl}>Today's Manual</div>
+          </div>
+          <div style={st.statBox}>
             <div style={st.statVal}>{totalProcessed.toLocaleString()}</div>
-            <div style={st.statLbl}>Total Units Processed</div>
+            <div style={st.statLbl}>Total Processed</div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: totalExcCount > 0 ? '#F97316' : '#888' }}>{totalExcCount}</div>
             <div style={st.statLbl}>Total Exceptions</div>
+          </div>
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: totalManualCount > 0 ? '#3B82F6' : '#888' }}>{totalManualCount}</div>
+            <div style={st.statLbl}>Total Manual</div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}–${Math.ceil((todayData?.standard || 0) / 1500)}` : '—'}</div>
@@ -717,6 +734,11 @@ ${allExcs.map((exc, i) => `<div class="exc">
                     <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
                   </div>
                 )}
+                {(d.manual || 0) > 0 && (
+                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(59,130,246,0.1)', borderRadius: 6, display: 'inline-block' }}>
+                    <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>{d.manual} manual entr{d.manual > 1 ? 'ies' : 'y'}</span>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button onClick={() => exportDailyScans(d.date)} style={st.smallBtn}>Scans Report</button>
@@ -742,12 +764,16 @@ ${allExcs.map((exc, i) => `<div class="exc">
           {dailyExceptions.length === 0 && (
             <div style={st.card}><p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions recorded.</p></div>
           )}
-          {dailyExceptions.map(([date, excs]) => (
+          {dailyExceptions.map(([date, excs]) => {
+            const manualCount = excs.filter((e) => e.isManual).length;
+            const excCount = excs.length - manualCount;
+            return (
             <div key={date} style={st.card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ color: '#fff', fontSize: 16, fontWeight: 700, margin: 0 }}>{date}</h3>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{excs.length} exception{excs.length > 1 ? 's' : ''}</span>
+                  {excCount > 0 && <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{excCount} exception{excCount > 1 ? 's' : ''}</span>}
+                  {manualCount > 0 && <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>{manualCount} manual</span>}
                   <button onClick={() => exportDailyExceptions(date)} style={st.smallBtn}>Export</button>
                   <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>📸 Photos</button>
                 </div>
@@ -761,7 +787,10 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontSize: 12, fontWeight: 600 }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 4,
+                        backgroundColor: exc.isManual ? '#1e3a5f' : '#7f1d1d',
+                        color: exc.isManual ? '#93c5fd' : '#fca5a5',
+                        fontSize: 12, fontWeight: 600 }}>
                         {exc.reason}
                       </span>
                       {exc.isbn && <span style={{ color: '#ccc', fontFamily: 'monospace', fontSize: 13 }}>{exc.isbn}</span>}
@@ -772,7 +801,8 @@ ${allExcs.map((exc, i) => `<div class="exc">
                 </div>
               ))}
             </div>
-          ))}
+          );
+          })}
           {viewingPhoto && (
             <div onClick={() => setViewingPhoto(null)}
               style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'pointer', padding: 24 }}>
