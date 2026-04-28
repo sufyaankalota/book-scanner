@@ -865,7 +865,7 @@ export default function Pod() {
   // PHASE: Scanning / Paused
   // ═══════════════════════════════════════════
   return (
-    <div style={{ ...styles.container, ...scaleStyle }}>
+    <div className="pod-screen" style={{ ...styles.container, ...scaleStyle }}>
       {/* Full-screen flash overlay */}
       {flashColor && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: flashColor, transition: 'opacity 0.15s ease-in', zIndex: 400, pointerEvents: 'none' }} />
@@ -879,7 +879,7 @@ export default function Pod() {
       )}
 
       {/* ISBN search tip banner */}
-      <div style={{ backgroundColor: '#1a1a2e', border: '1px solid #334155', borderRadius: 8, padding: '10px 14px', marginBottom: 8, color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
+      <div className="pod-banner" style={{ backgroundColor: '#1a1a2e', border: '1px solid #334155', borderRadius: 8, padding: '10px 14px', marginBottom: 8, color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
         📖 <strong style={{ color: '#e2e8f0' }}>Can't scan?</strong> Check the front cover, back cover, and the first &amp; last 2–3 pages for the copyright page. Type in the ISBN manually. Only ~2% of books lack one.
       </div>
 
@@ -1172,7 +1172,7 @@ export default function Pod() {
 
       {/* Recent scans */}
       {recentScans.length > 0 && (
-        <div style={styles.recentScans}>
+        <div className="pod-recent" style={styles.recentScans}>
           <div style={styles.recentTitle}>{t('recentScans')}</div>
           {recentScans.slice(0, 8).map((s, i) => (
             <div key={s.id} style={{ ...styles.recentRow, opacity: i === 0 ? 1 : 0.5 + (0.5 / (i + 1)) }}>
@@ -1343,7 +1343,7 @@ export default function Pod() {
 const styles = {
   container: {
     minHeight: '100vh', color: 'var(--text, #fff)', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
-    padding: '16px 24px', display: 'flex', flexDirection: 'column', position: 'relative',
+    padding: 'clamp(8px, 2vw, 16px) clamp(12px, 3vw, 24px)', display: 'flex', flexDirection: 'column', position: 'relative',
     backgroundColor: 'var(--bg, #111)', maxWidth: 900, margin: '0 auto', width: '100%', boxSizing: 'border-box',
   },
   backLink: { color: '#888', textDecoration: 'none', fontSize: 14, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
@@ -1373,19 +1373,19 @@ const styles = {
     color: '#EAB308', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0, top: -100, left: -100 },
-  statsRow: { display: 'flex', gap: 24, justifyContent: 'center', marginTop: 32, flexWrap: 'wrap', maxWidth: 700, alignSelf: 'center', width: '100%' },
-  stat: { textAlign: 'center', minWidth: 120, flex: 1 },
-  statValue: { fontSize: 'clamp(52px, 10vw, 80px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-2px' },
-  statLabel: { fontSize: 'clamp(14px, 2.2vw, 17px)', color: 'var(--text-secondary, #999)', marginTop: 8, fontWeight: 600 },
+  statsRow: { display: 'flex', gap: 'clamp(10px, 2vw, 24px)', justifyContent: 'center', marginTop: 'clamp(14px, 3vh, 32px)', flexWrap: 'wrap', maxWidth: 700, alignSelf: 'center', width: '100%' },
+  stat: { textAlign: 'center', minWidth: 90, flex: 1 },
+  statValue: { fontSize: 'clamp(40px, 9vw, 80px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-2px' },
+  statLabel: { fontSize: 'clamp(12px, 2vw, 17px)', color: 'var(--text-secondary, #999)', marginTop: 'clamp(4px, 1vh, 8px)', fontWeight: 600 },
   paceBarContainer: {
-    marginTop: 20, height: 10, backgroundColor: 'var(--bg-input, #333)', borderRadius: 5,
+    marginTop: 'clamp(10px, 2vh, 20px)', height: 10, backgroundColor: 'var(--bg-input, #333)', borderRadius: 5,
     overflow: 'visible', maxWidth: 640, alignSelf: 'center', width: '100%', position: 'relative',
   },
   paceBar: { height: '100%', borderRadius: 5, transition: 'width 0.5s ease, background-color 0.5s ease' },
   exceptionBtn: {
-    marginTop: 18, alignSelf: 'center', padding: '16px 32px', borderRadius: 10,
+    marginTop: 'clamp(10px, 2vh, 18px)', alignSelf: 'center', padding: 'clamp(10px, 2vh, 16px) clamp(20px, 4vw, 32px)', borderRadius: 10,
     border: '2px solid #F97316', backgroundColor: 'rgba(249,115,22,0.15)',
-    color: '#F97316', fontSize: 16, fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
+    color: '#F97316', fontSize: 'clamp(14px, 2vw, 16px)', fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
   },
   flashOverlay: { position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, pointerEvents: 'none' },
   flashText: { fontSize: 'clamp(48px, 10vw, 72px)', fontWeight: 900, textAlign: 'center', color: '#fff', textShadow: '2px 2px 12px rgba(0,0,0,0.8)', padding: 20 },
@@ -1394,8 +1394,8 @@ const styles = {
   lockWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '12px 16px', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 14, lineHeight: 1.5 },
   warning: { marginTop: 24, padding: 16, backgroundColor: '#7f1d1d', borderRadius: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 },
   recentScans: {
-    marginTop: 20, backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10,
-    border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 280,
+    marginTop: 'clamp(12px, 2vh, 20px)', backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10,
+    border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 'clamp(180px, 32vh, 280px)',
     overflowY: 'auto', alignSelf: 'center', width: '100%', maxWidth: 700,
   },
   recentTitle: { padding: '10px 14px', borderBottom: '1px solid var(--border, #333)', color: '#999', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
@@ -1407,8 +1407,8 @@ const styles = {
   },
   pauseBox: { textAlign: 'center' },
   setupCard: {
-    backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, padding: '22px 20px',
-    maxWidth: 480, margin: '16px auto', width: '100%',
+    backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, padding: 'clamp(16px, 3vw, 22px) clamp(14px, 3vw, 20px)',
+    maxWidth: 480, margin: 'clamp(8px, 2vh, 16px) auto', width: '100%',
   },
   stepIndicator: { fontSize: 13, color: '#777', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 },
   setupHeading: { color: 'var(--text, #fff)', fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 800, marginBottom: 8, marginTop: 0 },

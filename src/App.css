@@ -122,6 +122,30 @@ a {
   html { font-size: 14px; }
 }
 
+/* ── Pod screen responsive density ──
+   Tightens spacing for narrow / short viewports (tablets in portrait,
+   small laptops, half-screen kiosks, etc.) so all key elements (stats,
+   pace bar, exception button, recent scans) stay above the fold. */
+.pod-screen { container-type: inline-size; }
+
+/* Short viewports: shrink top/bottom rhythm */
+@media (max-height: 700px) {
+  .pod-screen { padding-top: 6px !important; padding-bottom: 6px !important; }
+  .pod-screen .pod-banner { display: none; }
+}
+@media (max-height: 600px) {
+  .pod-screen .pod-recent { max-height: 140px !important; }
+}
+
+/* Narrow viewports: compress header/buttons */
+@media (max-width: 600px) {
+  .pod-screen { padding-left: 10px !important; padding-right: 10px !important; }
+  .pod-screen .pod-header-btn { padding: 6px 10px !important; font-size: 12px !important; }
+}
+@media (max-width: 420px) {
+  .pod-screen .pod-banner { font-size: 12px !important; padding: 8px 10px !important; }
+}
+
 /* ── Toast notifications ── */
 @keyframes toastSlide {
   from { transform: translateY(-20px); opacity: 0; }
