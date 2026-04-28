@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import Pod from './pages/Pod';
 import AuthGate from './components/AuthGate';
 import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './components/Toast';
 
 // Lazy load non-critical pages
 const Setup = lazy(() => import('./pages/Setup'));
@@ -65,22 +66,24 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <BrowserRouter>
-          <Suspense fallback={<Loading />}>
-            <Routes>
-              <Route path="/" element={<AuthGate><Home /></AuthGate>} />
-              <Route path="/setup" element={<AuthGate requiredRole="admin"><Setup /></AuthGate>} />
-              <Route path="/pod" element={<Pod />} />
-              <Route path="/dashboard" element={<AuthGate requiredRole="manager"><Dashboard /></AuthGate>} />
-              <Route path="/kiosk" element={<Kiosk />} />
-              <Route path="/portal" element={<CustomerPortal />} />
-              <Route path="/upload" element={<PhotoUpload />} />
-              <Route path="/history" element={<AuthGate requiredRole="manager"><JobHistory /></AuthGate>} />
-              <Route path="/users" element={<AuthGate requiredRole="admin"><Users /></AuthGate>} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter>
+            <Suspense fallback={<Loading />}>
+              <Routes>
+                <Route path="/" element={<AuthGate><Home /></AuthGate>} />
+                <Route path="/setup" element={<AuthGate requiredRole="admin"><Setup /></AuthGate>} />
+                <Route path="/pod" element={<Pod />} />
+                <Route path="/dashboard" element={<AuthGate requiredRole="manager"><Dashboard /></AuthGate>} />
+                <Route path="/kiosk" element={<Kiosk />} />
+                <Route path="/portal" element={<CustomerPortal />} />
+                <Route path="/upload" element={<PhotoUpload />} />
+                <Route path="/history" element={<AuthGate requiredRole="manager"><JobHistory /></AuthGate>} />
+                <Route path="/users" element={<AuthGate requiredRole="admin"><Users /></AuthGate>} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </ToastProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

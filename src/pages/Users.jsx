@@ -149,9 +149,15 @@ export default function Users() {
 
       {/* User List */}
       {loading ? (
-        <p style={{ color: '#888' }}>Loading...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[1,2,3].map((i) => <div key={i} className="skeleton" style={{ height: 80 }}></div>)}
+        </div>
       ) : users.length === 0 ? (
-        <p style={{ color: '#888' }}>No users yet.</p>
+        <div style={{ ...s.card, textAlign: 'center', padding: 32 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>👥</div>
+          <p style={{ color: '#aaa', fontSize: 15, marginBottom: 4 }}>No users yet</p>
+          <p style={{ color: '#666', fontSize: 13 }}>Click <strong style={{ color: '#3B82F6' }}>+ Add User</strong> above to create your first account.</p>
+        </div>
       ) : (
         <div>
           {users.map((u) => (

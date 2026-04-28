@@ -9,8 +9,10 @@ function PodCard({ pod, presence, operatorStats, notes, onNotesChange }) {
 
   const isOnline = presence?.online;
   const isPaused = presence?.status === 'paused';
-  const statusLabel = isPaused ? 'PAUSED' : isOnline ? 'ONLINE' : 'OFFLINE';
-  const statusColor = isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#555';
+  const onBreak = presence?.onBreak === true;
+  const breakRemaining = presence?.breakSecondsRemaining || 0;
+  const statusLabel = onBreak ? 'ON BREAK' : isPaused ? 'PAUSED' : isOnline ? 'ONLINE' : 'OFFLINE';
+  const statusColor = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#555';
 
   return (
     <div style={styles.card}>
@@ -20,7 +22,7 @@ function PodCard({ pod, presence, operatorStats, notes, onNotesChange }) {
           <span style={{ ...styles.statusBadge, backgroundColor: statusColor }}>
             {statusLabel}
           </span>
-          {(isOnline || pod.scanCount > 0) && (
+          {(isOnline || pod.scanCount > 0) && !onBreak && (
             <span style={{ ...styles.paceIndicator, backgroundColor: paceColor }}>
               {paceLabel}
             </span>
@@ -31,7 +33,12 @@ function PodCard({ pod, presence, operatorStats, notes, onNotesChange }) {
       {presence?.operator && isOnline && (
         <p style={styles.operatorLine}>
           Operator: <strong style={{ color: '#fff' }}>{presence.operator}</strong>
-          {isPaused && <span style={{ color: '#EAB308', marginLeft: 8 }}>⏸</span>}
+          {onBreak && breakRemaining > 0 && (
+            <span style={{ color: '#A855F7', marginLeft: 8, fontWeight: 600 }}>
+              ☕ {Math.floor(breakRemaining / 60)}:{String(breakRemaining % 60).padStart(2, '0')} left
+            </span>
+          )}
+          {isPaused && !onBreak && <span style={{ color: '#EAB308', marginLeft: 8 }}>⏸ Paused</span>}
         </p>
       )}
 

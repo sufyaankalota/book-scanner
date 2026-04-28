@@ -48,6 +48,8 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedExceptions, setSelectedExceptions] = useState(new Set());
   const [viewingPhoto, setViewingPhoto] = useState(null);
+  const [viewingPhotoCtx, setViewingPhotoCtx] = useState(null); // { isbn, podId, scannerId, title, label, time }
+  const [exceptionPageSize, setExceptionPageSize] = useState(50);
   const [bols, setBols] = useState([]);
   const [showBilling, setShowBilling] = useState(false);
   const [pendingPOUploads, setPendingPOUploads] = useState([]);
@@ -1014,16 +1016,17 @@ export default function Dashboard() {
               📥 Export for Customer
             </button>
           </div>
-          {combinedExceptions.map((ex) => (
+          {combinedExceptions.slice(0, exceptionPageSize).map((ex) => (
             <div key={ex.id} style={st.exRow}>
               {ex.kind === 'manual' && (
                 <input type="checkbox" checked={selectedExceptions.has(ex.id)}
                   onChange={() => toggleException(ex.id)}
+                  aria-label={`Select exception for ${ex.isbn || 'unknown ISBN'}`}
                   style={{ accentColor: '#3B82F6', cursor: 'pointer', width: 16, height: 16 }} />
               )}
               {ex.photo && (
                 <img src={ex.photo} alt="Exception"
-                  onClick={() => setViewingPhoto(ex.photo)}
+                  onClick={() => { setViewingPhoto(ex.photo); setViewingPhotoCtx({ isbn: ex.isbn, podId: ex.podId, scannerId: ex.scannerId, title: ex.title, label: ex.label, time: ex.timestamp?.toDate?.()?.toLocaleString() }); }}
                   style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', border: '1px solid #444', cursor: 'pointer', flexShrink: 0 }} />
               )}
               <span style={st.exTag}>{ex.label}</span>
@@ -1033,21 +1036,48 @@ export default function Dashboard() {
               <span style={st.exTime}>{ex.timestamp?.toDate?.()?.toLocaleTimeString() || '—'}</span>
               {ex.kind === 'manual' && (
                 <button onClick={() => removeException(ex.id)}
+                  aria-label={`Remove exception for ${ex.isbn || 'unknown ISBN'}`}
                   style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}>
                   🗑 Remove
                 </button>
               )}
             </div>
           ))}
+          {combinedExceptions.length > exceptionPageSize && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0', gap: 12 }}>
+              <button onClick={() => setExceptionPageSize((s) => s + 50)}
+                style={{ padding: '8px 18px', borderRadius: 6, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Show 50 more ({combinedExceptions.length - exceptionPageSize} remaining)
+              </button>
+              <button onClick={() => setExceptionPageSize(combinedExceptions.length)}
+                style={{ padding: '8px 18px', borderRadius: 6, border: '1px solid #444', backgroundColor: 'transparent', color: '#aaa', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Show all
+              </button>
+            </div>
+          )}
           {combinedExceptions.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No exceptions today</p>}
         </div>
       )}
 
       {/* Photo viewer overlay */}
       {viewingPhoto && (
-        <div onClick={() => setViewingPhoto(null)}
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'pointer', padding: 24 }}>
-          <img src={viewingPhoto} alt="Exception photo" style={{ maxWidth: '90%', maxHeight: '90%', borderRadius: 12, border: '2px solid #444' }} />
+        <div onClick={() => { setViewingPhoto(null); setViewingPhotoCtx(null); }}
+          role="dialog" aria-label="Exception photo viewer"
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'pointer', padding: 24, gap: 16 }}>
+          <img src={viewingPhoto} alt="Exception photo" style={{ maxWidth: '90%', maxHeight: '75%', borderRadius: 12, border: '2px solid #444' }} />
+          {viewingPhotoCtx && (
+            <div onClick={(e) => e.stopPropagation()} style={{ background: '#161616', border: '1px solid #2a2a2a', borderRadius: 10, padding: '12px 18px', maxWidth: 600, color: '#ddd', fontSize: 14, cursor: 'default' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+                <span style={{ background: '#1f2937', color: '#93C5FD', padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>{viewingPhotoCtx.label}</span>
+                {viewingPhotoCtx.isbn && <span><strong style={{ color: '#fff' }}>ISBN:</strong> {viewingPhotoCtx.isbn}</span>}
+                <span><strong style={{ color: '#fff' }}>Pod:</strong> {viewingPhotoCtx.podId || '—'}</span>
+                <span><strong style={{ color: '#fff' }}>Operator:</strong> {viewingPhotoCtx.scannerId || '—'}</span>
+                {viewingPhotoCtx.time && <span style={{ color: '#888' }}>{viewingPhotoCtx.time}</span>}
+              </div>
+              {viewingPhotoCtx.title && <div style={{ marginTop: 6, color: '#aaa', fontStyle: 'italic' }}>“{viewingPhotoCtx.title}”</div>}
+            </div>
+          )}
+          <div style={{ color: '#666', fontSize: 12 }}>Click anywhere to close</div>
         </div>
       )}
 

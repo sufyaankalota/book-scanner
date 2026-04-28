@@ -7,6 +7,24 @@
   box-sizing: border-box;
 }
 
+/* Design tokens (defaults; theme.js overrides via :root vars) */
+:root {
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-elev: 0 6px 24px rgba(0,0,0,0.5);
+  --text-primary: #f0f0f0;
+  --text-secondary: #aaa;
+  --text-tertiary: #666;
+}
+
 html,
 body {
   background-color: var(--bg, #0f0f0f);
@@ -17,13 +35,16 @@ body {
   line-height: 1.5;
 }
 
-/* Focus ring for accessibility */
+/* Focus ring for accessibility — bolder on dark theme */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-select:focus-visible {
-  outline: 2px solid #3B82F6;
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid #60a5fa;
   outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Scrollbar styling */
@@ -99,4 +120,57 @@ a {
 
 @media (max-width: 480px) {
   html { font-size: 14px; }
+}
+
+/* ── Toast notifications ── */
+@keyframes toastSlide {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.app-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  background: #161616;
+  border: 1px solid #2a2a2a;
+  color: #f0f0f0;
+  font-weight: 600;
+  font-size: 14px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  z-index: 9999;
+  animation: toastSlide 0.18s ease;
+  max-width: 360px;
+}
+.app-toast--success { border-color: #22C55E; color: #86efac; }
+.app-toast--error { border-color: #EF4444; color: #fca5a5; }
+.app-toast--info { border-color: #3B82F6; color: #93c5fd; }
+
+/* ── Live indicator dot ── */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22C55E;
+  animation: livePulse 1.6s ease-in-out infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* ── Skeleton loader ── */
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #1a1a1a 0%, #222 50%, #1a1a1a 100%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 6px;
 }

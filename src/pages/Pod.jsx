@@ -88,7 +88,7 @@ export default function Pod() {
 
   // ─── New feature states ───
   const [scanStreak, setScanStreak] = useState(0);
-  const [bestStreak, setBestStreak] = useState(() => parseInt(sessionStorage.getItem('bestStreak') || '0', 10));
+  const [bestStreak, setBestStreak] = useState(0); // loaded per-operator below
   const [lastBarcodeType, setLastBarcodeType] = useState('');
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [breakMinutesUsed, setBreakMinutesUsed] = useState(0);
@@ -311,9 +311,21 @@ export default function Pod() {
   const operatorRef = useRef(operatorName);
   const phaseRef = useRef(phase);
   const scannerPairedRef = useRef(scannerPaired);
+  const breakTimerRef = useRef(null);
   useEffect(() => { operatorRef.current = operatorName; }, [operatorName]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
   useEffect(() => { scannerPairedRef.current = scannerPaired; }, [scannerPaired]);
+  useEffect(() => { breakTimerRef.current = breakTimer; }, [breakTimer]);
+
+  // ─── Load best streak per-operator ───
+  useEffect(() => {
+    if (!operatorName) { setBestStreak(0); return; }
+    try {
+      const v = parseInt(localStorage.getItem(`bestStreak_${operatorName}`) || '0', 10);
+      setBestStreak(Number.isFinite(v) ? v : 0);
+    } catch { setBestStreak(0); }
+    setScanStreak(0);
+  }, [operatorName]);
 
   useEffect(() => {
     if (phase === PHASE_OPERATOR) return;
@@ -322,6 +334,8 @@ export default function Pod() {
       setDoc(presenceDocRef, {
         podId, scanners: scannerPairedRef.current ? [operatorRef.current] : [],
         operator: operatorRef.current, status: phaseRef.current, online: true,
+        onBreak: breakTimerRef.current !== null,
+        breakSecondsRemaining: breakTimerRef.current ?? 0,
         lastSeen: serverTimestamp(),
       }, { merge: true });
     };
@@ -521,7 +535,7 @@ export default function Pod() {
         playSuccessBeep();
         flash('#22C55E', '✓ ' + t('scanSuccess'));
       }
-      setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); sessionStorage.setItem('bestStreak', String(n)); } return n; });
+      setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
@@ -552,7 +566,7 @@ export default function Pod() {
         playColorBeep(color);
         flash(color, `${getColorName(color)} ${t('gaylord')}`);
       }
-      setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); sessionStorage.setItem('bestStreak', String(n)); } return n; });
+      setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn, poName,
@@ -1162,7 +1176,17 @@ export default function Pod() {
           <div style={styles.recentTitle}>{t('recentScans')}</div>
           {recentScans.slice(0, 8).map((s, i) => (
             <div key={s.id} style={{ ...styles.recentRow, opacity: i === 0 ? 1 : 0.5 + (0.5 / (i + 1)) }}>
-              <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: s.isException ? '#F97316' : s.poName === 'TRAINING' ? '#818cf8' : '#fff' }}>
+              <span
+                onClick={() => {
+                  navigator.clipboard?.writeText(s.isbn).catch(() => {});
+                  flash('#3B82F6', `📋 Copied ${s.isbn}`, 1200);
+                }}
+                role="button"
+                tabIndex={0}
+                title="Click to copy ISBN"
+                aria-label={`Copy ISBN ${s.isbn} to clipboard`}
+                style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: s.isException ? '#F97316' : s.poName === 'TRAINING' ? '#818cf8' : '#fff', cursor: 'pointer', userSelect: 'all' }}
+              >
                 {s.isbn}
               </span>
               {s.poName && s.poName !== 'EXCEPTIONS' && s.poName !== 'TRAINING' && (

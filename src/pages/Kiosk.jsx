@@ -138,6 +138,9 @@ export default function Kiosk() {
           <h1 style={k.jobName}>{job?.meta?.name || 'No Active Job'}</h1>
           <span style={k.modeLabel}>
             {job?.meta?.mode === 'multi' ? 'Multi-PO' : 'Single PO'} · Kiosk View
+            <span style={{ marginLeft: 14, color: '#22C55E', fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
+              <span className="live-dot"></span>LIVE
+            </span>
           </span>
         </div>
         <div style={k.clock}>{time.toLocaleTimeString()}</div>
@@ -192,18 +195,19 @@ export default function Kiosk() {
               const pr = presence[podId];
               const isOnline = pr?.online;
               const isPaused = pr?.status === 'paused';
+              const onBreak = pr?.onBreak === true;
+              const borderClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#333';
+              const statusClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#666';
+              const statusTxt = onBreak ? '☕ ON BREAK' : isPaused ? '⏸ PAUSED' : isOnline ? '● ONLINE' : '○ OFFLINE';
               return (
                 <div key={podId} style={{
                   ...k.podCard,
-                  borderColor: isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#333',
+                  borderColor: borderClr,
                 }}>
                   <div style={k.podHeader}>
                     <span style={k.podName}>Pod {podId}</span>
-                    <span style={{
-                      ...k.podStatus,
-                      color: isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#666',
-                    }}>
-                      {isPaused ? '⏸ PAUSED' : isOnline ? '● ONLINE' : '○ OFFLINE'}
+                    <span style={{ ...k.podStatus, color: statusClr }}>
+                      {statusTxt}
                     </span>
                   </div>
                   {pr?.operator && isOnline && <div style={k.podOp}>{pr.operator}</div>}

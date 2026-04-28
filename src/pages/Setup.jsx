@@ -8,7 +8,8 @@ import {
 import { parseManifestFile } from '../utils/manifest';
 import { logAudit } from '../utils/audit';
 import { hashPassword } from '../utils/crypto';
-import { writeManifestChunks, copyManifestChunks, deleteManifestChunks, readChunkPreview } from '../utils/manifestStore';
+import { writeManifestChunks, copyManifestChunks, deleteManifestChunks, readChunkPreview, lookupIsbn } from '../utils/manifestStore';
+import BulkIsbnLookup from '../components/BulkIsbnLookup';
 
 const DEFAULT_COLORS = [
   { name: 'Red', hex: '#EF4444' }, { name: 'Blue', hex: '#3B82F6' },
@@ -1081,14 +1082,27 @@ export default function Setup() {
 
       {/* Admin sections — always accessible */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
-        {['branding', 'customer', 'audit'].map((key) => (
+        {['branding', 'customer', 'lookup', 'audit'].map((key) => (
           <button key={key} onClick={() => { setShowSection(showSection === key ? '' : key); if (key === 'audit') loadAuditLog(); }}
             style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
-            {key === 'branding' ? '🎨 Branding' : key === 'audit' ? '📋 Audit' : '🔑 Customer'}
+            {key === 'branding' ? '🎨 Branding' : key === 'audit' ? '📋 Audit' : key === 'lookup' ? '🔍 ISBN Lookup' : '🔑 Customer'}
           </button>
         ))}
         <Link to="/users" style={{ ...s.secondaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>👥 Users</Link>
       </div>
+
+      {showSection === 'lookup' && (
+        <div style={s.card}>
+          <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>
+            Look up one or more ISBNs in the active job's manifest. Paste up to 100 ISBNs (one per line or comma-separated).
+          </p>
+          {!activeJob ? (
+            <p style={{ color: '#F97316', fontSize: 14 }}>No active job. Create or activate a job first.</p>
+          ) : (
+            <BulkIsbnLookup activeJob={activeJob} />
+          )}
+        </div>
+      )}
 
       {showSection === 'branding' && (
         <div style={s.card}>
