@@ -214,7 +214,7 @@ export default function Setup() {
 
   const handleActivateJob = async () => {
     if (!jobName.trim()) return alert('Enter a job name');
-    if (mode === 'multi' && !manifest) return alert('Upload a manifest for Multi-PO mode');
+    if (mode === 'multi' && !manifest && !selectedUploadId) return alert('Upload a manifest for Multi-PO mode');
     if (pods.length === 0) return alert('Configure at least one pod');
     const target = Number(dailyTarget); const hours = Number(workingHours);
     if (!target || target <= 0) return alert('Enter a valid daily target');
@@ -233,17 +233,19 @@ export default function Setup() {
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
       });
+      let jobManifestMeta = null;
       if (mode === 'multi') {
         if (manifest) {
           // Write manifest as chunks (scales to millions of ISBNs)
-          const meta = await writeManifestChunks(`jobs/${jobId}`, manifest);
-          await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: meta });
+          jobManifestMeta = await writeManifestChunks(`jobs/${jobId}`, manifest);
+          await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: jobManifestMeta });
         } else if (selectedUploadId) {
           // Chunked customer upload — copy chunks directly
           const upload = customerPOUploads.find((u) => u.id === selectedUploadId);
           if (upload?.manifestMeta?.chunked) {
-            await copyManifestChunks(`po-uploads/${selectedUploadId}`, `jobs/${jobId}`);
-            await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: upload.manifestMeta });
+            await copyManifestChunks(`po-uploads/${selectedUploadId}`, `jobs/${jobId}`, null, upload.manifestMeta.numChunks);
+            jobManifestMeta = upload.manifestMeta;
+            await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: jobManifestMeta });
           }
         }
         if (selectedUploadId) {
@@ -252,7 +254,7 @@ export default function Setup() {
         }
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
-      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {} });
+      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
     } catch (err) { alert('Failed to create job: ' + err.message); }
     setSaving(false);
@@ -290,7 +292,7 @@ export default function Setup() {
 
   const handleQueueJob = async () => {
     if (!qJobName.trim()) return alert('Enter a job name');
-    if (qMode === 'multi' && !qManifest) return alert('Upload a manifest for Multi-PO mode');
+    if (qMode === 'multi' && !qManifest && !qSelectedUploadId) return alert('Upload a manifest for Multi-PO mode');
     if (qPods.length === 0) return alert('Configure at least one pod');
     const target = Number(qDailyTarget); const hours = Number(qWorkingHours);
     if (!target || target <= 0) return alert('Enter a valid daily target');
@@ -311,7 +313,7 @@ export default function Setup() {
         } else if (qSelectedUploadId) {
           const upload = customerPOUploads.find((u) => u.id === qSelectedUploadId);
           if (upload?.manifestMeta?.chunked) {
-            await copyManifestChunks(`po-uploads/${qSelectedUploadId}`, `jobs/${jobId}`);
+            await copyManifestChunks(`po-uploads/${qSelectedUploadId}`, `jobs/${jobId}`, null, upload.manifestMeta.numChunks);
             await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: upload.manifestMeta });
           }
         }
@@ -335,6 +337,13 @@ export default function Setup() {
   const handleRemoveFromQueue = async (jobId) => {
     if (!window.confirm('Remove this job from the queue? The job data will be deleted.')) return;
     try {
+      // Delete manifest chunks (if chunked)
+      const jobSnap = await getDoc(doc(db, 'jobs', jobId));
+      const jobData = jobSnap.exists() ? jobSnap.data() : {};
+      if (jobData.manifestMeta?.chunked) {
+        await deleteManifestChunks(`jobs/${jobId}`, jobData.manifestMeta.numChunks);
+      }
+      // Delete legacy manifest docs
       const mfSnap = await getDocs(collection(db, 'jobs', jobId, 'manifest'));
       if (mfSnap.size > 0) {
         let batch = writeBatch(db); let c = 0;
@@ -417,7 +426,11 @@ export default function Setup() {
       // Delete BOLs
       const bolSnap = await getDocs(query(collection(db, 'bols'), where('jobId', '==', activeJob.id)));
       for (const d of bolSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
-      // Delete manifest subcollection
+      // Delete manifest chunks (if chunked)
+      if (activeJob.manifestMeta?.chunked) {
+        await deleteManifestChunks(`jobs/${activeJob.id}`, activeJob.manifestMeta.numChunks);
+      }
+      // Delete legacy manifest subcollection
       const manifestSnap = await getDocs(collection(db, 'jobs', activeJob.id, 'manifest'));
       for (const d of manifestSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
       // Final batch + delete job doc
@@ -1040,6 +1053,10 @@ export default function Setup() {
                   const excSnap = await getDocs(query(collection(db, 'exceptions'), where('jobId', '==', pj.id)));
                   const shiftSnap = await getDocs(query(collection(db, 'shifts'), where('jobId', '==', pj.id)));
                   const bolSnap = await getDocs(query(collection(db, 'bols'), where('jobId', '==', pj.id)));
+                  // Delete manifest chunks if chunked
+                  if (pj.manifestMeta?.chunked) {
+                    await deleteManifestChunks(`jobs/${pj.id}`, pj.manifestMeta.numChunks);
+                  }
                   const mfSnap = await getDocs(collection(db, 'jobs', pj.id, 'manifest'));
                   const allDocs = [...scanSnap.docs, ...excSnap.docs, ...shiftSnap.docs, ...bolSnap.docs, ...mfSnap.docs];
                   let batch = writeBatch(db); let c = 0;

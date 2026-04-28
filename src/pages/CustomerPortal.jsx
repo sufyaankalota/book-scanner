@@ -345,11 +345,18 @@ export default function CustomerPortal() {
     if (authenticated) loadUploadedPOs();
   }, [authenticated]);
 
-  // Delete a PO upload (remove the po-upload doc and its manifest subcollection)
+  // Delete a PO upload (remove the po-upload doc, legacy manifest subcollection, and manifest chunks)
   const deletePO = async (uploadId) => {
     if (!confirm('Remove this PO upload and all its ISBNs?')) return;
     setPODeleting(uploadId);
     try {
+      // Delete manifest chunks (if chunked)
+      const uploadSnap = await getDoc(doc(db, 'po-uploads', uploadId));
+      const uploadData = uploadSnap.exists() ? uploadSnap.data() : {};
+      if (uploadData.manifestMeta?.chunked) {
+        await deleteManifestChunks(`po-uploads/${uploadId}`, uploadData.manifestMeta.numChunks);
+      }
+      // Delete legacy manifest docs
       const snap = await getDocs(collection(db, 'po-uploads', uploadId, 'manifest'));
       const BATCH_SIZE = 400;
       for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {

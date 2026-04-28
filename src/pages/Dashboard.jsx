@@ -305,8 +305,8 @@ export default function Dashboard() {
     setAddingPO(upload.id);
     try {
       if (upload.manifestMeta?.chunked) {
-        // Chunked manifest: copy chunks directly
-        await copyManifestChunks(`po-uploads/${upload.id}`, `jobs/${job.id}`);
+        // Chunked manifest: copy chunks directly (paginated, memory-safe)
+        await copyManifestChunks(`po-uploads/${upload.id}`, `jobs/${job.id}`, null, upload.manifestMeta.numChunks);
         // Merge manifest metadata into job
         const existingMeta = job.manifestMeta || {};
         const newPoCounts = { ...(existingMeta.poCounts || {}), ...(upload.manifestMeta.poCounts || {}) };
@@ -576,7 +576,11 @@ export default function Dashboard() {
     setExporting(false);
   };
   const handleExportReconciliation = () => {
-    if (!job || !Object.keys(manifestData).length) return;
+    if (!job) return;
+    if (job.manifestMeta?.chunked) {
+      return alert('Reconciliation export is not available for large chunked manifests. Use the per-PO completion breakdown instead.');
+    }
+    if (!Object.keys(manifestData).length) return;
     exportReconciliation(allScans, manifestData, job.meta);
   };
 
