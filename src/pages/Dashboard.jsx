@@ -744,6 +744,30 @@ export default function Dashboard() {
         <AutoRefreshIndicator lastUpdated={lastUpdated} />
       )}
 
+      {/* Pending PO Uploads — top of dashboard */}
+      {pendingPOUploads.length > 0 && (
+        <div style={{ backgroundColor: '#1a1a2e', border: '2px solid #3B82F6', borderRadius: 10, padding: 16, marginBottom: 16, animation: 'pulse 2s infinite' }}>
+          <p style={{ color: '#93C5FD', fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>
+            📦 {pendingPOUploads.length} Customer PO Upload{pendingPOUploads.length > 1 ? 's' : ''} Pending
+          </p>
+          {pendingPOUploads.map((up) => (
+            <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #333' }}>
+              <div>
+                <span style={{ color: '#ccc', fontSize: 14, fontWeight: 600 }}>{(up.poNames || []).join(', ')}</span>
+                <span style={{ color: '#888', fontSize: 13, marginLeft: 10 }}>{(up.isbnCount || 0).toLocaleString()} ISBNs</span>
+                <span style={{ color: '#666', fontSize: 12, marginLeft: 10 }}>
+                  {up.uploadedAt?.toDate?.()?.toLocaleString() || ''}
+                </span>
+              </div>
+              <button onClick={() => addPOToJob(up)} disabled={addingPO === up.id}
+                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: addingPO === up.id ? 0.6 : 1 }}>
+                {addingPO === up.id ? 'Adding...' : '+ Add to Job'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Notification toggle */}
       {!notificationsEnabled && typeof Notification !== 'undefined' && (
         <button onClick={enableNotifications} style={{ ...st.exportBtn, marginBottom: 16 }}>
@@ -856,28 +880,6 @@ export default function Dashboard() {
           </div>
         )})}
       </div>
-      {pendingPOUploads.length > 0 && (
-        <div style={{ backgroundColor: '#1a1a2e', border: '1px solid #3B82F6', borderRadius: 10, padding: 16, marginTop: 16 }}>
-          <p style={{ color: '#93C5FD', fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>
-            📦 {pendingPOUploads.length} Customer PO Upload{pendingPOUploads.length > 1 ? 's' : ''} Pending
-          </p>
-          {pendingPOUploads.map((up) => (
-            <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #333' }}>
-              <div>
-                <span style={{ color: '#ccc', fontSize: 14, fontWeight: 600 }}>{(up.poNames || []).join(', ')}</span>
-                <span style={{ color: '#888', fontSize: 13, marginLeft: 10 }}>{(up.isbnCount || 0).toLocaleString()} ISBNs</span>
-                <span style={{ color: '#666', fontSize: 12, marginLeft: 10 }}>
-                  {up.uploadedAt?.toDate?.()?.toLocaleString() || ''}
-                </span>
-              </div>
-              <button onClick={() => addPOToJob(up)} disabled={addingPO === up.id}
-                style={{ padding: '6px 14px', borderRadius: 6, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: addingPO === up.id ? 0.6 : 1 }}>
-                {addingPO === up.id ? 'Adding...' : '+ Add to Job'}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* PO Completion Alerts */}
       {poAlerts.length > 0 && (
