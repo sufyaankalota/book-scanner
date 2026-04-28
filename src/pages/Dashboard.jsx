@@ -797,7 +797,7 @@ export default function Dashboard() {
           </div>
         )}
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: '#F59E0B' }}>{totalScans > 0 ? `${Math.ceil(totalScans / 2000)}–${Math.ceil(totalScans / 1500)}` : '—'}</div>
+          <div style={{ ...st.summaryValue, color: '#F59E0B' }}>{totalScans >= 1500 ? `${Math.floor(totalScans / 2000)}–${Math.floor(totalScans / 1500)}` : '—'}</div>
           <div style={st.summaryLabel}>Est. Gaylords</div>
         </div>
       </div>

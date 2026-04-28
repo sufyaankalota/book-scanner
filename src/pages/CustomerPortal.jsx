@@ -62,7 +62,7 @@ export default function CustomerPortal() {
   // Billing reports
   const [billingReports, setBillingReports] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
-  // Reports tab � default to last 7 days
+  // Reports tab – default to last 7 days
   const [reportsShowAll, setReportsShowAll] = useState(false);
   // Branding
   const [brandLogo, setBrandLogo] = useState('');
@@ -146,7 +146,7 @@ export default function CustomerPortal() {
           setJob(null);
         }
       } else {
-        // No active job � load most recently closed job for historical data
+        // No active job – load most recently closed job for historical data
         try {
           const closedSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
           if (!closedSnap.empty) {
@@ -559,7 +559,7 @@ export default function CustomerPortal() {
     const withPhotos = allExcs.filter((e) => e.photo);
 
     const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Exception Photo Report � ${jobName}</title>
+<html><head><meta charset="utf-8"><title>Exception Photo Report – ${jobName}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #fff; color: #222; padding: 32px; max-width: 900px; margin: 0 auto; }
@@ -583,7 +583,7 @@ export default function CustomerPortal() {
 </style></head><body>
 <button class="print-btn" onclick="window.print()">?? Print / Save PDF</button>
 <h1>Exception Photo Report</h1>
-<p class="meta">${jobName} � ${dateLabel} � Generated ${new Date().toLocaleString()}</p>
+<p class="meta">${jobName} – ${dateLabel} – Generated ${new Date().toLocaleString()}</p>
 <div class="summary">
   <div><div class="num">${allExcs.length}</div><div class="lbl">Total Exceptions</div></div>
   <div><div class="num">${withPhotos.length}</div><div class="lbl">With Photos</div></div>
@@ -595,7 +595,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
     <span class="reason">${exc.reason}</span>
     ${exc.isbn ? `<div class="isbn">ISBN: ${exc.isbn}</div>` : ''}
     ${exc.title ? `<div class="title">"${exc.title}"</div>` : ''}
-    <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' � Pod ' + exc.podId : ''}</div>
+    <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' – Pod ' + exc.podId : ''}</div>
   </div>
 </div>`).join('\n')}
 <div class="disclaimer">?? DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
@@ -621,7 +621,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
             <img src={brandLogo || '/icon.svg'} alt="Logo" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8, objectFit: 'contain' }} />
             <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
-            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort � Sign in to your portal</p>
+            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort – Sign in to your portal</p>
           </div>
           <input type="email" value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
@@ -689,7 +689,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={st.statLbl}>Total Processed</div>
           </div>
           <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) > 0 ? `${Math.ceil((todayData?.standard || 0) / 2000)}�${Math.ceil((todayData?.standard || 0) / 1500)}` : '�'}</div>
+            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) >= 1500 ? `${Math.floor((todayData?.standard || 0) / 2000)}–${Math.floor((todayData?.standard || 0) / 1500)}` : '—'}</div>
             <div style={st.statLbl}>Today's Est. Gaylords</div>
           </div>
         </div>
@@ -779,14 +779,14 @@ ${allExcs.map((exc, i) => `<div class="exc">
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-                {d.standard > 0 && (
+                {d.standard >= 1500 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 6, display: 'inline-block' }}>
                     <span style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>? {d.standard.toLocaleString()} scanned</span>
                   </div>
                 )}
-                {d.standard > 0 && (
+                {d.standard >= 1500 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>?? {Math.ceil(d.standard / 2000)}�{Math.ceil(d.standard / 1500)} gaylords</span>
+                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>📦 {Math.floor(d.standard / 2000)}–{Math.floor(d.standard / 1500)} gaylords</span>
                   </div>
                 )}
                 {d.exceptions > 0 && (
@@ -930,7 +930,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                     <div>
                       <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
-                        {start ? start.toLocaleDateString() : '?'} � {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
+                        {start ? start.toLocaleDateString() : '?'} – {end ? new Date(end.getTime() - 86400000).toLocaleDateString() : '?'}
                         {report.archived && <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginLeft: 8 }}>(Archived)</span>}
                       </div>
                       <div style={{ color: '#888', fontSize: 13 }}>
