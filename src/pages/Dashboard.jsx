@@ -163,7 +163,7 @@ export default function Dashboard() {
         const minutes = Math.min(15, (now - today.getTime()) / 60000);
         const pace = minutes > 0 && recentStandard.length > 0
           ? Math.round((recentStandard.length / Math.min(15, minutes)) * 60) : 0;
-        const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 5));
+        const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 10));
         pods[podId] = { id: podId, scanCount: standardScans.length,
           exceptionCount: autoExc.length, manualCount: manualScans.length, pace, targetPerHour, scanners };
         const byOp = {};

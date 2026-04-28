@@ -19,7 +19,7 @@ const DEFAULT_COLORS = [
   { name: 'Pink', hex: '#EC4899' }, { name: 'Teal', hex: '#14B8A6' },
   { name: 'Brown', hex: '#92400E' }, { name: 'Gold', hex: '#CA8A04' },
 ];
-const DEFAULT_PODS = ['A', 'B', 'C', 'D', 'E'];
+const DEFAULT_PODS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
 export default function Setup() {
   const { show: toast } = useToast();
@@ -33,6 +33,8 @@ export default function Setup() {
   const [workingHours, setWorkingHours] = useState(8);
   const [pods, setPods] = useState(DEFAULT_PODS);
   const [podInput, setPodInput] = useState(DEFAULT_PODS.join(', '));
+  const [floaters, setFloaters] = useState(2);
+  const [runners, setRunners] = useState(2);
   const [manifest, setManifest] = useState(null);
   const [manifestPreview, setManifestPreview] = useState([]);
   const [poNames, setPoNames] = useState([]);
@@ -52,6 +54,8 @@ export default function Setup() {
   const [editTarget, setEditTarget] = useState('');
   const [editHours, setEditHours] = useState('');
   const [editPods, setEditPods] = useState('');
+  const [editFloaters, setEditFloaters] = useState('');
+  const [editRunners, setEditRunners] = useState('');
 
   // PIN
   const [pinValue, setPinValue] = useState('');
@@ -101,6 +105,8 @@ export default function Setup() {
   const [qWorkingHours, setQWorkingHours] = useState(8);
   const [qPods, setQPods] = useState(DEFAULT_PODS);
   const [qPodInput, setQPodInput] = useState(DEFAULT_PODS.join(', '));
+  const [qFloaters, setQFloaters] = useState(2);
+  const [qRunners, setQRunners] = useState(2);
   const [qLocation, setQLocation] = useState('');
   const [qManifest, setQManifest] = useState(null);
   const [qPoNames, setQPoNames] = useState([]);
@@ -126,6 +132,8 @@ export default function Setup() {
             setEditTarget(jobData.meta.dailyTarget);
             setEditHours(jobData.meta.workingHours);
             setEditPods(jobData.meta.pods?.join(', ') || '');
+            setEditFloaters(jobData.meta.floaters ?? 2);
+            setEditRunners(jobData.meta.runners ?? 2);
           }
         }
         // Load branding
@@ -242,6 +250,7 @@ export default function Setup() {
       const jobId = `job_${Date.now()}`;
       await setDoc(doc(db, 'jobs', jobId), {
         meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true,
+          floaters: Number(floaters) || 0, runners: Number(runners) || 0,
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
       });
@@ -271,8 +280,9 @@ export default function Setup() {
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
       setActivateProgress({ written: 0, total: 0, label: '' });
-      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
+      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
+      setEditFloaters(Number(floaters) || 0); setEditRunners(Number(runners) || 0);
     } catch (err) { toast('Failed to create job: ' + err.message, 'error'); }
     setSaving(false);
   };
@@ -299,6 +309,8 @@ export default function Setup() {
         setEditTarget(nextQueued.meta.dailyTarget);
         setEditHours(nextQueued.meta.workingHours);
         setEditPods(nextQueued.meta.pods?.join(', ') || '');
+        setEditFloaters(nextQueued.meta.floaters ?? 2);
+        setEditRunners(nextQueued.meta.runners ?? 2);
         setQueuedJobs((prev) => prev.slice(1));
       } else {
         setActiveJob(null);
@@ -323,6 +335,7 @@ export default function Setup() {
       const jobId = `job_${Date.now()}`;
       await setDoc(doc(db, 'jobs', jobId), {
         meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false,
+          floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0,
           queued: true, queueOrder: Date.now(), location: qLocation.trim() || '', createdAt: serverTimestamp() },
         poColors: qMode === 'multi' ? qPoColors : {},
       });
@@ -348,11 +361,12 @@ export default function Setup() {
       }
       logAudit('job_queued', { jobId, name: qJobName.trim(), mode: qMode });
       setQueueProgress({ written: 0, total: 0, label: '' });
-      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {} };
+      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {} };
       setQueuedJobs((prev) => [...prev, newJob]);
       // Reset form
       setQJobName(''); setQMode('single'); setQDailyTarget(22000); setQWorkingHours(8);
       setQPods(DEFAULT_PODS); setQPodInput(DEFAULT_PODS.join(', ')); setQLocation('');
+      setQFloaters(2); setQRunners(2);
       setQManifest(null); setQPoNames([]); setQPoColors({}); setQManifestPreview([]);
       setQFileError(''); setShowQueueForm(false);
     } catch (err) { toast('Failed to queue job: ' + err.message, 'error'); }
@@ -484,9 +498,11 @@ export default function Setup() {
     setFieldError(errs);
     if (Object.keys(errs).length) return;
     try {
-      await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods });
+      const flo = Number(editFloaters) || 0;
+      const run = Number(editRunners) || 0;
+      await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods, 'meta.floaters': flo, 'meta.runners': run });
       logAudit('job_edited', { jobId: activeJob.id });
-      setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods } });
+      setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run } });
       setEditMode(false);
       toast('Job updated', 'success');
     } catch (err) { toast('Failed to save: ' + err.message, 'error'); }
@@ -610,7 +626,9 @@ export default function Setup() {
               <p style={s.text}><strong>Mode:</strong> {activeJob.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'}</p>
               <p style={s.text}><strong>Daily Target:</strong> {activeJob.meta.dailyTarget?.toLocaleString()}</p>
               <p style={s.text}><strong>Working Hours:</strong> {activeJob.meta.workingHours}</p>
-              <p style={s.text}><strong>Pods:</strong> {activeJob.meta.pods?.join(', ')}</p>
+              <p style={s.text}><strong>Pods:</strong> {activeJob.meta.pods?.join(', ')} <span style={{ color: '#888', fontSize: 13 }}>({activeJob.meta.pods?.length || 0} scanner{activeJob.meta.pods?.length === 1 ? '' : 's'})</span></p>
+              <p style={s.text}><strong>Floaters:</strong> {activeJob.meta.floaters ?? 0} <span style={{ color: '#888', fontSize: 13 }}>(open & place books)</span></p>
+              <p style={s.text}><strong>Runners:</strong> {activeJob.meta.runners ?? 0} <span style={{ color: '#888', fontSize: 13 }}>(deliver to colored gaylords)</span></p>
               {activeJob.meta.location && <p style={s.text}><strong>Location:</strong> {activeJob.meta.location}</p>}
               {activeJob.meta.mode === 'multi' && activeJob.poColors && (
                 <div style={{ marginTop: 12 }}>
@@ -642,6 +660,10 @@ export default function Setup() {
               <label style={s.label}>Pod IDs (comma-separated)</label>
               <input type="text" value={editPods} onChange={(e) => { setEditPods(e.target.value); setFieldError((p) => ({ ...p, editPods: undefined })); }} style={s.input} />
               <FieldError name="editPods" />
+              <label style={s.label}>Floaters <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(open & place books for pods)</span></label>
+              <input type="number" value={editFloaters} onChange={(e) => setEditFloaters(e.target.value)} min={0} style={s.input} />
+              <label style={s.label}>Runners <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(deliver books to colored gaylords)</span></label>
+              <input type="number" value={editRunners} onChange={(e) => setEditRunners(e.target.value)} min={0} style={s.input} />
               <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
                 <button onClick={handleEditSave} style={s.primaryBtn}>Save Changes</button>
                 <button onClick={() => setEditMode(false)} style={s.secondaryBtn}>Cancel</button>
@@ -942,11 +964,16 @@ export default function Setup() {
               <label style={s.label}>Working Hours Per Day</label>
               <input type="number" value={qWorkingHours} onChange={(e) => { setQWorkingHours(e.target.value); setFieldError((p) => ({ ...p, qWorkingHours: undefined })); }} min={1} max={24} style={s.input} />
               <FieldError name="qWorkingHours" />
-              <label style={s.label}>Pod IDs (comma-separated)</label>
+              <label style={s.label}>Pod IDs (comma-separated) <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(1 scanner per pod)</span></label>
               <input type="text" value={qPodInput} onChange={(e) => { setQPodInput(e.target.value); setQPods([...new Set(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))]); setFieldError((p) => ({ ...p, qPods: undefined })); }}
-                placeholder="A, B, C, D, E" style={s.input} />
+                placeholder="A, B, C, D, E, F, G, H, I, J" style={s.input} />
               <FieldError name="qPods" />
               <p style={{ color: '#999', fontSize: 14, marginTop: 4 }}>{qPods.length} unique pod(s): {qPods.join(', ')}</p>
+
+              <label style={s.label}>Floaters <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(open & place books for pods)</span></label>
+              <input type="number" value={qFloaters} onChange={(e) => setQFloaters(e.target.value)} min={0} style={s.input} />
+              <label style={s.label}>Runners <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(deliver books to colored gaylords)</span></label>
+              <input type="number" value={qRunners} onChange={(e) => setQRunners(e.target.value)} min={0} style={s.input} />
 
               <button onClick={handleQueueJob} disabled={qSaving}
                 style={{ ...s.primaryBtn, marginTop: 24, opacity: qSaving ? 0.6 : 1, backgroundColor: '#3B82F6' }}>
@@ -1092,11 +1119,16 @@ export default function Setup() {
         <label style={s.label}>Working Hours Per Day</label>
         <input type="number" value={workingHours} onChange={(e) => { setWorkingHours(e.target.value); setFieldError((p) => ({ ...p, workingHours: undefined })); }} min={1} max={24} style={s.input} />
         <FieldError name="workingHours" />
-        <label style={s.label}>Pod IDs (comma-separated)</label>
+        <label style={s.label}>Pod IDs (comma-separated) <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(1 scanner per pod)</span></label>
         <input type="text" value={podInput} onChange={(e) => { handlePodInputChange(e.target.value); setFieldError((p) => ({ ...p, pods: undefined })); }}
-          placeholder="A, B, C, D, E" style={s.input} />
+          placeholder="A, B, C, D, E, F, G, H, I, J" style={s.input} />
         <FieldError name="pods" />
         <p style={{ color: '#999', fontSize: 14, marginTop: 4 }}>{pods.length} unique pod(s): {pods.join(', ')}</p>
+
+        <label style={s.label}>Floaters <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(open & place books for pods)</span></label>
+        <input type="number" value={floaters} onChange={(e) => setFloaters(e.target.value)} min={0} style={s.input} />
+        <label style={s.label}>Runners <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(deliver books to colored gaylords)</span></label>
+        <input type="number" value={runners} onChange={(e) => setRunners(e.target.value)} min={0} style={s.input} />
 
         <button onClick={handleActivateJob} disabled={saving}
           style={{ ...s.primaryBtn, marginTop: 24, opacity: saving ? 0.6 : 1 }}>

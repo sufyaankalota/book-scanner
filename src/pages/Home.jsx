@@ -87,7 +87,7 @@ export default function Home() {
     setCanInstall(false);
   };
 
-  const pods = job?.meta?.pods || ['A', 'B', 'C', 'D', 'E'];
+  const pods = job?.meta?.pods || ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
   if (loading) {
     return (
