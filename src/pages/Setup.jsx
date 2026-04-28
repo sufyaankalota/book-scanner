@@ -35,6 +35,7 @@ export default function Setup() {
   const [podInput, setPodInput] = useState(DEFAULT_PODS.join(', '));
   const [floaters, setFloaters] = useState(2);
   const [runners, setRunners] = useState(2);
+  const [supervisors, setSupervisors] = useState(1);
   const [manifest, setManifest] = useState(null);
   const [manifestPreview, setManifestPreview] = useState([]);
   const [poNames, setPoNames] = useState([]);
@@ -56,6 +57,7 @@ export default function Setup() {
   const [editPods, setEditPods] = useState('');
   const [editFloaters, setEditFloaters] = useState('');
   const [editRunners, setEditRunners] = useState('');
+  const [editSupervisors, setEditSupervisors] = useState('');
 
   // PIN
   const [pinValue, setPinValue] = useState('');
@@ -107,6 +109,7 @@ export default function Setup() {
   const [qPodInput, setQPodInput] = useState(DEFAULT_PODS.join(', '));
   const [qFloaters, setQFloaters] = useState(2);
   const [qRunners, setQRunners] = useState(2);
+  const [qSupervisors, setQSupervisors] = useState(1);
   const [qLocation, setQLocation] = useState('');
   const [qManifest, setQManifest] = useState(null);
   const [qPoNames, setQPoNames] = useState([]);
@@ -134,6 +137,7 @@ export default function Setup() {
             setEditPods(jobData.meta.pods?.join(', ') || '');
             setEditFloaters(jobData.meta.floaters ?? 2);
             setEditRunners(jobData.meta.runners ?? 2);
+            setEditSupervisors(jobData.meta.supervisors ?? 1);
           }
         }
         // Load branding
@@ -250,7 +254,7 @@ export default function Setup() {
       const jobId = `job_${Date.now()}`;
       await setDoc(doc(db, 'jobs', jobId), {
         meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true,
-          floaters: Number(floaters) || 0, runners: Number(runners) || 0,
+          floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0,
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
       });
@@ -280,9 +284,10 @@ export default function Setup() {
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
       setActivateProgress({ written: 0, total: 0, label: '' });
-      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
+      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
       setEditFloaters(Number(floaters) || 0); setEditRunners(Number(runners) || 0);
+      setEditSupervisors(Number(supervisors) || 0);
     } catch (err) { toast('Failed to create job: ' + err.message, 'error'); }
     setSaving(false);
   };
@@ -311,6 +316,7 @@ export default function Setup() {
         setEditPods(nextQueued.meta.pods?.join(', ') || '');
         setEditFloaters(nextQueued.meta.floaters ?? 2);
         setEditRunners(nextQueued.meta.runners ?? 2);
+        setEditSupervisors(nextQueued.meta.supervisors ?? 1);
         setQueuedJobs((prev) => prev.slice(1));
       } else {
         setActiveJob(null);
@@ -335,7 +341,7 @@ export default function Setup() {
       const jobId = `job_${Date.now()}`;
       await setDoc(doc(db, 'jobs', jobId), {
         meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false,
-          floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0,
+          floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0,
           queued: true, queueOrder: Date.now(), location: qLocation.trim() || '', createdAt: serverTimestamp() },
         poColors: qMode === 'multi' ? qPoColors : {},
       });
@@ -361,12 +367,13 @@ export default function Setup() {
       }
       logAudit('job_queued', { jobId, name: qJobName.trim(), mode: qMode });
       setQueueProgress({ written: 0, total: 0, label: '' });
-      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {} };
+      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {} };
       setQueuedJobs((prev) => [...prev, newJob]);
       // Reset form
       setQJobName(''); setQMode('single'); setQDailyTarget(22000); setQWorkingHours(8);
       setQPods(DEFAULT_PODS); setQPodInput(DEFAULT_PODS.join(', ')); setQLocation('');
       setQFloaters(2); setQRunners(2);
+      setQSupervisors(1);
       setQManifest(null); setQPoNames([]); setQPoColors({}); setQManifestPreview([]);
       setQFileError(''); setShowQueueForm(false);
     } catch (err) { toast('Failed to queue job: ' + err.message, 'error'); }
@@ -500,9 +507,10 @@ export default function Setup() {
     try {
       const flo = Number(editFloaters) || 0;
       const run = Number(editRunners) || 0;
-      await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods, 'meta.floaters': flo, 'meta.runners': run });
+      const sup = Number(editSupervisors) || 0;
+      await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods, 'meta.floaters': flo, 'meta.runners': run, 'meta.supervisors': sup });
       logAudit('job_edited', { jobId: activeJob.id });
-      setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run } });
+      setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run, supervisors: sup } });
       setEditMode(false);
       toast('Job updated', 'success');
     } catch (err) { toast('Failed to save: ' + err.message, 'error'); }
@@ -629,6 +637,7 @@ export default function Setup() {
               <p style={s.text}><strong>Pods:</strong> {activeJob.meta.pods?.join(', ')} <span style={{ color: '#888', fontSize: 13 }}>({activeJob.meta.pods?.length || 0} scanner{activeJob.meta.pods?.length === 1 ? '' : 's'})</span></p>
               <p style={s.text}><strong>Floaters:</strong> {activeJob.meta.floaters ?? 0} <span style={{ color: '#888', fontSize: 13 }}>(open & place books)</span></p>
               <p style={s.text}><strong>Runners:</strong> {activeJob.meta.runners ?? 0} <span style={{ color: '#888', fontSize: 13 }}>(deliver to colored gaylords)</span></p>
+              <p style={s.text}><strong>Supervisors:</strong> {activeJob.meta.supervisors ?? 1}</p>
               {activeJob.meta.location && <p style={s.text}><strong>Location:</strong> {activeJob.meta.location}</p>}
               {activeJob.meta.mode === 'multi' && activeJob.poColors && (
                 <div style={{ marginTop: 12 }}>
@@ -664,6 +673,8 @@ export default function Setup() {
               <input type="number" value={editFloaters} onChange={(e) => setEditFloaters(e.target.value)} min={0} style={s.input} />
               <label style={s.label}>Runners <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(deliver books to colored gaylords)</span></label>
               <input type="number" value={editRunners} onChange={(e) => setEditRunners(e.target.value)} min={0} style={s.input} />
+              <label style={s.label}>Supervisors <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>($17/hr)</span></label>
+              <input type="number" value={editSupervisors} onChange={(e) => setEditSupervisors(e.target.value)} min={0} style={s.input} />
               <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
                 <button onClick={handleEditSave} style={s.primaryBtn}>Save Changes</button>
                 <button onClick={() => setEditMode(false)} style={s.secondaryBtn}>Cancel</button>
@@ -974,6 +985,8 @@ export default function Setup() {
               <input type="number" value={qFloaters} onChange={(e) => setQFloaters(e.target.value)} min={0} style={s.input} />
               <label style={s.label}>Runners <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(deliver books to colored gaylords)</span></label>
               <input type="number" value={qRunners} onChange={(e) => setQRunners(e.target.value)} min={0} style={s.input} />
+              <label style={s.label}>Supervisors <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>($17/hr)</span></label>
+              <input type="number" value={qSupervisors} onChange={(e) => setQSupervisors(e.target.value)} min={0} style={s.input} />
 
               <button onClick={handleQueueJob} disabled={qSaving}
                 style={{ ...s.primaryBtn, marginTop: 24, opacity: qSaving ? 0.6 : 1, backgroundColor: '#3B82F6' }}>
@@ -1129,6 +1142,8 @@ export default function Setup() {
         <input type="number" value={floaters} onChange={(e) => setFloaters(e.target.value)} min={0} style={s.input} />
         <label style={s.label}>Runners <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(deliver books to colored gaylords)</span></label>
         <input type="number" value={runners} onChange={(e) => setRunners(e.target.value)} min={0} style={s.input} />
+        <label style={s.label}>Supervisors <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>($17/hr)</span></label>
+        <input type="number" value={supervisors} onChange={(e) => setSupervisors(e.target.value)} min={0} style={s.input} />
 
         <button onClick={handleActivateJob} disabled={saving}
           style={{ ...s.primaryBtn, marginTop: 24, opacity: saving ? 0.6 : 1 }}>

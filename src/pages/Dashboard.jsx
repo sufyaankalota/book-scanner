@@ -490,19 +490,21 @@ export default function Dashboard() {
     if (!shifts.length) return null;
     let totalHours = 0;
     const days = new Set();
+    const activePods = new Set();
     for (const s of shifts) {
       if (s.startTime && s.endTime) {
         const start = s.startTime.toDate ? s.startTime.toDate() : new Date(s.startTime);
         const end = s.endTime.toDate ? s.endTime.toDate() : new Date(s.endTime);
         totalHours += (end - start) / 3600000;
         days.add(start.toLocaleDateString());
+        if (s.podId) activePods.add(s.podId);
       }
     }
     const numDays = Math.max(days.size, 1);
     const workingHours = job?.meta?.workingHours || 8;
     const floaters = job?.meta?.floaters || 0;
     const runners = job?.meta?.runners || 0;
-    const supervisors = 1;
+    const supervisors = job?.meta?.supervisors ?? 1;
     // Support staff & supervisor hours estimated from working hours per day
     const floaterHours = floaters * workingHours * numDays;
     const runnerHours = runners * workingHours * numDays;
@@ -519,6 +521,9 @@ export default function Dashboard() {
       totalHours: totalHours.toFixed(1),
       scansPerHour: totalHours > 0 ? Math.round(allScans.length / totalHours) : 0,
       numDays,
+      activePodCount: activePods.size,
+      configuredPodCount: job?.meta?.pods?.length || 0,
+      supervisors,
       floaterHours, runnerHours, supervisorHours,
       scannerCost, floaterCost, runnerCost, supervisorCost,
       totalCost, totalLaborHours,
@@ -713,7 +718,7 @@ export default function Dashboard() {
       scansPerHour: laborHours > 0 ? Math.round(allScans.length / laborHours) : 0,
       laborCost: laborMetrics ? parseFloat(laborMetrics.totalCost.toFixed(2)) : 0,
       costPerScan: laborMetrics ? parseFloat(laborMetrics.costPerScan.toFixed(4)) : 0,
-      staffing: { scanners: job.meta.pods?.length || 0, floaters: job.meta.floaters || 0, runners: job.meta.runners || 0, supervisors: 1 },
+      staffing: { scanners: job.meta.pods?.length || 0, activeScanners: laborMetrics?.activePodCount || 0, floaters: job.meta.floaters || 0, runners: job.meta.runners || 0, supervisors: job.meta.supervisors ?? 1 },
       topOperators,
       createdAt: serverTimestamp(),
     };
@@ -1205,7 +1210,12 @@ export default function Dashboard() {
                 <tbody>
                   <tr style={{ borderBottom: '1px solid #222' }}>
                     <td style={{ padding: '8px 12px' }}>Scanners <span style={{ color: '#888', fontSize: 11 }}>(actual shifts)</span></td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{job?.meta?.pods?.length || 0}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                      {laborMetrics.activePodCount} active
+                      {laborMetrics.configuredPodCount !== laborMetrics.activePodCount && (
+                        <span style={{ color: '#666', fontSize: 11 }}> / {laborMetrics.configuredPodCount} configured</span>
+                      )}
+                    </td>
                     <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.totalHours}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right' }}>$15</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.scannerCost.toFixed(2)}</td>
@@ -1226,14 +1236,14 @@ export default function Dashboard() {
                   </tr>
                   <tr style={{ borderBottom: '1px solid #222' }}>
                     <td style={{ padding: '8px 12px' }}>Supervisor</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>1</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{laborMetrics.supervisors}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.supervisorHours.toFixed(1)}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right' }}>$17</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.supervisorCost.toFixed(2)}</td>
                   </tr>
                   <tr style={{ borderTop: '2px solid #444', backgroundColor: '#0f1f15' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 700 }}>Total</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{(job?.meta?.pods?.length || 0) + (job?.meta?.floaters || 0) + (job?.meta?.runners || 0) + 1}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{laborMetrics.activePodCount + (job?.meta?.floaters || 0) + (job?.meta?.runners || 0) + laborMetrics.supervisors}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{laborMetrics.totalLaborHours.toFixed(1)}</td>
                     <td style={{ padding: '10px 12px' }} />
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: '#34D399', fontSize: 16 }}>${laborMetrics.totalCost.toFixed(2)}</td>
@@ -1251,7 +1261,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <p style={{ color: '#666', fontSize: 11, marginTop: 12, fontStyle: 'italic' }}>
-                Note: Floater, runner, and supervisor hours are estimated as headcount × {job?.meta?.workingHours || 8} working hours × {laborMetrics.numDays} day{laborMetrics.numDays === 1 ? '' : 's'}. Scanner hours are pulled from actual shift sessions.
+                Note: Scanner cost reflects only pods that actually clocked in ({laborMetrics.activePodCount} of {laborMetrics.configuredPodCount} configured). Floater, runner, and supervisor hours are estimated as headcount × {job?.meta?.workingHours || 8} working hours × {laborMetrics.numDays} day{laborMetrics.numDays === 1 ? '' : 's'}.
               </p>
             </div>
           ) : (
