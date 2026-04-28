@@ -56,6 +56,7 @@ export default function Dashboard() {
   const [showBilling, setShowBilling] = useState(false);
   const [pendingPOUploads, setPendingPOUploads] = useState([]);
   const [addingPO, setAddingPO] = useState(null);
+  const [addPOProgress, setAddPOProgress] = useState({ written: 0, total: 0 });
   const [queuedJobs, setQueuedJobs] = useState([]);
   const [billingWeek, setBillingWeek] = useState(() => {
     // Default to last Monday
@@ -307,10 +308,13 @@ export default function Dashboard() {
     if (!job) return toast('No active job', 'error');
     if (!confirm(`Add ${(upload.poNames || []).join(', ')} (${(upload.isbnCount || 0).toLocaleString()} ISBNs) to the current job?`)) return;
     setAddingPO(upload.id);
+    setAddPOProgress({ written: 0, total: 0 });
     try {
       if (upload.manifestMeta?.chunked) {
         // Chunked manifest: copy chunks directly (paginated, memory-safe)
-        await copyManifestChunks(`po-uploads/${upload.id}`, `jobs/${job.id}`, null, upload.manifestMeta.numChunks);
+        await copyManifestChunks(`po-uploads/${upload.id}`, `jobs/${job.id}`, (written, total) => {
+          setAddPOProgress({ written, total });
+        }, upload.manifestMeta.numChunks);
         // Merge manifest metadata into job
         const existingMeta = job.manifestMeta || {};
         const newPoCounts = { ...(existingMeta.poCounts || {}), ...(upload.manifestMeta.poCounts || {}) };
@@ -819,18 +823,35 @@ export default function Dashboard() {
             📦 {pendingPOUploads.length} Customer PO Upload{pendingPOUploads.length > 1 ? 's' : ''} Pending
           </p>
           {pendingPOUploads.map((up) => (
-            <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #333' }}>
-              <div>
-                <span style={{ color: '#ccc', fontSize: 14, fontWeight: 600 }}>{(up.poNames || []).join(', ')}</span>
-                <span style={{ color: '#888', fontSize: 13, marginLeft: 10 }}>{(up.isbnCount || 0).toLocaleString()} ISBNs</span>
-                <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginLeft: 10 }}>
-                  {up.uploadedAt?.toDate?.()?.toLocaleString() || ''}
-                </span>
+            <div key={up.id} style={{ padding: '8px 0', borderBottom: '1px solid #333' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ color: '#ccc', fontSize: 14, fontWeight: 600 }}>{(up.poNames || []).join(', ')}</span>
+                  <span style={{ color: '#888', fontSize: 13, marginLeft: 10 }}>{(up.isbnCount || 0).toLocaleString()} ISBNs</span>
+                  <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginLeft: 10 }}>
+                    {up.uploadedAt?.toDate?.()?.toLocaleString() || ''}
+                  </span>
+                </div>
+                <button onClick={() => addPOToJob(up)} disabled={addingPO === up.id}
+                  style={{ padding: '8px 18px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: addingPO === up.id ? 0.6 : 1 }}>
+                  {addingPO === up.id ? 'Adding...' : '+ Add to Job'}
+                </button>
               </div>
-              <button onClick={() => addPOToJob(up)} disabled={addingPO === up.id}
-                style={{ padding: '8px 18px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: addingPO === up.id ? 0.6 : 1 }}>
-                {addingPO === up.id ? 'Adding...' : '+ Add to Job'}
-              </button>
+              {addingPO === up.id && addPOProgress.total > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ color: '#93C5FD', fontSize: 12, fontWeight: 600 }}>
+                      Copying chunks... {addPOProgress.written.toLocaleString()} / {addPOProgress.total.toLocaleString()}
+                    </span>
+                    <span style={{ color: '#93C5FD', fontSize: 12, fontWeight: 600 }}>
+                      {Math.round((addPOProgress.written / addPOProgress.total) * 100)}%
+                    </span>
+                  </div>
+                  <div style={{ height: 6, backgroundColor: '#222', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${(addPOProgress.written / addPOProgress.total) * 100}%`, backgroundColor: '#3B82F6', borderRadius: 3, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

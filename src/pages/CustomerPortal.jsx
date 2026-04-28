@@ -49,6 +49,8 @@ export default function CustomerPortal() {
   const [poColors, setPoColors] = useState({});
   const [parseProgress, setParseProgress] = useState(0);
   const [parsing, setParsing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ written: 0, total: 0 });
+  const [uploading, setUploading] = useState(false);
 
   // BOL Upload
   const [bolFile, setBolFile] = useState(null);
@@ -426,9 +428,11 @@ export default function CustomerPortal() {
 
   const submitPO = async () => {
     if (!manifest) return;
-    setUploadStatus('Uploading...');
+    const entries = Object.entries(manifest);
+    setUploading(true);
+    setUploadProgress({ written: 0, total: 0 });
+    setUploadStatus('Preparing upload...');
     try {
-      const entries = Object.entries(manifest);
       const uploadId = `po_${Date.now()}`;
       await setDoc(doc(db, 'po-uploads', uploadId), {
         poNames, isbnCount: entries.length, poColors,
@@ -436,7 +440,8 @@ export default function CustomerPortal() {
       });
       // Write manifest as chunks (scales to millions of ISBNs)
       const meta = await writeManifestChunks(`po-uploads/${uploadId}`, manifest, (written, total) => {
-        setUploadStatus(`Uploading chunks... ${written} / ${total}`);
+        setUploadProgress({ written, total });
+        setUploadStatus(`Uploading chunks... ${written.toLocaleString()} / ${total.toLocaleString()}`);
       });
       await updateDoc(doc(db, 'po-uploads', uploadId), { manifestMeta: meta });
       setUploadStatus('Uploaded ' + entries.length.toLocaleString() + ' ISBNs across ' + poNames.length + ' POs');
@@ -445,6 +450,7 @@ export default function CustomerPortal() {
     } catch (err) {
       setUploadStatus('Upload failed: ' + err.message);
     }
+    setUploading(false);
   };
 
   // BOL Upload
@@ -1078,7 +1084,33 @@ ${allExcs.map((exc, i) => `<div class="exc">
                     </tbody>
                   </table>
                 </div>
-                <button onClick={submitPO} style={st.primaryBtn}>Upload PO</button>
+                <button onClick={submitPO} disabled={uploading} style={{ ...st.primaryBtn, opacity: uploading ? 0.6 : 1, cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                  {uploading ? 'Uploading...' : 'Upload PO'}
+                </button>
+              </div>
+            )}
+            {uploading && uploadProgress.total > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>
+                    Uploading chunks... {uploadProgress.written.toLocaleString()} / {uploadProgress.total.toLocaleString()}
+                  </span>
+                  <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>
+                    {Math.round((uploadProgress.written / uploadProgress.total) * 100)}%
+                  </span>
+                </div>
+                <div style={{ height: 8, backgroundColor: '#222', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${(uploadProgress.written / uploadProgress.total) * 100}%`,
+                    backgroundColor: '#3B82F6',
+                    borderRadius: 4,
+                    transition: 'width 0.3s',
+                  }} />
+                </div>
+                <p style={{ color: '#666', fontSize: 11, marginTop: 4, marginBottom: 0 }}>
+                  Large files may take several minutes. Don't close this tab.
+                </p>
               </div>
             )}
             {uploadStatus && (

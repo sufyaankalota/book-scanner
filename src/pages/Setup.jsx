@@ -44,6 +44,7 @@ export default function Setup() {
   const [pastJobs, setPastJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activateProgress, setActivateProgress] = useState({ written: 0, total: 0, label: '' });
   const [location, setLocation] = useState('');
 
   // Edit
@@ -109,6 +110,7 @@ export default function Setup() {
   const [qParseProgress, setQParseProgress] = useState(0);
   const [qManifestPreview, setQManifestPreview] = useState([]);
   const [qSaving, setQSaving] = useState(false);
+  const [queueProgress, setQueueProgress] = useState({ written: 0, total: 0, label: '' });
   const [qSelectedUploadId, setQSelectedUploadId] = useState(null);
 
   useEffect(() => {
@@ -247,13 +249,17 @@ export default function Setup() {
       if (mode === 'multi') {
         if (manifest) {
           // Write manifest as chunks (scales to millions of ISBNs)
-          jobManifestMeta = await writeManifestChunks(`jobs/${jobId}`, manifest);
+          jobManifestMeta = await writeManifestChunks(`jobs/${jobId}`, manifest, (written, total) => {
+            setActivateProgress({ written, total, label: 'Writing manifest' });
+          });
           await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: jobManifestMeta });
         } else if (selectedUploadId) {
           // Chunked customer upload — copy chunks directly
           const upload = customerPOUploads.find((u) => u.id === selectedUploadId);
           if (upload?.manifestMeta?.chunked) {
-            await copyManifestChunks(`po-uploads/${selectedUploadId}`, `jobs/${jobId}`, null, upload.manifestMeta.numChunks);
+            await copyManifestChunks(`po-uploads/${selectedUploadId}`, `jobs/${jobId}`, (written, total) => {
+              setActivateProgress({ written, total, label: 'Copying manifest' });
+            }, upload.manifestMeta.numChunks);
             jobManifestMeta = upload.manifestMeta;
             await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: jobManifestMeta });
           }
@@ -264,6 +270,7 @@ export default function Setup() {
         }
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
+      setActivateProgress({ written: 0, total: 0, label: '' });
       setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
     } catch (err) { toast('Failed to create job: ' + err.message, 'error'); }
@@ -321,12 +328,16 @@ export default function Setup() {
       });
       if (qMode === 'multi') {
         if (qManifest) {
-          const meta = await writeManifestChunks(`jobs/${jobId}`, qManifest);
+          const meta = await writeManifestChunks(`jobs/${jobId}`, qManifest, (written, total) => {
+            setQueueProgress({ written, total, label: 'Writing manifest' });
+          });
           await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: meta });
         } else if (qSelectedUploadId) {
           const upload = customerPOUploads.find((u) => u.id === qSelectedUploadId);
           if (upload?.manifestMeta?.chunked) {
-            await copyManifestChunks(`po-uploads/${qSelectedUploadId}`, `jobs/${jobId}`, null, upload.manifestMeta.numChunks);
+            await copyManifestChunks(`po-uploads/${qSelectedUploadId}`, `jobs/${jobId}`, (written, total) => {
+              setQueueProgress({ written, total, label: 'Copying manifest' });
+            }, upload.manifestMeta.numChunks);
             await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: upload.manifestMeta });
           }
         }
@@ -336,6 +347,7 @@ export default function Setup() {
         }
       }
       logAudit('job_queued', { jobId, name: qJobName.trim(), mode: qMode });
+      setQueueProgress({ written: 0, total: 0, label: '' });
       const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {} };
       setQueuedJobs((prev) => [...prev, newJob]);
       // Reset form
@@ -937,6 +949,21 @@ export default function Setup() {
                 style={{ ...s.primaryBtn, marginTop: 24, opacity: qSaving ? 0.6 : 1, backgroundColor: '#3B82F6' }}>
                 {qSaving ? 'Queuing...' : 'Add to Queue'}
               </button>
+              {qSaving && queueProgress.total > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>
+                      {queueProgress.label}... {queueProgress.written.toLocaleString()} / {queueProgress.total.toLocaleString()} chunks
+                    </span>
+                    <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>
+                      {Math.round((queueProgress.written / queueProgress.total) * 100)}%
+                    </span>
+                  </div>
+                  <div style={{ height: 8, backgroundColor: '#222', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${(queueProgress.written / queueProgress.total) * 100}%`, backgroundColor: '#3B82F6', borderRadius: 4, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1069,6 +1096,21 @@ export default function Setup() {
           style={{ ...s.primaryBtn, marginTop: 24, opacity: saving ? 0.6 : 1 }}>
           {saving ? 'Activating...' : 'Activate Job'}
         </button>
+        {saving && activateProgress.total > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>
+                {activateProgress.label}... {activateProgress.written.toLocaleString()} / {activateProgress.total.toLocaleString()} chunks
+              </span>
+              <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>
+                {Math.round((activateProgress.written / activateProgress.total) * 100)}%
+              </span>
+            </div>
+            <div style={{ height: 8, backgroundColor: '#222', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${(activateProgress.written / activateProgress.total) * 100}%`, backgroundColor: '#3B82F6', borderRadius: 4, transition: 'width 0.3s' }} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Past Jobs */}
