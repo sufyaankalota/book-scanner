@@ -489,15 +489,42 @@ export default function Dashboard() {
   const laborMetrics = useMemo(() => {
     if (!shifts.length) return null;
     let totalHours = 0;
+    const days = new Set();
     for (const s of shifts) {
       if (s.startTime && s.endTime) {
         const start = s.startTime.toDate ? s.startTime.toDate() : new Date(s.startTime);
         const end = s.endTime.toDate ? s.endTime.toDate() : new Date(s.endTime);
         totalHours += (end - start) / 3600000;
+        days.add(start.toLocaleDateString());
       }
     }
-    return { totalHours: totalHours.toFixed(1), scansPerHour: totalHours > 0 ? Math.round(allScans.length / totalHours) : 0 };
-  }, [shifts, allScans]);
+    const numDays = Math.max(days.size, 1);
+    const workingHours = job?.meta?.workingHours || 8;
+    const floaters = job?.meta?.floaters || 0;
+    const runners = job?.meta?.runners || 0;
+    const supervisors = 1;
+    // Support staff & supervisor hours estimated from working hours per day
+    const floaterHours = floaters * workingHours * numDays;
+    const runnerHours = runners * workingHours * numDays;
+    const supervisorHours = supervisors * workingHours * numDays;
+    const RATE = 15;
+    const SUPER_RATE = 17;
+    const scannerCost = totalHours * RATE;
+    const floaterCost = floaterHours * RATE;
+    const runnerCost = runnerHours * RATE;
+    const supervisorCost = supervisorHours * SUPER_RATE;
+    const totalCost = scannerCost + floaterCost + runnerCost + supervisorCost;
+    const totalLaborHours = totalHours + floaterHours + runnerHours + supervisorHours;
+    return {
+      totalHours: totalHours.toFixed(1),
+      scansPerHour: totalHours > 0 ? Math.round(allScans.length / totalHours) : 0,
+      numDays,
+      floaterHours, runnerHours, supervisorHours,
+      scannerCost, floaterCost, runnerCost, supervisorCost,
+      totalCost, totalLaborHours,
+      costPerScan: allScans.length > 0 ? totalCost / allScans.length : 0,
+    };
+  }, [shifts, allScans, job]);
 
   // PO Completion Alerts
   const poAlerts = useMemo(() => {
@@ -684,6 +711,9 @@ export default function Dashboard() {
       poProgress,
       laborHours: parseFloat(laborHours.toFixed(1)),
       scansPerHour: laborHours > 0 ? Math.round(allScans.length / laborHours) : 0,
+      laborCost: laborMetrics ? parseFloat(laborMetrics.totalCost.toFixed(2)) : 0,
+      costPerScan: laborMetrics ? parseFloat(laborMetrics.costPerScan.toFixed(4)) : 0,
+      staffing: { scanners: job.meta.pods?.length || 0, floaters: job.meta.floaters || 0, runners: job.meta.runners || 0, supervisors: 1 },
       topOperators,
       createdAt: serverTimestamp(),
     };
@@ -798,6 +828,18 @@ export default function Dashboard() {
           <div style={st.summaryItem}>
             <div style={{ ...st.summaryValue, color: '#818cf8' }}>{laborMetrics.scansPerHour}</div>
             <div style={st.summaryLabel}>Scans/Labor Hr</div>
+          </div>
+        )}
+        {laborMetrics && (
+          <div style={st.summaryItem}>
+            <div style={{ ...st.summaryValue, color: '#34D399' }}>${laborMetrics.totalCost.toFixed(0)}</div>
+            <div style={st.summaryLabel}>Labor Cost</div>
+          </div>
+        )}
+        {laborMetrics && laborMetrics.costPerScan > 0 && (
+          <div style={st.summaryItem}>
+            <div style={{ ...st.summaryValue, color: '#34D399' }}>${laborMetrics.costPerScan.toFixed(3)}</div>
+            <div style={st.summaryLabel}>$ / Scan</div>
           </div>
         )}
         <div style={st.summaryItem}>
@@ -1013,6 +1055,7 @@ export default function Dashboard() {
           ['hourly', '📊 Hourly'],
           ['excTrend', '📈 Exception Trend'],
           ['shifts', '⏱ Shifts'],
+          ['labor', '💵 Labor Cost'],
           ['bols', `🚛 BOLs (${bols.length})`],
         ].map(([key, label]) => (
           <button key={key} onClick={() => setShowPanel(showPanel === key ? '' : key)}
@@ -1138,6 +1181,82 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Shifts panel */}
+      {showPanel === 'labor' && (
+        <div style={st.panel}>
+          {laborMetrics ? (
+            <div style={{ padding: 16 }}>
+              <div style={{ marginBottom: 12, color: '#888', fontSize: 12 }}>
+                Estimated over {laborMetrics.numDays} working day{laborMetrics.numDays === 1 ? '' : 's'} · Scanners $15/hr · Floaters $15/hr · Runners $15/hr · Supervisor $17/hr
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', color: '#ddd', fontSize: 14 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #333', color: '#888', fontSize: 12, textAlign: 'left' }}>
+                    <th style={{ padding: '8px 12px' }}>Role</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Headcount</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Hours</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Rate</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid #222' }}>
+                    <td style={{ padding: '8px 12px' }}>Scanners <span style={{ color: '#888', fontSize: 11 }}>(actual shifts)</span></td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{job?.meta?.pods?.length || 0}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.totalHours}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$15</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.scannerCost.toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #222' }}>
+                    <td style={{ padding: '8px 12px' }}>Floaters</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{job?.meta?.floaters || 0}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.floaterHours.toFixed(1)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$15</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.floaterCost.toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #222' }}>
+                    <td style={{ padding: '8px 12px' }}>Runners</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{job?.meta?.runners || 0}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.runnerHours.toFixed(1)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$15</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.runnerCost.toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #222' }}>
+                    <td style={{ padding: '8px 12px' }}>Supervisor</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>1</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.supervisorHours.toFixed(1)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$17</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.supervisorCost.toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderTop: '2px solid #444', backgroundColor: '#0f1f15' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 700 }}>Total</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{(job?.meta?.pods?.length || 0) + (job?.meta?.floaters || 0) + (job?.meta?.runners || 0) + 1}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{laborMetrics.totalLaborHours.toFixed(1)}</td>
+                    <td style={{ padding: '10px 12px' }} />
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: '#34D399', fontSize: 16 }}>${laborMetrics.totalCost.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 160, padding: 12, backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #222' }}>
+                  <div style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Cost / Scan</div>
+                  <div style={{ color: '#34D399', fontSize: 22, fontWeight: 800, fontFamily: 'monospace', marginTop: 4 }}>${laborMetrics.costPerScan.toFixed(3)}</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 160, padding: 12, backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #222' }}>
+                  <div style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total Scans</div>
+                  <div style={{ color: '#fff', fontSize: 22, fontWeight: 800, fontFamily: 'monospace', marginTop: 4 }}>{allScans.length.toLocaleString()}</div>
+                </div>
+              </div>
+              <p style={{ color: '#666', fontSize: 11, marginTop: 12, fontStyle: 'italic' }}>
+                Note: Floater, runner, and supervisor hours are estimated as headcount × {job?.meta?.workingHours || 8} working hours × {laborMetrics.numDays} day{laborMetrics.numDays === 1 ? '' : 's'}. Scanner hours are pulled from actual shift sessions.
+              </p>
+            </div>
+          ) : (
+            <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No shifts recorded yet — labor cost will appear once scanners clock in.</p>
+          )}
         </div>
       )}
 
