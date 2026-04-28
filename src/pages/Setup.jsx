@@ -83,6 +83,26 @@ export default function Setup() {
   const [customerPOUploads, setCustomerPOUploads] = useState([]);
   const [selectedUploadId, setSelectedUploadId] = useState(null);
 
+  // Job queue
+  const [queuedJobs, setQueuedJobs] = useState([]);
+  const [showQueueForm, setShowQueueForm] = useState(false);
+  const [qJobName, setQJobName] = useState('');
+  const [qMode, setQMode] = useState('single');
+  const [qDailyTarget, setQDailyTarget] = useState(22000);
+  const [qWorkingHours, setQWorkingHours] = useState(8);
+  const [qPods, setQPods] = useState(DEFAULT_PODS);
+  const [qPodInput, setQPodInput] = useState(DEFAULT_PODS.join(', '));
+  const [qLocation, setQLocation] = useState('');
+  const [qManifest, setQManifest] = useState(null);
+  const [qPoNames, setQPoNames] = useState([]);
+  const [qPoColors, setQPoColors] = useState({});
+  const [qFileError, setQFileError] = useState('');
+  const [qParsing, setQParsing] = useState(false);
+  const [qParseProgress, setQParseProgress] = useState(0);
+  const [qManifestPreview, setQManifestPreview] = useState([]);
+  const [qSaving, setQSaving] = useState(false);
+  const [qSelectedUploadId, setQSelectedUploadId] = useState(null);
+
   useEffect(() => {
     (async () => {
       try {
@@ -105,9 +125,12 @@ export default function Setup() {
           setBrandSubtitle(brandDoc.data().subtitle || '');
           setBrandLogo(brandDoc.data().logo || '');
         }
-        // Load past (closed) jobs
-        const pastSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
-        setPastJobs(pastSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        // Load past (closed) and queued jobs
+        const otherSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
+        const others = otherSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setQueuedJobs(others.filter((j) => j.meta.queued)
+          .sort((a, b) => (a.meta.queueOrder || 0) - (b.meta.queueOrder || 0)));
+        setPastJobs(others.filter((j) => !j.meta.queued)
           .sort((a, b) => (b.meta.closedAt?.toDate?.()?.getTime() || 0) - (a.meta.closedAt?.toDate?.()?.getTime() || 0)));
         // Load alert thresholds
         const alertDoc = await getDoc(doc(db, 'config', 'alerts'));
@@ -220,15 +243,120 @@ export default function Setup() {
 
   const handleCloseJob = async () => {
     if (!activeJob) return;
-    if (!window.confirm('Close this job? Pods will no longer be able to scan.')) return;
+    const nextQueued = queuedJobs[0];
+    const msg = nextQueued
+      ? `Close this job? The next queued job "${nextQueued.meta.name}" will be activated.`
+      : 'Close this job? Pods will no longer be able to scan.';
+    if (!window.confirm(msg)) return;
     try {
       await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.active': false, 'meta.closedAt': serverTimestamp() });
       for (const podId of activeJob.meta.pods || []) {
         try { await setDoc(doc(db, 'presence', podId), { podId, scanners: [], operator: '', status: 'offline', online: false, lastSeen: serverTimestamp() }); } catch {}
       }
       logAudit('job_closed', { jobId: activeJob.id });
-      setActiveJob(null); setEditMode(false);
+
+      // Auto-activate next queued job
+      if (nextQueued) {
+        await updateDoc(doc(db, 'jobs', nextQueued.id), { 'meta.active': true, 'meta.queued': false, 'meta.activatedAt': serverTimestamp() });
+        logAudit('job_activated_from_queue', { jobId: nextQueued.id, name: nextQueued.meta.name });
+        setActiveJob({ ...nextQueued, meta: { ...nextQueued.meta, active: true, queued: false } });
+        setEditTarget(nextQueued.meta.dailyTarget);
+        setEditHours(nextQueued.meta.workingHours);
+        setEditPods(nextQueued.meta.pods?.join(', ') || '');
+        setQueuedJobs((prev) => prev.slice(1));
+      } else {
+        setActiveJob(null);
+      }
+      setEditMode(false);
     } catch (err) { alert('Failed to close job: ' + err.message); }
+  };
+
+  const handleQueueJob = async () => {
+    if (!qJobName.trim()) return alert('Enter a job name');
+    if (qMode === 'multi' && !qManifest) return alert('Upload a manifest for Multi-PO mode');
+    if (qPods.length === 0) return alert('Configure at least one pod');
+    const target = Number(qDailyTarget); const hours = Number(qWorkingHours);
+    if (!target || target <= 0) return alert('Enter a valid daily target');
+    if (!hours || hours <= 0 || hours > 24) return alert('Enter valid working hours (1-24)');
+
+    setQSaving(true);
+    try {
+      const jobId = `job_${Date.now()}`;
+      await setDoc(doc(db, 'jobs', jobId), {
+        meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false,
+          queued: true, queueOrder: Date.now(), location: qLocation.trim() || '', createdAt: serverTimestamp() },
+        poColors: qMode === 'multi' ? qPoColors : {},
+      });
+      if (qMode === 'multi' && qManifest) {
+        const BATCH_SIZE = 400; const entries = Object.entries(qManifest);
+        for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+          const batch = writeBatch(db);
+          entries.slice(i, i + BATCH_SIZE).forEach(([isbn, poName]) => {
+            batch.set(doc(db, 'jobs', jobId, 'manifest', isbn), { poName });
+          });
+          await batch.commit();
+        }
+        if (qSelectedUploadId) {
+          await updateDoc(doc(db, 'po-uploads', qSelectedUploadId), { status: 'queued', jobId, addedAt: serverTimestamp() });
+          setQSelectedUploadId(null);
+        }
+      }
+      logAudit('job_queued', { jobId, name: qJobName.trim(), mode: qMode });
+      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {} };
+      setQueuedJobs((prev) => [...prev, newJob]);
+      // Reset form
+      setQJobName(''); setQMode('single'); setQDailyTarget(22000); setQWorkingHours(8);
+      setQPods(DEFAULT_PODS); setQPodInput(DEFAULT_PODS.join(', ')); setQLocation('');
+      setQManifest(null); setQPoNames([]); setQPoColors({}); setQManifestPreview([]);
+      setQFileError(''); setShowQueueForm(false);
+    } catch (err) { alert('Failed to queue job: ' + err.message); }
+    setQSaving(false);
+  };
+
+  const handleRemoveFromQueue = async (jobId) => {
+    if (!window.confirm('Remove this job from the queue? The job data will be deleted.')) return;
+    try {
+      const mfSnap = await getDocs(collection(db, 'jobs', jobId, 'manifest'));
+      if (mfSnap.size > 0) {
+        let batch = writeBatch(db); let c = 0;
+        for (const d of mfSnap.docs) { batch.delete(d.ref); c++; if (c % 400 === 0) { await batch.commit(); batch = writeBatch(db); } }
+        await batch.commit();
+      }
+      await deleteDoc(doc(db, 'jobs', jobId));
+      logAudit('job_removed_from_queue', { jobId });
+      setQueuedJobs((prev) => prev.filter((j) => j.id !== jobId));
+    } catch (err) { alert('Failed to remove: ' + err.message); }
+  };
+
+  const handleQueueFileUpload = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    setQFileError(''); setQSelectedUploadId(null); setQParsing(true); setQParseProgress(0);
+    try {
+      const result = await parseManifestFile(file, (pct) => setQParseProgress(pct));
+      setQManifest(result.manifest); setQPoNames(result.poNames);
+      setQManifestPreview(Object.entries(result.manifest).slice(0, 50));
+      const colors = {};
+      result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
+      setQPoColors(colors); setQParseProgress(100);
+    } catch (err) { setQFileError(err.message); setQManifest(null); setQPoNames([]); setQPoColors({}); }
+    setQParsing(false);
+  };
+
+  const useCustomerUploadForQueue = async (upload) => {
+    setQFileError('');
+    try {
+      const snap = await getDocs(collection(db, 'po-uploads', upload.id, 'manifest'));
+      const man = {};
+      snap.forEach((d) => { man[d.id] = d.data().poName; });
+      setQManifest(man); setQPoNames(upload.poNames || []);
+      setQManifestPreview(Object.entries(man).slice(0, 50));
+      const colors = {};
+      const savedColors = upload.poColors || {};
+      (upload.poNames || []).forEach((po, i) => {
+        colors[po] = savedColors[po] || DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex;
+      });
+      setQPoColors(colors); setQSelectedUploadId(upload.id);
+    } catch (err) { setQFileError('Failed to load PO upload: ' + err.message); }
   };
 
   const handleDeleteJob = async () => {
@@ -613,6 +741,124 @@ export default function Setup() {
               style={{ ...s.primaryBtn, marginTop: 8 }}>{customerPwSaved ? '✓ Saved!' : 'Save Customer Credentials'}</button>
           </div>
         )}
+
+        {/* ─── Job Queue ─── */}
+        <div style={{ marginTop: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ color: '#888', fontSize: 18, fontWeight: 700, margin: 0 }}>Job Queue</h2>
+            <button onClick={() => setShowQueueForm(!showQueueForm)}
+              style={{ ...s.secondaryBtn, borderColor: '#22C55E', color: '#22C55E' }}>
+              {showQueueForm ? 'Cancel' : '+ Queue Next Job'}
+            </button>
+          </div>
+          {queuedJobs.length === 0 && !showQueueForm && (
+            <p style={{ color: '#666', fontSize: 14 }}>No jobs queued. Queue a job to auto-start when the current one closes.</p>
+          )}
+          {queuedJobs.map((qj, idx) => (
+            <div key={qj.id} style={{ ...s.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ color: '#555', fontSize: 20, fontWeight: 800, fontFamily: 'monospace' }}>#{idx + 1}</span>
+                <div>
+                  <div style={{ color: '#ccc', fontSize: 16, fontWeight: 700 }}>{qj.meta.name}</div>
+                  <div style={{ color: '#666', fontSize: 13, marginTop: 2 }}>
+                    {qj.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'} · {qj.meta.pods?.length || 0} pods · Target: {(qj.meta.dailyTarget || 22000).toLocaleString()}
+                    {qj.meta.location ? ` · ${qj.meta.location}` : ''}
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => handleRemoveFromQueue(qj.id)}
+                style={{ ...s.dangerBtn, fontSize: 13, padding: '8px 16px' }}>Remove</button>
+            </div>
+          ))}
+          {showQueueForm && (
+            <div style={s.card}>
+              <h3 style={{ color: '#fff', fontSize: 16, fontWeight: 700, margin: '0 0 12px' }}>Queue a New Job</h3>
+              <label style={s.label}>Job Name / PO Label</label>
+              <input type="text" value={qJobName} onChange={(e) => setQJobName(e.target.value)}
+                placeholder="e.g. PO-20261028" style={s.input} />
+
+              <label style={s.label}>Warehouse Location (optional)</label>
+              <input type="text" value={qLocation} onChange={(e) => setQLocation(e.target.value)}
+                placeholder="e.g. Building A, Bay 3" style={s.input} />
+
+              <label style={s.label}>Mode</label>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button onClick={() => setQMode('single')} style={qMode === 'single' ? s.activeToggle : s.toggle}>Single PO</button>
+                <button onClick={() => setQMode('multi')} style={qMode === 'multi' ? s.activeToggle : s.toggle}>Multi-PO</button>
+              </div>
+
+              {qMode === 'multi' && (
+                <div style={{ marginTop: 16 }}>
+                  <label style={s.label}>Upload Manifest (CSV or XLSX — columns: ISBN, PO)</label>
+                  <input type="file" accept=".csv,.xlsx,.xls" onChange={handleQueueFileUpload} style={s.input} disabled={qParsing} />
+                  {qParsing && (
+                    <div style={{ marginTop: 8 }}>
+                      <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>Parsing manifest... {qParseProgress}%</span>
+                      <div style={{ height: 6, backgroundColor: '#222', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}>
+                        <div style={{ height: '100%', width: `${qParseProgress}%`, backgroundColor: '#3B82F6', borderRadius: 3, transition: 'width 0.2s' }} />
+                      </div>
+                    </div>
+                  )}
+                  {customerPOUploads.filter((u) => u.status === 'pending').length > 0 && (
+                    <div style={{ marginTop: 12, padding: 12, backgroundColor: '#1a1a2e', borderRadius: 8, border: '1px solid #3B82F6' }}>
+                      <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>📦 Customer-Uploaded POs Available</p>
+                      {customerPOUploads.filter((u) => u.status === 'pending').map((up) => (
+                        <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #333' }}>
+                          <div>
+                            <span style={{ color: '#ccc', fontSize: 13 }}>{(up.poNames || []).join(', ')}</span>
+                            <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>({(up.isbnCount || 0).toLocaleString()} ISBNs)</span>
+                          </div>
+                          <button onClick={() => useCustomerUploadForQueue(up)}
+                            style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6',
+                              backgroundColor: qSelectedUploadId === up.id ? '#1E40AF' : 'transparent',
+                              color: qSelectedUploadId === up.id ? '#fff' : '#3B82F6',
+                              fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                            {qSelectedUploadId === up.id ? '✓ Selected' : 'Use This'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {qFileError && <p style={{ color: '#EF4444', marginTop: 4 }}>{qFileError}</p>}
+                  {qManifest && (
+                    <p style={{ color: '#22C55E', marginTop: 4 }}>
+                      ✓ Loaded {Object.keys(qManifest).length.toLocaleString()} ISBNs across {qPoNames.length} POs
+                    </p>
+                  )}
+                  {qPoNames.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <label style={s.label}>PO → Color Mapping</label>
+                      {qPoNames.map((po) => (
+                        <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                          <span style={{ ...s.text, minWidth: 120, fontSize: 14 }}>{po}</span>
+                          <select value={qPoColors[po] || DEFAULT_COLORS[0].hex}
+                            onChange={(e) => setQPoColors({ ...qPoColors, [po]: e.target.value })} style={{ ...s.input, flex: 1 }}>
+                            {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                          </select>
+                          <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: qPoColors[po] || DEFAULT_COLORS[0].hex, border: '1px solid #555', flexShrink: 0 }} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <label style={{ ...s.label, marginTop: 16 }}>Daily Target</label>
+              <input type="number" value={qDailyTarget} onChange={(e) => setQDailyTarget(e.target.value)} style={s.input} />
+              <label style={s.label}>Working Hours Per Day</label>
+              <input type="number" value={qWorkingHours} onChange={(e) => setQWorkingHours(e.target.value)} min={1} max={24} style={s.input} />
+              <label style={s.label}>Pod IDs (comma-separated)</label>
+              <input type="text" value={qPodInput} onChange={(e) => { setQPodInput(e.target.value); setQPods([...new Set(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))]); }}
+                placeholder="A, B, C, D, E" style={s.input} />
+              <p style={{ color: '#999', fontSize: 14, marginTop: 4 }}>{qPods.length} unique pod(s): {qPods.join(', ')}</p>
+
+              <button onClick={handleQueueJob} disabled={qSaving}
+                style={{ ...s.primaryBtn, marginTop: 24, opacity: qSaving ? 0.6 : 1, backgroundColor: '#3B82F6' }}>
+                {qSaving ? 'Queuing...' : 'Add to Queue'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   }

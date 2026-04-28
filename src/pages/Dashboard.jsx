@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [showBilling, setShowBilling] = useState(false);
   const [pendingPOUploads, setPendingPOUploads] = useState([]);
   const [addingPO, setAddingPO] = useState(null);
+  const [queuedJobs, setQueuedJobs] = useState([]);
   const [billingWeek, setBillingWeek] = useState(() => {
     // Default to last Monday
     const d = new Date(); d.setHours(0, 0, 0, 0);
@@ -87,6 +88,15 @@ export default function Dashboard() {
   useEffect(() => {
     const unsub = onSnapshot(query(collection(db, 'po-uploads'), where('status', '==', 'pending')), (snap) => {
       setPendingPOUploads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, []);
+
+  // Load queued jobs
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, 'jobs'), where('meta.queued', '==', true)), (snap) => {
+      setQueuedJobs(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.meta.queueOrder || 0) - (b.meta.queueOrder || 0)));
     });
     return unsub;
   }, []);
@@ -746,8 +756,8 @@ export default function Dashboard() {
 
       {/* Pending PO Uploads — top of dashboard */}
       {pendingPOUploads.length > 0 && (
-        <div style={{ backgroundColor: '#1a1a2e', border: '2px solid #3B82F6', borderRadius: 10, padding: 16, marginBottom: 16, animation: 'pulse 2s infinite' }}>
-          <p style={{ color: '#93C5FD', fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>
+        <div style={{ backgroundColor: '#1a1a2e', border: '1px solid #3B82F6', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>
             📦 {pendingPOUploads.length} Customer PO Upload{pendingPOUploads.length > 1 ? 's' : ''} Pending
           </p>
           {pendingPOUploads.map((up) => (
@@ -765,6 +775,15 @@ export default function Dashboard() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Queued jobs indicator */}
+      {queuedJobs.length > 0 && (
+        <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <p style={{ color: '#888', fontSize: 13, fontWeight: 600, margin: 0 }}>
+            🔜 Up Next: {queuedJobs.map((j) => j.meta.name).join(' → ')} ({queuedJobs.length} queued)
+          </p>
         </div>
       )}
 
