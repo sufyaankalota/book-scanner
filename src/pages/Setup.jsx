@@ -601,22 +601,72 @@ export default function Setup() {
 
   const getQrUrl = (podId) => {
     const podUrl = getPodUrl(podId);
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(podUrl)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=0&data=${encodeURIComponent(podUrl)}`;
   };
 
   const printQrCodes = () => {
     const podIds = activeJob?.meta?.pods || [];
-    const html = podIds.map((id) => `
-      <div style="text-align:center;page-break-inside:avoid;margin:24px 0">
-        <h2 style="font-size:28px;margin-bottom:8px">Pod ${id}</h2>
-        <img src="${getQrUrl(id)}" width="200" height="200" />
-        <p style="font-size:12px;color:#888">${getPodUrl(id)}</p>
+    const labels = podIds.map((id) => `
+      <div class="label">
+        <div class="pod-letter">${id}</div>
+        <div class="pod-sub">POD</div>
+        <div class="qr-wrap">
+          <img class="qr" src="${getQrUrl(id)}" />
+        </div>
+        <div class="instr">Scan to open pod station</div>
+        <div class="url">${getPodUrl(id)}</div>
       </div>
     `).join('');
+    const css = `
+      @page { size: 4in 6in; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #000; background: #fff; }
+      .label {
+        width: 4in; height: 6in; padding: 0.18in 0.18in 0.12in;
+        page-break-after: always; break-after: page;
+        display: flex; flex-direction: column; align-items: center;
+        text-align: center; border: 0;
+      }
+      .label:last-child { page-break-after: auto; break-after: auto; }
+      .pod-letter {
+        font-size: 1.55in; line-height: 1; font-weight: 900;
+        letter-spacing: -0.04in; margin-top: 0.04in;
+      }
+      .pod-sub {
+        font-size: 0.22in; font-weight: 800; letter-spacing: 0.08in;
+        margin-top: -0.06in; margin-bottom: 0.08in; color: #000;
+      }
+      .qr-wrap {
+        width: 2.6in; height: 2.6in;
+        padding: 0.08in; background: #fff;
+        border: 3px solid #000; border-radius: 8px;
+      }
+      .qr { width: 100%; height: 100%; display: block; }
+      .instr {
+        margin-top: 0.12in; font-size: 0.18in; font-weight: 700;
+      }
+      .url {
+        margin-top: 0.06in; font-size: 0.10in;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        color: #555; word-break: break-all; padding: 0 0.1in;
+      }
+      .controls { padding: 16px; background: #f5f5f5; border-bottom: 1px solid #ddd; text-align: center; font-family: -apple-system, sans-serif; }
+      .controls button { padding: 10px 24px; font-size: 14px; font-weight: 700; border-radius: 6px; border: none; background: #2563eb; color: #fff; cursor: pointer; }
+      @media print { .controls { display: none; } }
+    `;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pod QR Labels (4×6)</title><style>${css}</style></head>
+      <body>
+        <div class="controls">
+          <strong>4×6 Thermal Label Format</strong> — ${podIds.length} label${podIds.length === 1 ? '' : 's'}.
+          In your printer dialog, set paper size to <em>4×6 in</em> and margins to <em>None</em>.
+          &nbsp;<button onclick="window.print()">🖨 Print Labels</button>
+        </div>
+        ${labels}
+      </body></html>`;
     const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>Pod QR Codes</title></head><body style="font-family:sans-serif">${html}</body></html>`);
+    w.document.write(html);
     w.document.close();
-    w.print();
   };
 
   if (loading) return <div style={s.container}><p style={s.text}>Loading...</p></div>;
@@ -755,7 +805,7 @@ export default function Setup() {
 
         {showSection === 'qr' && (
           <div style={s.card}>
-            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Print QR codes for each pod. Operators can scan to open their pod page.</p>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>Print QR codes for each pod on a 4×6" thermal label. Each label shows the pod letter prominently for quick morning setup, plus the QR code operators scan to open their pod page.</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'center' }}>
               {(activeJob?.meta?.pods || []).map((podId) => (
                 <div key={podId} style={{ textAlign: 'center' }}>
@@ -767,7 +817,7 @@ export default function Setup() {
               ))}
             </div>
             <button onClick={printQrCodes}
-              style={{ ...s.primaryBtn, marginTop: 16 }}>🖨 Print All QR Codes</button>
+              style={{ ...s.primaryBtn, marginTop: 16 }}>🖨 Print 4×6 Thermal Labels</button>
           </div>
         )}
 
