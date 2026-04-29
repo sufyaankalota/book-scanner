@@ -36,7 +36,7 @@ const AUTO_CLOSE_SHIFT_MS = 30 * 60 * 1000; // 30 minutes idle → auto-close sh
 
 export default function Pod() {
   const [searchParams] = useSearchParams();
-  const podId = searchParams.get('id') || 'A';
+  const podId = (searchParams.get('id') || 'A').trim().toUpperCase();
 
   const savedState = (() => {
     try { const s = sessionStorage.getItem(`pod_${podId}_state`); return s ? JSON.parse(s) : {}; } catch { return {}; }

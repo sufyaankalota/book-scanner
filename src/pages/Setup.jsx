@@ -230,7 +230,7 @@ export default function Setup() {
 
   const handlePodInputChange = (val) => {
     setPodInput(val);
-    setPods([...new Set(val.split(',').map((s) => s.trim()).filter(Boolean))]);
+    setPods([...new Set(val.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))]);
   };
 
   const handleActivateJob = async () => {
@@ -500,7 +500,7 @@ export default function Setup() {
     const target = Number(editTarget); const hours = Number(editHours);
     if (!target || target <= 0) errs.editTarget = 'Enter a valid daily target';
     if (!hours || hours <= 0 || hours > 24) errs.editHours = 'Enter valid working hours';
-    const newPods = [...new Set(editPods.split(',').map((s) => s.trim()).filter(Boolean))];
+    const newPods = [...new Set(editPods.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))];
     if (newPods.length === 0) errs.editPods = 'Need at least one pod';
     setFieldError(errs);
     if (Object.keys(errs).length) return;
@@ -976,7 +976,7 @@ export default function Setup() {
               <input type="number" value={qWorkingHours} onChange={(e) => { setQWorkingHours(e.target.value); setFieldError((p) => ({ ...p, qWorkingHours: undefined })); }} min={1} max={24} style={s.input} />
               <FieldError name="qWorkingHours" />
               <label style={s.label}>Pod IDs (comma-separated) <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(1 scanner per pod)</span></label>
-              <input type="text" value={qPodInput} onChange={(e) => { setQPodInput(e.target.value); setQPods([...new Set(e.target.value.split(',').map((x) => x.trim()).filter(Boolean))]); setFieldError((p) => ({ ...p, qPods: undefined })); }}
+              <input type="text" value={qPodInput} onChange={(e) => { setQPodInput(e.target.value); setQPods([...new Set(e.target.value.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean))]); setFieldError((p) => ({ ...p, qPods: undefined })); }}
                 placeholder="A, B, C, D, E, F, G, H, I, J" style={s.input} />
               <FieldError name="qPods" />
               <p style={{ color: '#999', fontSize: 14, marginTop: 4 }}>{qPods.length} unique pod(s): {qPods.join(', ')}</p>
