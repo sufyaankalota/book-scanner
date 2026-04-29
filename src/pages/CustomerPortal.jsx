@@ -587,7 +587,7 @@ export default function CustomerPortal() {
   .print-btn { position: fixed; top: 16px; right: 16px; padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; z-index: 100; }
   @media print { .print-btn { display: none; } .exc img { width: 100px; height: 100px; } }
 </style></head><body>
-<button class="print-btn" onclick="window.print()">?? Print / Save PDF</button>
+<button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button>
 <h1>Exception Photo Report</h1>
 <p class="meta">${jobName} – ${dateLabel} – Generated ${new Date().toLocaleString()}</p>
 <div class="summary">
@@ -604,7 +604,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
     <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' – Pod ' + exc.podId : ''}</div>
   </div>
 </div>`).join('\n')}
-<div class="disclaimer">?? DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
+<div class="disclaimer">⚠️ DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
 </body></html>`;
 
     const w = window.open('', '_blank');
@@ -711,7 +711,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
       {job && totalProcessed > 0 && (
         <div style={{ ...st.card, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ ...st.cardTitle, marginBottom: 0 }}>?? Job Progress</h3>
+            <h3 style={{ ...st.cardTitle, marginBottom: 0 }}>📊 Job Progress</h3>
             <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
               {jobProgress.totalScanned.toLocaleString()} scanned
               {jobProgress.totalExpected ? ` / ${jobProgress.totalExpected.toLocaleString()} expected (${jobProgress.pct}%)` : ''}
@@ -823,7 +823,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
               <button onClick={() => openPhotoReport(null)}
                 style={{ ...st.smallBtn, padding: '10px 18px', borderColor: '#7c3aed', color: '#a78bfa', fontSize: 13 }}>
-                ?? Photo Report (All Dates)
+                📷 Photo Report (All Dates)
               </button>
             </div>
           )}
@@ -841,7 +841,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   {excCount > 0 && <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{excCount} exception{excCount > 1 ? 's' : ''}</span>}
                   {manualCount > 0 && <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>{manualCount} manual</span>}
                   <button onClick={() => exportDailyExceptions(date)} style={st.smallBtn}>Export</button>
-                  <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>?? Photos</button>
+                  <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>📷 Photos</button>
                 </div>
               </div>
               {excs.map((exc, i) => (
@@ -913,10 +913,10 @@ ${allExcs.map((exc, i) => `<div class="exc">
 
           <div style={st.card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={st.cardTitle}>?? Weekly Billing Reports</h3>
+              <h3 style={st.cardTitle}>💰 Weekly Billing Reports</h3>
               <button onClick={() => setShowArchived(!showArchived)}
                 style={{ ...st.smallBtn, color: showArchived ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
-                {showArchived ? '?? Hide Archived' : '?? Show Archived'}
+                {showArchived ? '🗄 Hide Archived' : '📁 Show Archived'}
               </button>
             </div>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
@@ -950,15 +950,15 @@ ${allExcs.map((exc, i) => `<div class="exc">
                           downloadBlob(bytes, report.fileName);
                         } catch { toast('Download failed', 'error'); }
                       }} style={{ ...st.smallBtn, padding: '8px 20px' }}>
-                        ?? Download
+                        📥 Download
                       </button>
                       <button onClick={() => updateDoc(doc(db, 'billing-reports', report.id), { archived: !report.archived })}
                         style={{ ...st.smallBtn, padding: '8px 12px' }}>
-                        {report.archived ? '?? Unarchive' : '?? Archive'}
+                        {report.archived ? '↩ Unarchive' : '📦 Archive'}
                       </button>
                       <button onClick={() => { if (confirm('Delete this report permanently?')) deleteDoc(doc(db, 'billing-reports', report.id)); }}
                         style={{ ...st.smallBtn, padding: '8px 12px', color: '#EF4444', borderColor: '#7f1d1d' }}>
-                        ??
+                        🗑
                       </button>
                     </div>
                   </div>
@@ -994,7 +994,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <button onClick={() => setReportsShowAll(!reportsShowAll)}
               style={{ ...st.smallBtn, color: reportsShowAll ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
-              {reportsShowAll ? '?? Show Recent Only' : '?? Show All Dates'}
+              {reportsShowAll ? '📅 Show Recent Only' : '📆 Show All Dates'}
             </button>
           </div>
           <div style={st.card}>
@@ -1159,7 +1159,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                           <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
                             backgroundColor: up.status === 'added' ? '#166534' : '#92400e',
                             color: up.status === 'added' ? '#4ADE80' : '#FCD34D' }}>
-                            {up.status === 'added' ? '? Added to Job' : '? Pending'}
+                            {up.status === 'added' ? '✅ Added to Job' : '⏳ Pending'}
                           </span>
                         </td>
                         <td style={{ ...st.td, textAlign: 'right' }}>
