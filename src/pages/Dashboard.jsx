@@ -152,7 +152,8 @@ export default function Dashboard() {
       const now = Date.now();
       const fifteenMinAgo = now - 15 * 60 * 1000;
       for (const podId of job.meta.pods || []) {
-        const podScans = scans.filter((s) => s.podId === podId);
+        const podIdU = String(podId).toUpperCase();
+        const podScans = scans.filter((s) => String(s.podId || '').toUpperCase() === podIdU);
         const standardScans = podScans.filter((s) => s.type === 'standard');
         const autoExc = podScans.filter((s) => s.type === 'exception' && s.source !== 'manual');
         const manualScans = podScans.filter((s) => s.source === 'manual');
@@ -177,7 +178,8 @@ export default function Dashboard() {
       if (notificationsEnabled) {
         for (const podId of job.meta.pods || []) {
           const pr = presenceRef.current[podId]; if (!pr?.online) continue;
-          const podScans = scans.filter((s) => s.podId === podId);
+          const podIdU = String(podId).toUpperCase();
+          const podScans = scans.filter((s) => String(s.podId || '').toUpperCase() === podIdU);
           const last = podScans.sort((a, b) => (b.timestamp?.toDate?.()?.getTime() || 0) - (a.timestamp?.toDate?.()?.getTime() || 0))[0];
           if (last) {
             const ts = last.timestamp?.toDate?.();
@@ -497,7 +499,7 @@ export default function Dashboard() {
         const end = s.endTime.toDate ? s.endTime.toDate() : new Date(s.endTime);
         totalHours += (end - start) / 3600000;
         days.add(start.toLocaleDateString());
-        if (s.podId) activePods.add(s.podId);
+        if (s.podId) activePods.add(String(s.podId).toUpperCase());
       }
     }
     const numDays = Math.max(days.size, 1);
