@@ -533,13 +533,8 @@ export default function Pod() {
     }
 
     if (job.meta.mode === 'single') {
-      if (isManual) {
-        playSuccessBeep();
-        flash('#22C55E', '✓ ' + t('scanSuccess') + ' — ' + t('manualBilled'), 2000);
-      } else {
-        playSuccessBeep();
-        flash('#22C55E', '✓ ' + t('scanSuccess'));
-      }
+      playSuccessBeep();
+      flash('#22C55E', '✓ ' + t('scanSuccess'));
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -564,13 +559,8 @@ export default function Pod() {
     }
     if (poName) {
       const color = job.poColors?.[poName] || '#22C55E';
-      if (isManual) {
-        playColorBeep(color);
-        flash(color, `${getColorName(color)} ${t('gaylord')} — ${t('manualBilled')}`, 2500);
-      } else {
-        playColorBeep(color);
-        flash(color, `${getColorName(color)} ${t('gaylord')}`);
-      }
+      playColorBeep(color);
+      flash(color, `${getColorName(color)} ${t('gaylord')}`);
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
