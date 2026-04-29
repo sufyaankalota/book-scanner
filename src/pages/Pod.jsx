@@ -300,7 +300,7 @@ export default function Pod() {
         if (presDoc.exists()) {
           const data = presDoc.data();
           const lastSeen = data.lastSeen?.toDate?.();
-          const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 60000);
+          const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 90000);
           if (data.online && isRecent && data.operator) setPodLocked(true);
         }
       } catch {}
@@ -340,7 +340,10 @@ export default function Pod() {
       }, { merge: true });
     };
     write();
-    const interval = setInterval(write, 15000);
+    const interval = setInterval(write, 10000);
+    const onVisible = () => { if (document.visibilityState === 'visible') write(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
 
     // Listen for supervisor messages
     const unsub = onSnapshot(presenceDocRef, (snap) => {
@@ -350,6 +353,8 @@ export default function Pod() {
 
     return () => {
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
       unsub();
       setDoc(presenceDocRef, { podId, scanners: [], operator: '', status: 'offline', online: false, lastSeen: serverTimestamp() }, { merge: true });
     };

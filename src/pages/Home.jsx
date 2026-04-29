@@ -52,7 +52,7 @@ export default function Home() {
       const evaluated = {};
       for (const [id, p] of Object.entries(presenceRaw)) {
         const lastSeen = p.lastSeen?.toDate?.();
-        const isRecent = lastSeen && Date.now() - lastSeen.getTime() < 60000;
+        const isRecent = lastSeen && Date.now() - lastSeen.getTime() < 90000;
         evaluated[id] = { ...p, online: p.online && isRecent };
       }
       setPresence(evaluated);

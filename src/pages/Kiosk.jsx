@@ -43,7 +43,7 @@ export default function Kiosk() {
       snap.forEach((d) => {
         const p = d.data();
         const lastSeen = p.lastSeen?.toDate?.();
-        const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 60000);
+        const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 90000);
         data[d.id] = { ...p, online: p.online && isRecent };
       });
       setPresence(data);
