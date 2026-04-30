@@ -1292,7 +1292,7 @@ export default function Pod() {
           📷 Camera Entry (AI)
         </button>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 15, padding: '14px 20px' }}>
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 14, padding: '14px 20px' }}>
           ⌨️ Type ISBN
         </button>
         <button onClick={() => setShowExceptionModal(true)}

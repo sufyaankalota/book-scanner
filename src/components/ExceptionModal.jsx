@@ -1,8 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { db } from '../firebase';
-import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { t } from '../utils/locale';
-import { createWorker } from 'tesseract.js';
 import BookCamera from './BookCamera';
 
 const EXCEPTION_REASON_KEYS = [
@@ -12,176 +9,22 @@ const EXCEPTION_REASON_KEYS = [
   'reasonOther',
 ];
 
-function generateToken() {
-  return 'pu_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-}
-
 export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) {
   const [reason, setReason] = useState('');
   const [title, setTitle] = useState('');
   const [step, setStep] = useState('reason');
   const [photoData, setPhotoData] = useState(null);
-  const [photoMode, setPhotoMode] = useState(null); // 'phone' | null
-  const [uploadToken, setUploadToken] = useState('');
-  const [phoneWaiting, setPhoneWaiting] = useState(false);
   const titleRef = useRef(null);
   const fileRef = useRef(null);
-  const [ocrStatus, setOcrStatus] = useState(''); // '' | 'reading' | 'done' | 'failed'
-  const ocrImageRef = useRef(null); // high-res image for OCR
   const [showAiCamera, setShowAiCamera] = useState(false);
   const [aiUsed, setAiUsed] = useState(false);
-
-  // Run OCR when photo is captured to auto-fill title
-  useEffect(() => {
-    if (!photoData || title.trim()) return; // skip if already has title
-    if (aiUsed) return; // AI already filled the title — skip tesseract
-    let cancelled = false;
-    setOcrStatus('reading');
-    (async () => {
-      try {
-        // Use the high-res image if available, otherwise use original photoData
-        const imgSrc = ocrImageRef.current || photoData;
-
-        // Upscale image for better OCR accuracy — Tesseract works best at 300+ DPI
-        const upscaled = await new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            const TARGET = 1600; // upscale to 1600px for OCR
-            const scale = Math.max(TARGET / img.width, TARGET / img.height, 1);
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.round(img.width * scale);
-            canvas.height = Math.round(img.height * scale);
-            const ctx = canvas.getContext('2d');
-            // Sharpen: use high-quality scaling
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            // Increase contrast for text detection
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const d = imageData.data;
-            for (let i = 0; i < d.length; i += 4) {
-              // Convert to grayscale
-              const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-              // Increase contrast
-              const enhanced = gray < 128 ? Math.max(0, gray * 0.7) : Math.min(255, gray * 1.2 + 30);
-              d[i] = d[i + 1] = d[i + 2] = enhanced;
-            }
-            ctx.putImageData(imageData, 0, 0);
-            resolve(canvas.toDataURL('image/png'));
-          };
-          img.onerror = () => resolve(imgSrc); // fallback to original
-          img.src = imgSrc;
-        });
-
-        const worker = await createWorker('eng');
-        let data;
-        try {
-          ({ data } = await worker.recognize(upscaled));
-        } finally {
-          try { await worker.terminate(); } catch {}
-        }
-        if (cancelled) return;
-
-        // Extract best title candidate from OCR results
-        // Book titles are typically the largest text, often in the top half of the cover
-        const lines = (data.lines || []).filter((l) => l.words && l.words.length > 0);
-        if (lines.length > 0) {
-          const scored = lines.map((line, idx) => {
-            const text = line.text.trim()
-              .replace(/[|_~`{}[\]]/g, '') // remove OCR noise characters
-              .replace(/\s{2,}/g, ' ')     // collapse multiple spaces
-              .trim();
-            if (text.length < 2 || text.length > 120) return null;
-
-            const avgConf = line.words.reduce((s, w) => s + w.confidence, 0) / line.words.length;
-            if (avgConf < 30) return null;
-
-            // Estimate font size from line bounding box height
-            const lineHeight = line.bbox ? (line.bbox.y1 - line.bbox.y0) : 20;
-
-            // Score: larger text (bigger font) + higher confidence + position bonus (top half)
-            const positionInPage = lines.length > 1 ? idx / (lines.length - 1) : 0.5;
-            const positionBonus = positionInPage < 0.6 ? 1.2 : 0.8; // favor top 60%
-            const lengthBonus = Math.min(text.length, 50) / 50; // favor reasonable length
-            const score = (avgConf / 100) * lineHeight * positionBonus * (0.5 + lengthBonus * 0.5);
-
-            return { text, score, conf: avgConf, height: lineHeight };
-          }).filter(Boolean).sort((a, b) => b.score - a.score);
-
-          if (scored.length > 0) {
-            setTitle(scored[0].text);
-            setOcrStatus('done');
-          } else {
-            setOcrStatus('failed');
-          }
-        } else {
-          // Fallback to raw text
-          const rawText = (data.text || '').trim();
-          const rawLines = rawText.split('\n').map((l) => l.trim()).filter((l) => l.length > 2 && l.length < 120);
-          if (rawLines.length > 0) {
-            setTitle(rawLines[0]);
-            setOcrStatus('done');
-          } else {
-            setOcrStatus('failed');
-          }
-        }
-      } catch {
-        if (!cancelled) setOcrStatus('failed');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [photoData]);
-
-  // Listen for phone upload
-  useEffect(() => {
-    if (!uploadToken || !phoneWaiting) return;
-    const unsub = onSnapshot(doc(db, 'photo-uploads', uploadToken), (snap) => {
-      if (snap.exists() && snap.data().photo) {
-        const rawPhoto = snap.data().photo;
-        // Store full-res for OCR, then compress for display/storage
-        ocrImageRef.current = rawPhoto;
-        // Compress for Firestore storage
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX = 400;
-          const scale = Math.min(MAX / img.width, MAX / img.height, 1);
-          canvas.width = img.width * scale;
-          canvas.height = img.height * scale;
-          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-          setPhotoData(canvas.toDataURL('image/jpeg', 0.6));
-        };
-        img.onerror = () => setPhotoData(rawPhoto);
-        img.src = rawPhoto;
-        setPhoneWaiting(false);
-        setPhotoMode(null);
-        deleteDoc(doc(db, 'photo-uploads', uploadToken)).catch(() => {});
-      }
-    });
-    return unsub;
-  }, [uploadToken, phoneWaiting]);
 
   const handleReasonSelect = (r) => {
     setReason(r);
     setStep('details');
+    // Open camera immediately as the default capture path
+    setShowAiCamera(true);
     setTimeout(() => titleRef.current?.focus(), 100);
-  };
-
-  // ─── Phone QR upload ───
-  const startPhoneUpload = () => {
-    const token = generateToken();
-    setUploadToken(token);
-    setPhoneWaiting(true);
-    setPhotoMode('phone');
-  };
-
-  const getUploadUrl = () => `${window.location.origin}/upload?t=${uploadToken}`;
-  const getQrUrl = () => `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getUploadUrl())}`;
-
-  const cancelPhoneUpload = () => {
-    setPhoneWaiting(false);
-    setPhotoMode(null);
-    if (uploadToken) deleteDoc(doc(db, 'photo-uploads', uploadToken)).catch(() => {});
   };
 
   // ─── File upload (fallback) ───
@@ -192,24 +35,14 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // High-res version for OCR (1200px max)
-        const ocrCanvas = document.createElement('canvas');
-        const OCR_MAX = 1200;
-        const ocrScale = Math.min(OCR_MAX / img.width, OCR_MAX / img.height, 1);
-        ocrCanvas.width = img.width * ocrScale;
-        ocrCanvas.height = img.height * ocrScale;
-        ocrCanvas.getContext('2d').drawImage(img, 0, 0, ocrCanvas.width, ocrCanvas.height);
-        ocrImageRef.current = ocrCanvas.toDataURL('image/png');
-
         // Compressed version for Firestore storage
         const canvas = document.createElement('canvas');
-        const MAX = 400;
+        const MAX = 480;
         const scale = Math.min(MAX / img.width, MAX / img.height, 1);
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         setPhotoData(canvas.toDataURL('image/jpeg', 0.6));
-        setPhotoMode(null);
       };
       img.src = reader.result;
     };
@@ -234,7 +67,6 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   };
 
   const handleClose = () => {
-    if (uploadToken) deleteDoc(doc(db, 'photo-uploads', uploadToken)).catch(() => {});
     onClose();
   };
 
@@ -282,16 +114,10 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
 
             <p style={styles.fieldLabel}>{t('bookTitle')}</p>
             <input ref={titleRef} type="text" value={title}
-              onChange={(e) => { setTitle(e.target.value); setOcrStatus(''); }} onKeyDown={handleKeyDown}
-              placeholder={ocrStatus === 'reading' ? 'Reading text from photo...' : t('bookTitlePlaceholder')} style={styles.input} />
-            {ocrStatus === 'reading' && (
-              <p style={{ color: '#93c5fd', fontSize: 12, marginTop: 4, marginBottom: 0 }}>🔍 Extracting title from photo...</p>
-            )}
-            {ocrStatus === 'done' && title.trim() && (
-              <p style={{ color: '#22C55E', fontSize: 12, marginTop: 4, marginBottom: 0 }}>✓ {aiUsed ? 'Title read by AI — photo saved for verification — you can edit it above' : 'Title extracted from photo — you can edit it above'}</p>
-            )}
-            {ocrStatus === 'failed' && (
-              <p style={{ color: '#F97316', fontSize: 12, marginTop: 4, marginBottom: 0 }}>Could not read title — please type it manually</p>
+              onChange={(e) => setTitle(e.target.value)} onKeyDown={handleKeyDown}
+              placeholder={t('bookTitlePlaceholder')} style={styles.input} />
+            {aiUsed && title.trim() && (
+              <p style={{ color: '#22C55E', fontSize: 12, marginTop: 4, marginBottom: 0 }}>✓ Title read by AI — photo saved for verification — you can edit it above</p>
             )}
 
             <p style={{ ...styles.fieldLabel, marginTop: 16, color: needsPhoto && !photoData ? '#F97316' : 'var(--text-secondary, #aaa)' }}>
@@ -299,26 +125,33 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             </p>
 
             {/* Photo preview */}
-            {photoData && !photoMode && (
+            {photoData && (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
                 <img src={photoData} alt="Exception photo"
                   style={{ width: 90, height: 90, borderRadius: 12, objectFit: 'cover', border: '2px solid #555' }} />
                 <span style={{ color: '#22C55E', fontSize: 15, fontWeight: 700 }}>✓ {t('photoCaptured')}</span>
-                <button onClick={() => { setPhotoData(null); setOcrStatus(''); }}
+                <button onClick={() => { setPhotoData(null); setAiUsed(false); }}
                   style={{ background: 'none', border: 'none', color: '#888', fontSize: 18, cursor: 'pointer', padding: 6 }}>✕</button>
               </div>
             )}
 
             {/* Photo capture buttons */}
-            {!photoMode && !photoData && (
+            {!photoData && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                 <button onClick={() => setShowAiCamera(true)}
                   style={{ ...styles.photoBtn, borderColor: '#3B82F6', color: '#93C5FD', fontWeight: 800 }}>
-                  📷 Auto-Read Title (AI)
+                  📷 Camera (AI)
                 </button>
-                <button onClick={startPhoneUpload} style={styles.photoBtn}>📱 {t('takePhotoPhone')}</button>
                 <button onClick={() => fileRef.current?.click()} style={styles.photoBtn}>📁 {t('uploadFile')}</button>
                 <input ref={fileRef} type="file" accept="image/*" onChange={handleFilePhoto} style={{ display: 'none' }} />
+              </div>
+            )}
+
+            {/* Retake options */}
+            {photoData && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button onClick={() => { setPhotoData(null); setAiUsed(false); setShowAiCamera(true); }} style={styles.photoBtnSmall}>📷 Retake (Camera)</button>
+                <button onClick={() => { setPhotoData(null); setAiUsed(false); fileRef.current?.click(); }} style={styles.photoBtnSmall}>📁 {t('retakeFile')}</button>
               </div>
             )}
 
@@ -331,44 +164,14 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
                   setShowAiCamera(false);
                   if (data?.title) {
                     setTitle(data.title);
-                    setOcrStatus('done');
                     setAiUsed(true);
-                    if (data.image) {
-                      // Save returned thumbnail so customer can verify the title
-                      setPhotoData(data.image);
-                    }
+                  }
+                  if (data?.image) {
+                    setPhotoData(data.image);
                   }
                 }}
                 onClose={() => setShowAiCamera(false)}
               />
-            )}
-
-            {/* Retake options */}
-            {photoData && !photoMode && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                <button onClick={() => { setPhotoData(null); startPhoneUpload(); }} style={styles.photoBtnSmall}>📱 {t('retakePhone')}</button>
-                <button onClick={() => { setPhotoData(null); fileRef.current?.click(); }} style={styles.photoBtnSmall}>📁 {t('retakeFile')}</button>
-              </div>
-            )}
-
-            {/* Phone QR upload */}
-            {photoMode === 'phone' && (
-              <div style={styles.phoneBox}>
-                <p style={{ color: '#ccc', fontSize: 14, marginBottom: 10, textAlign: 'center', fontWeight: 600 }}>
-                  {t('scanQrHint')}
-                </p>
-                <div style={{ textAlign: 'center', marginBottom: 8 }}>
-                  <img src={getQrUrl()} alt="Upload QR Code"
-                    style={{ width: 180, height: 180, borderRadius: 8, background: '#fff', padding: 8 }} />
-                </div>
-                {phoneWaiting && (
-                  <p style={{ color: '#EAB308', fontSize: 14, textAlign: 'center', fontWeight: 700 }}>
-                    ⏳ {t('waitingForPhoto')}
-                  </p>
-                )}
-                <button onClick={cancelPhoneUpload}
-                  style={{ ...styles.photoBtnSmall, width: '100%', marginTop: 8 }}>{t('cancel')}</button>
-              </div>
             )}
 
             <div style={styles.instructionBanner}>
