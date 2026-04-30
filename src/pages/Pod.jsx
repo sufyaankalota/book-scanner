@@ -1287,9 +1287,13 @@ export default function Pod() {
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
-        <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
+        <button onClick={() => setShowIsbnCamera(true)}
           style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15, padding: '14px 20px' }}>
-          ⌨️ {t('manualEntry')}
+          📷 Camera Entry (AI)
+        </button>
+        <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 15, padding: '14px 20px' }}>
+          ⌨️ Type ISBN
         </button>
         <button onClick={() => setShowExceptionModal(true)}
           style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '14px 20px', fontSize: 15 }}>

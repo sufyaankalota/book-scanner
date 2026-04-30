@@ -228,27 +228,31 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
     }
 
     setPhase('sending');
+    const t0 = performance.now();
+    console.log('[BookCamera] sending image to extractFromImage', { mode, podId, jobId, base64Length: base64.length });
     try {
       const call = httpsCallable(functions, 'extractFromImage');
       const resp = await call({ imageBase64: base64, mode, podId, jobId });
       const data = resp.data || {};
+      const ms = Math.round(performance.now() - t0);
+      console.log('[BookCamera] extractFromImage response', { ms, data });
       const ok = mode === 'isbn' ? !!data.isbn : !!data.title;
       if (!ok) {
+        // Persist a clear no-result message and pause auto-capture so the user can read it
         setStatusMsg(mode === 'isbn'
-          ? 'No ISBN found — adjust angle and try again'
-          : 'Could not read title — adjust angle and try again');
-        setPhase('watching');
-        setPausedDetection(false);
-        lastFrameRef.current = null;
-        stableSinceRef.current = null;
+          ? `No ISBN detected (⋅${ms}ms). Adjust the page — click “Try Again” below.`
+          : `Couldn’t read the title (⋅${ms}ms). Adjust the cover — click “Try Again” below.`);
+        setPhase('failed');
         return;
       }
       setPhase('done');
       onResult({ ...data, image: thumb });
     } catch (err) {
-      setStatusMsg(`AI request failed: ${err.message || err.code || 'unknown error'}`);
-      setPhase('watching');
-      setPausedDetection(false);
+      const ms = Math.round(performance.now() - t0);
+      console.error('[BookCamera] extractFromImage error', err);
+      const detail = err?.details ? JSON.stringify(err.details) : '';
+      setStatusMsg(`AI request failed (${ms}ms): ${err.code || ''} ${err.message || 'unknown'} ${detail}`.trim());
+      setPhase('failed');
     }
   }, [mode, podId, jobId, onResult]);
 
@@ -281,6 +285,25 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
         </div>
 
         <div style={st.statusBar}>{error || statusMsg}</div>
+
+        {phase === 'failed' && (
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            <button
+              onClick={() => {
+                lastFrameRef.current = null;
+                stableSinceRef.current = null;
+                setPausedDetection(false);
+                setPhase('watching');
+                setStatusMsg(mode === 'isbn'
+                  ? 'Hold the copyright page steady under the camera'
+                  : 'Hold the book cover steady under the camera');
+              }}
+              style={{ ...st.captureBtn, flex: 1, backgroundColor: '#22C55E' }}>
+              🔄 Try Again
+            </button>
+            <button onClick={onClose} style={st.cancelBtn}>Cancel</button>
+          </div>
+        )}
 
         <div style={st.controls}>
           {devices.length > 1 && (
