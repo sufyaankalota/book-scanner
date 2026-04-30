@@ -25,9 +25,13 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
   const streamRef = useRef(null);
 
   const [devices, setDevices] = useState([]);
-  const [deviceId, setDeviceId] = useState(() => {
-    try { return localStorage.getItem(`bookCamera_deviceId_${podId || ''}`) || ''; } catch { return ''; }
+  // Persisted preferences (per pod): preferred deviceId AND preferred label,
+  // since deviceIds can rotate when devices are unplugged/replugged.
+  const prefKey = `bookCamera_pref_${podId || ''}`;
+  const [pref, setPref] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(prefKey) || 'null') || {}; } catch { return {}; }
   });
+  const [deviceId, setDeviceId] = useState(pref.deviceId || '');
   const [error, setError] = useState('');
   const [phase, setPhase] = useState('starting'); // starting | watching | captured | sending | done | error
   const [statusMsg, setStatusMsg] = useState('Starting camera...');
@@ -35,35 +39,59 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
 
   // ─── Camera lifecycle ───
   const startStream = useCallback(async (id) => {
+    // Halt detection during the swap so we don't auto-capture a stale frame.
+    setPhase('starting');
+    setStatusMsg('Switching camera...');
+    lastFrameRef.current = null;
+    stableSinceRef.current = null;
     try {
       // Stop any existing stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-      const constraints = {
-        video: {
-          deviceId: id ? { exact: id } : undefined,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          facingMode: id ? undefined : 'environment',
-        },
-        audio: false,
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (videoRef.current) {
+        try { videoRef.current.srcObject = null; } catch {}
+      }
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: id ? { exact: id } : undefined,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            facingMode: id ? undefined : 'environment',
+          },
+          audio: false,
+        });
+      } catch (e) {
+        // Fall back to no exact deviceId if the requested one is gone
+        if (id) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+            audio: false,
+          });
+        } else { throw e; }
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Wait for video to actually have frames before resuming detection
+        await new Promise((resolve) => {
+          const v = videoRef.current;
+          if (!v) return resolve();
+          if (v.readyState >= 2) return resolve();
+          const onReady = () => { v.removeEventListener('loadeddata', onReady); resolve(); };
+          v.addEventListener('loadeddata', onReady);
+          setTimeout(resolve, 1500); // safety timeout
+        });
         await videoRef.current.play().catch(() => {});
       }
       // Enumerate devices (labels populate after permission grant)
       const list = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
       setDevices(list);
       const active = stream.getVideoTracks()[0]?.getSettings()?.deviceId;
-      if (active && active !== deviceId) {
-        setDeviceId(active);
-        try { localStorage.setItem(`bookCamera_deviceId_${podId || ''}`, active); } catch {}
-      }
+      if (active) setDeviceId(active);
       setPhase('watching');
       setStatusMsg(mode === 'isbn'
         ? 'Hold the copyright page steady under the camera'
@@ -72,10 +100,27 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
       setError(err.message || 'Could not access camera');
       setPhase('error');
     }
-  }, [deviceId, mode, podId]);
+  }, [mode]);
 
   useEffect(() => {
-    startStream(deviceId);
+    // On open, pick a starting device:
+    //  1) saved deviceId from prefs
+    //  2) device whose label matches saved label (handles deviceId rotation)
+    //  3) system default
+    let startId = pref.deviceId || '';
+    (async () => {
+      try {
+        // We need a temporary permission grant before labels populate
+        if (!startId && pref.label) {
+          const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+          tmp.getTracks().forEach((t) => t.stop());
+          const list = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+          const match = list.find((d) => d.label === pref.label);
+          if (match) startId = match.deviceId;
+        }
+      } catch {}
+      startStream(startId);
+    })();
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
@@ -92,8 +137,19 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
   const handleDeviceChange = (e) => {
     const id = e.target.value;
     setDeviceId(id);
-    try { localStorage.setItem(`bookCamera_deviceId_${podId || ''}`, id); } catch {}
     startStream(id);
+  };
+
+  const isDefault = pref.deviceId && pref.deviceId === deviceId;
+  const setAsDefault = () => {
+    const dev = devices.find((d) => d.deviceId === deviceId);
+    const next = { deviceId, label: dev?.label || '' };
+    try { localStorage.setItem(prefKey, JSON.stringify(next)); } catch {}
+    setPref(next);
+  };
+  const clearDefault = () => {
+    try { localStorage.removeItem(prefKey); } catch {}
+    setPref({});
   };
 
   // ─── Stability detection ───
@@ -315,6 +371,13 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
               ))}
             </select>
           )}
+          {devices.length > 1 && deviceId && (
+            isDefault ? (
+              <button onClick={clearDefault} title="This camera is the default for this pod" style={st.pinBtnActive}>★ Default</button>
+            ) : (
+              <button onClick={setAsDefault} title="Pin this camera as the default for this pod" style={st.pinBtn}>☆ Set default</button>
+            )
+          )}
           <button
             onClick={() => {
               lastFrameRef.current = null;
@@ -354,6 +417,8 @@ const st = {
   statusBar: { color: '#93C5FD', fontSize: 14, fontWeight: 700, padding: '10px 0', textAlign: 'center', minHeight: 18 },
   controls: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 },
   select: { padding: '10px 12px', borderRadius: 8, border: '1px solid #333', backgroundColor: '#1a1a1a', color: '#ddd', fontSize: 13, flex: 1, minWidth: 120 },
+  pinBtn: { padding: '10px 12px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#1a1a1a', color: '#aaa', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  pinBtnActive: { padding: '10px 12px', borderRadius: 8, border: '1px solid #EAB308', backgroundColor: '#3a2e08', color: '#EAB308', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
   captureBtn: { padding: '12px 20px', borderRadius: 10, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 15, fontWeight: 800 },
   cancelBtn: { padding: '12px 20px', borderRadius: 10, border: '1px solid #555', backgroundColor: '#2a2a2a', color: '#ccc', fontSize: 15, fontWeight: 700, cursor: 'pointer' },
   helpText: { color: '#666', fontSize: 12, marginTop: 12, lineHeight: 1.5 },
