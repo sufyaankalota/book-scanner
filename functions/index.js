@@ -238,6 +238,8 @@ exports.extractFromImage = onCall({
   timeoutSeconds: 30,
   memory: '512MiB',
   maxInstances: 20,
+  invoker: 'public',
+  cors: true,
 }, async (request) => {
   const { imageBase64, mode, podId, jobId } = request.data || {};
   if (!imageBase64 || !mode) throw new HttpsError('invalid-argument', 'imageBase64 and mode are required');
