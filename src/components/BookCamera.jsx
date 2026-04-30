@@ -206,13 +206,15 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
     if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
     const canvas = canvasRef.current;
 
-    // Resize down to ~1024 max dimension to keep payload small (still high quality for vision)
-    const TARGET = 1024;
+    // ISBN text on copyright pages is tiny, so keep more resolution for ISBN mode.
+    // Title covers are large and readable, 1024 is plenty.
+    const TARGET = mode === 'isbn' ? 1800 : 1024;
+    const QUALITY = mode === 'isbn' ? 0.92 : 0.85;
     const scale = Math.min(TARGET / Math.max(cw, ch), 1);
     canvas.width = Math.round(cw * scale);
     canvas.height = Math.round(ch * scale);
     canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvas.toDataURL('image/jpeg', QUALITY);
     const base64 = dataUrl.split(',')[1];
 
     // Also keep a small thumbnail for storage when needed (title mode)

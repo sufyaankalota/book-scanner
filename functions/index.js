@@ -250,7 +250,21 @@ exports.extractFromImage = onCall({
   const dataUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
 
   const prompt = mode === 'isbn'
-    ? 'You are looking at a photograph of a book\'s copyright/colophon/back cover page. Find the ISBN (10 or 13 digit number, often labeled "ISBN" and starting with 978 or 979). Respond ONLY with strict JSON: {"isbn":"<digits-only-or-null>","confidence":<0-1>}. No markdown, no commentary. If no ISBN is visible, return {"isbn":null,"confidence":0}.'
+    ? `You are an expert at reading ISBNs from photographs of book copyright pages, colophons, back covers, and barcode labels.
+
+Look carefully across the ENTIRE image for any 10 or 13 digit number that is an ISBN. ISBNs are commonly:
+- Printed near the words "ISBN", "ISBN-10", "ISBN-13", "International Standard Book Number"
+- 13 digits starting with 978 or 979 (often hyphenated like 978-0-12-345678-9)
+- 10 digits, sometimes ending in X
+- Printed under a barcode on the back cover
+- May appear multiple times (hardcover/paperback/ebook editions). If multiple appear, prefer the FIRST one printed or the 13-digit version of the printed edition.
+
+Read the digits VERY carefully. Common confusions to avoid: 0/O, 1/I/l, 5/S, 8/B. Strip all hyphens and spaces.
+
+Respond ONLY with strict JSON, no markdown, no commentary:
+{"isbn":"<digits-only-or-null>","confidence":<0-1>}
+
+If you genuinely cannot find any ISBN, return {"isbn":null,"confidence":0}.`
     : 'You are looking at a photograph of a book cover. Extract the main title and author. Ignore taglines, series numbers, and publisher names. Respond ONLY with strict JSON: {"title":"<string>","author":"<string-or-null>","confidence":<0-1>}. No markdown, no commentary. If unclear, return {"title":null,"author":null,"confidence":0}.';
 
   const body = {
@@ -263,7 +277,7 @@ exports.extractFromImage = onCall({
       ],
     }],
     response_format: { type: 'json_object' },
-    max_tokens: 150,
+    max_tokens: 200,
     temperature: 0,
   };
 
