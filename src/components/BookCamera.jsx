@@ -370,6 +370,8 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
               onChange={handleDeviceChange}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
+              title="Choose which webcam to use"
+              aria-label="Camera selector"
               style={st.select}
             >
               {devices.map((d) => (

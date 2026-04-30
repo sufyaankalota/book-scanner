@@ -12,7 +12,6 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const JobHistory = lazy(() => import('./pages/JobHistory'));
 const Kiosk = lazy(() => import('./pages/Kiosk'));
 const CustomerPortal = lazy(() => import('./pages/CustomerPortal'));
-const PhotoUpload = lazy(() => import('./pages/PhotoUpload'));
 const Users = lazy(() => import('./pages/Users'));
 
 class ErrorBoundary extends React.Component {
@@ -76,7 +75,6 @@ export default function App() {
                 <Route path="/dashboard" element={<AuthGate requiredRole="manager"><Dashboard /></AuthGate>} />
                 <Route path="/kiosk" element={<Kiosk />} />
                 <Route path="/portal" element={<CustomerPortal />} />
-                <Route path="/upload" element={<PhotoUpload />} />
                 <Route path="/history" element={<AuthGate requiredRole="manager"><JobHistory /></AuthGate>} />
                 <Route path="/users" element={<AuthGate requiredRole="admin"><Users /></AuthGate>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
