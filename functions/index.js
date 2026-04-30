@@ -187,3 +187,144 @@ exports.sendReportNow = onRequest({
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── AI Vision: extract ISBN or Title from a captured image ───
+// Uses OpenAI gpt-4o vision. Set OPENAI_API_KEY in Cloud Functions secrets.
+//   firebase functions:secrets:set OPENAI_API_KEY
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { defineSecret } = require('firebase-functions/params');
+const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
+
+// gpt-4o pricing as of 2025-2026 (subject to change):
+//   input  ~$2.50 / 1M tokens
+//   output ~$10.00 / 1M tokens
+//   image (1024x1024 high detail) ~765 tokens
+const PRICE_INPUT_PER_TOKEN  = 2.50  / 1_000_000;
+const PRICE_OUTPUT_PER_TOKEN = 10.00 / 1_000_000;
+
+function extractIsbn13(text) {
+  if (!text) return null;
+  const cleaned = String(text).replace(/[\s-]/g, '');
+  const m13 = cleaned.match(/97[89]\d{10}/g) || [];
+  for (const c of m13) if (validIsbn13(c)) return c;
+  const m10 = cleaned.match(/\d{9}[\dX]/g) || [];
+  for (const c of m10) if (validIsbn10(c)) return isbn10To13(c);
+  return null;
+}
+function validIsbn13(s) {
+  if (!/^\d{13}$/.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 13; i++) sum += Number(s[i]) * (i % 2 === 0 ? 1 : 3);
+  return sum % 10 === 0;
+}
+function validIsbn10(s) {
+  if (!/^\d{9}[\dX]$/.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(s[i]) * (10 - i);
+  sum += s[9] === 'X' ? 10 : Number(s[9]);
+  return sum % 11 === 0;
+}
+function isbn10To13(s) {
+  const core = '978' + s.slice(0, 9);
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(core[i]) * (i % 2 === 0 ? 1 : 3);
+  const check = (10 - (sum % 10)) % 10;
+  return core + check;
+}
+
+exports.extractFromImage = onCall({
+  region: 'us-east1',
+  secrets: [OPENAI_API_KEY],
+  timeoutSeconds: 30,
+  memory: '512MiB',
+  maxInstances: 20,
+}, async (request) => {
+  const { imageBase64, mode, podId, jobId } = request.data || {};
+  if (!imageBase64 || !mode) throw new HttpsError('invalid-argument', 'imageBase64 and mode are required');
+  if (!['isbn', 'title'].includes(mode)) throw new HttpsError('invalid-argument', 'mode must be isbn or title');
+  // Reject excessively large images (>4MB base64 ~= 3MB raw)
+  if (imageBase64.length > 4_500_000) throw new HttpsError('invalid-argument', 'image too large (max ~3MB)');
+
+  const dataUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
+
+  const prompt = mode === 'isbn'
+    ? 'You are looking at a photograph of a book\'s copyright/colophon/back cover page. Find the ISBN (10 or 13 digit number, often labeled "ISBN" and starting with 978 or 979). Respond ONLY with strict JSON: {"isbn":"<digits-only-or-null>","confidence":<0-1>}. No markdown, no commentary. If no ISBN is visible, return {"isbn":null,"confidence":0}.'
+    : 'You are looking at a photograph of a book cover. Extract the main title and author. Ignore taglines, series numbers, and publisher names. Respond ONLY with strict JSON: {"title":"<string>","author":"<string-or-null>","confidence":<0-1>}. No markdown, no commentary. If unclear, return {"title":null,"author":null,"confidence":0}.';
+
+  const body = {
+    model: 'gpt-4o',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
+      ],
+    }],
+    response_format: { type: 'json_object' },
+    max_tokens: 150,
+    temperature: 0,
+  };
+
+  let result, usage;
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY.value()}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new HttpsError('internal', `OpenAI ${resp.status}: ${errText.slice(0, 200)}`);
+    }
+    const data = await resp.json();
+    usage = data.usage || { prompt_tokens: 0, completion_tokens: 0 };
+    const raw = data.choices?.[0]?.message?.content || '{}';
+    try { result = JSON.parse(raw); } catch { result = {}; }
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError('internal', `OpenAI request failed: ${err.message}`);
+  }
+
+  const cost = (usage.prompt_tokens || 0) * PRICE_INPUT_PER_TOKEN
+             + (usage.completion_tokens || 0) * PRICE_OUTPUT_PER_TOKEN;
+
+  // Post-process by mode
+  if (mode === 'isbn') {
+    // Validate the model's ISBN against checksum; also try regex on raw output
+    const candidate = result.isbn ? String(result.isbn).replace(/[\s-]/g, '') : null;
+    let isbn = null;
+    if (candidate && (validIsbn13(candidate) || validIsbn10(candidate))) {
+      isbn = validIsbn13(candidate) ? candidate : isbn10To13(candidate);
+    } else {
+      // Fallback: scan raw text for any valid ISBN
+      isbn = extractIsbn13(JSON.stringify(result));
+    }
+    result = { isbn, confidence: Number(result.confidence) || 0 };
+  } else {
+    result = {
+      title: result.title ? String(result.title).trim() : null,
+      author: result.author ? String(result.author).trim() : null,
+      confidence: Number(result.confidence) || 0,
+    };
+  }
+
+  // Log usage for cost reporting
+  try {
+    await db.collection('ai-usage').add({
+      mode,
+      podId: podId || null,
+      jobId: jobId || null,
+      model: 'gpt-4o',
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      costUsd: Number(cost.toFixed(6)),
+      success: !!(mode === 'isbn' ? result.isbn : result.title),
+      timestamp: Timestamp.now(),
+    });
+  } catch (e) { console.warn('ai-usage log failed:', e.message); }
+
+  return { ...result, costUsd: Number(cost.toFixed(6)), model: 'gpt-4o' };
+});

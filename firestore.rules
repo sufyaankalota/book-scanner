@@ -122,6 +122,12 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // AI usage telemetry — written by Cloud Function, read by Dashboard for cost reporting
+    match /ai-usage/{usageId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

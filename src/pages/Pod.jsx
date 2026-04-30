@@ -14,6 +14,7 @@ import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
 import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import ExceptionModal from '../components/ExceptionModal';
+import BookCamera from '../components/BookCamera';
 
 const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
@@ -64,6 +65,7 @@ export default function Pod() {
   const [showExceptionModal, setShowExceptionModal] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualIsbn, setManualIsbn] = useState('');
+  const [showIsbnCamera, setShowIsbnCamera] = useState(false);
   const [duplicateConfirm, setDuplicateConfirm] = useState(null); // { isbn, raw } when awaiting confirmation
   const [lastScanTime, setLastScanTime] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
@@ -1247,6 +1249,39 @@ export default function Pod() {
               style={{ padding: '14px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#F97316' : '#333', color: '#fff', fontSize: 17, fontWeight: 800, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
             >Scan ↵</button>
           </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button
+              onClick={() => setShowIsbnCamera(true)}
+              style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid #3B82F6', backgroundColor: 'transparent', color: '#93C5FD', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              📷 Auto-Read ISBN from Page (AI)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* AI ISBN camera */}
+      {showIsbnCamera && (
+        <BookCamera
+          mode="isbn"
+          podId={podId}
+          jobId={job?.id}
+          onResult={(data) => {
+            setShowIsbnCamera(false);
+            if (data?.isbn) {
+              setManualIsbn('');
+              setShowManualEntry(false);
+              handleScan(data.isbn, true);
+              setTimeout(refocusInput, 200);
+            }
+          }}
+          onClose={() => { setShowIsbnCamera(false); setTimeout(refocusInput, 100); }}
+        />
+      )}
+
+      {/* spacer to keep next block intact */}
+      {false && (
+        <div>
+          <div />
         </div>
       )}
 

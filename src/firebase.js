@@ -4,6 +4,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 const trim = (v) => (v || '').trim();
 
@@ -25,4 +26,6 @@ const db = initializeFirestore(app, {
   }),
 });
 
-export { db };
+const functions = getFunctions(app, 'us-east1');
+
+export { db, functions };

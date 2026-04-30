@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { doc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { t } from '../utils/locale';
 import { createWorker } from 'tesseract.js';
+import BookCamera from './BookCamera';
 
 const EXCEPTION_REASON_KEYS = [
   'reasonDamaged',
@@ -27,10 +28,13 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
   const fileRef = useRef(null);
   const [ocrStatus, setOcrStatus] = useState(''); // '' | 'reading' | 'done' | 'failed'
   const ocrImageRef = useRef(null); // high-res image for OCR
+  const [showAiCamera, setShowAiCamera] = useState(false);
+  const [aiUsed, setAiUsed] = useState(false);
 
   // Run OCR when photo is captured to auto-fill title
   useEffect(() => {
     if (!photoData || title.trim()) return; // skip if already has title
+    if (aiUsed) return; // AI already filled the title — skip tesseract
     let cancelled = false;
     setOcrStatus('reading');
     (async () => {
@@ -284,7 +288,7 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
               <p style={{ color: '#93c5fd', fontSize: 12, marginTop: 4, marginBottom: 0 }}>🔍 Extracting title from photo...</p>
             )}
             {ocrStatus === 'done' && title.trim() && (
-              <p style={{ color: '#22C55E', fontSize: 12, marginTop: 4, marginBottom: 0 }}>✓ Title extracted from photo — you can edit it above</p>
+              <p style={{ color: '#22C55E', fontSize: 12, marginTop: 4, marginBottom: 0 }}>✓ {aiUsed ? 'Title read by AI — photo saved for verification — you can edit it above' : 'Title extracted from photo — you can edit it above'}</p>
             )}
             {ocrStatus === 'failed' && (
               <p style={{ color: '#F97316', fontSize: 12, marginTop: 4, marginBottom: 0 }}>Could not read title — please type it manually</p>
@@ -308,10 +312,35 @@ export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) 
             {/* Photo capture buttons */}
             {!photoMode && !photoData && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button onClick={() => setShowAiCamera(true)}
+                  style={{ ...styles.photoBtn, borderColor: '#3B82F6', color: '#93C5FD', fontWeight: 800 }}>
+                  📷 Auto-Read Title (AI)
+                </button>
                 <button onClick={startPhoneUpload} style={styles.photoBtn}>📱 {t('takePhotoPhone')}</button>
                 <button onClick={() => fileRef.current?.click()} style={styles.photoBtn}>📁 {t('uploadFile')}</button>
                 <input ref={fileRef} type="file" accept="image/*" onChange={handleFilePhoto} style={{ display: 'none' }} />
               </div>
+            )}
+
+            {showAiCamera && (
+              <BookCamera
+                mode="title"
+                podId={podId}
+                jobId={null}
+                onResult={(data) => {
+                  setShowAiCamera(false);
+                  if (data?.title) {
+                    setTitle(data.title);
+                    setOcrStatus('done');
+                    setAiUsed(true);
+                    if (data.image) {
+                      // Save returned thumbnail so customer can verify the title
+                      setPhotoData(data.image);
+                    }
+                  }
+                }}
+                onClose={() => setShowAiCamera(false)}
+              />
             )}
 
             {/* Retake options */}
