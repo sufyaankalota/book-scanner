@@ -315,7 +315,7 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
   }, [mode, podId, jobId, onResult]);
 
   return (
-    <div style={st.overlay} onClick={onClose}>
+    <div style={st.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={st.modal} onClick={(e) => e.stopPropagation()}>
         <div style={st.header}>
           <h2 style={st.title}>
@@ -365,7 +365,13 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
 
         <div style={st.controls}>
           {devices.length > 1 && (
-            <select value={deviceId} onChange={handleDeviceChange} style={st.select}>
+            <select
+              value={deviceId}
+              onChange={handleDeviceChange}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={st.select}
+            >
               {devices.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.slice(0, 6)}`}</option>
               ))}
