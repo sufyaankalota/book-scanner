@@ -12,7 +12,8 @@ import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
 import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
-import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
+import { lookupIsbn, clearChunkCache, loadTitleIndex, clearTitleIndexCache } from '../utils/manifestStore';
+import { findMatches, classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
 
@@ -55,6 +56,12 @@ export default function Pod() {
 
   const [job, setJob] = useState(null);
   const [manifestCache, setManifestCache] = useState({});
+  // Title index for AI cover-photo → ISBN fuzzy match. Loaded lazily once
+  // per job. Stays empty if the manifest doesn't include titles.
+  const [titleIndex, setTitleIndex] = useState(null);
+  const [titleIndexStatus, setTitleIndexStatus] = useState('idle'); // idle|loading|ready|empty|error
+  const [aiMatchCandidates, setAiMatchCandidates] = useState(null); // { capturedTitle, photo, candidates: [...] } when ambiguous
+  const [exceptionPrefill, setExceptionPrefill] = useState(null); // { title, photo } when AI couldn't match
 
   const [scanInput, setScanInput] = useState('');
   const [localCount, setLocalCount] = useState(0);
@@ -350,14 +357,36 @@ export default function Pod() {
           if (picked.meta.mode === 'multi' && !picked.manifestMeta?.chunked) {
             getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
               const cache = {};
-              ms.forEach((d) => { cache[d.id] = d.data().poName; });
+              const idx = [];
+              ms.forEach((d) => {
+                const data = d.data();
+                cache[d.id] = data.poName;
+                if (data.title) idx.push({ isbn: d.id, po: data.poName, title: data.title });
+              });
               setManifestCache(cache);
+              setTitleIndex(idx);
+              setTitleIndexStatus(idx.length ? 'ready' : 'empty');
             }).catch((err) => {
               console.error('Failed to load manifest:', err);
+              setTitleIndexStatus('error');
               flash('#EF4444', 'Manifest load failed — retry by reloading the page', 4000);
             });
           } else if (picked.manifestMeta?.chunked) {
             clearChunkCache();
+            // Pre-load title index in the background so AI camera flow is instant.
+            // Skipped for huge manifests (>250k items) to avoid heavy reads.
+            const meta = picked.manifestMeta;
+            const tooBig = (meta.totalIsbns || 0) > 250000;
+            if (meta.hasTitles === false || tooBig) {
+              setTitleIndex([]);
+              setTitleIndexStatus('empty');
+            } else {
+              setTitleIndexStatus('loading');
+              clearTitleIndexCache(`jobs/${picked.id}`);
+              loadTitleIndex(`jobs/${picked.id}`, meta.numChunks)
+                .then((idx) => { setTitleIndex(idx); setTitleIndexStatus(idx.length ? 'ready' : 'empty'); })
+                .catch((err) => { console.error('Title index load failed:', err); setTitleIndexStatus('error'); });
+            }
           }
         } else setJob(null);
       } else setJob(null);
@@ -529,14 +558,18 @@ export default function Pod() {
   };
 
   // ─── Scan handler ───
-  const handleScan = (raw, isManual = false) => {
+  // opts: { isManual?: bool, source?: 'manual'|'ai-match', capturedTitle?: string, matchScore?: number }
+  const handleScan = (raw, opts = false) => {
+    // Back-compat: callers may pass `true` to mean { isManual: true }
+    const o = typeof opts === 'boolean' ? { isManual: opts } : (opts || {});
+    const isManual = !!o.isManual;
     const isbn = cleanISBN(raw);
     if (!isbn) return;
 
     // Same ISBN as last scan — always confirm
     if (isbn === lastScannedRef.current.isbn) {
       playDuplicateBeep();
-      setDuplicateConfirm({ isbn, isManual });
+      setDuplicateConfirm({ isbn, opts: o });
       return;
     }
 
@@ -544,20 +577,20 @@ export default function Pod() {
     const existingCount = jobIsbnCountsRef.current[isbn] || 0;
     if (existingCount > 0 && job?.meta?.mode === 'multi') {
       playDuplicateBeep();
-      setDuplicateConfirm({ isbn, isManual, overScan: true, count: existingCount });
+      setDuplicateConfirm({ isbn, opts: o, overScan: true, count: existingCount });
       return;
     }
 
     lastScannedRef.current = { isbn, time: Date.now() };
-    processScan(isbn, isManual);
+    processScan(isbn, o);
   };
 
   const confirmDuplicate = () => {
     if (!duplicateConfirm) return;
-    const { isbn, isManual } = duplicateConfirm;
+    const { isbn, opts } = duplicateConfirm;
     lastScannedRef.current = { isbn, time: Date.now() };
     setDuplicateConfirm(null);
-    processScan(isbn, isManual);
+    processScan(isbn, opts || {});
     setTimeout(refocusInput, 100);
   };
 
@@ -567,8 +600,56 @@ export default function Pod() {
     setTimeout(refocusInput, 100);
   };
 
+  // ─── AI cover → manifest title fuzzy match ───
+  // Treats successful matches as manual entries with source='ai-match' so they
+  // bill as an exception line item but still credit toward the right PO.
+  const openExceptionForCapture = (capturedTitle, capturedPhoto) => {
+    setExceptionPrefill({ title: capturedTitle || '', photo: capturedPhoto || null });
+    setShowExceptionModal(true);
+  };
+
+  const handleAiCoverResult = (data) => {
+    if (!data) return;
+    const capturedTitle = (data.title || '').trim();
+    const photo = data.image || null;
+    if (!capturedTitle) {
+      flash('#F97316', 'AI couldn\u2019t read the title — please log an exception', 2500);
+      openExceptionForCapture('', photo);
+      return;
+    }
+    if (!titleIndex || !titleIndex.length) {
+      // No manifest titles available → send straight to exception with prefilled title
+      flash('#F97316', 'No title manifest loaded — logging exception', 2500);
+      openExceptionForCapture(capturedTitle, photo);
+      return;
+    }
+    const matches = findMatches(capturedTitle, titleIndex, { topK: 3, minScore: MATCH_AMBIGUOUS - 0.05 });
+    if (!matches.length || matches[0].score < MATCH_AMBIGUOUS) {
+      // No reasonable match → exception with title prefilled
+      openExceptionForCapture(capturedTitle, photo);
+      return;
+    }
+    const top = matches[0];
+    if (classify(top.score) === 'confident') {
+      // Auto-accept and book it as an AI-matched (manual-billed) scan
+      handleScan(top.isbn, { isManual: true, source: 'ai-match', capturedTitle, matchScore: top.score });
+      return;
+    }
+    // Ambiguous — ask the operator to pick
+    setAiMatchCandidates({ capturedTitle, photo, candidates: matches });
+  };
+
   // ─── Process scan (after validation/confirmation) ───
-  const processScan = async (isbn, isManual = false) => {
+  // opts: { isManual?, source?, capturedTitle?, matchScore? }
+  const processScan = async (isbn, opts = {}) => {
+    if (typeof opts === 'boolean') opts = { isManual: opts };
+    const isManual = !!opts.isManual;
+    // Default source: 'manual' for typed entries, 'ai-match' is set explicitly by AI flow
+    const source = opts.source || (isManual ? 'manual' : null);
+    const sourceMeta = source ? { source } : {};
+    if (opts.capturedTitle) sourceMeta.capturedTitle = opts.capturedTitle;
+    if (typeof opts.matchScore === 'number') sourceMeta.matchScore = opts.matchScore;
+    const isAiMatch = source === 'ai-match';
     const now = Date.now();
 
     if (!isValidISBN(isbn)) {
@@ -610,10 +691,10 @@ export default function Pod() {
       playSuccessBeep();
       flash('#22C55E', '✓ ' + t('scanSuccess'));
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
-      setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
+      setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual, isAiMatch }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
-        poName: job.meta.name, timestamp: serverTimestamp(), type: 'standard', ...(isManual ? { source: 'manual' } : {}),
+        poName: job.meta.name, timestamp: serverTimestamp(), type: 'standard', ...sourceMeta,
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
@@ -637,10 +718,10 @@ export default function Pod() {
       if (ttsEnabled) speak(getColorName(color));
       flash(color, `${getColorName(color)} ${t('gaylord')}`);
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
-      setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
+      setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn, poName,
-        timestamp: serverTimestamp(), type: 'standard', ...(isManual ? { source: 'manual' } : {}),
+        timestamp: serverTimestamp(), type: 'standard', ...sourceMeta,
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
@@ -655,7 +736,7 @@ export default function Pod() {
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
-        poName: 'EXCEPTIONS', timestamp: serverTimestamp(), type: 'exception', ...(isManual ? { source: 'manual' } : {}),
+        poName: 'EXCEPTIONS', timestamp: serverTimestamp(), type: 'exception', ...sourceMeta,
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
@@ -1290,7 +1371,8 @@ export default function Pod() {
               )}
               {s.poName === 'TRAINING' && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 700 }}>TRAINING</span>}
               {s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 700 }}>EXCEPTION</span>}
-              {s.isManual && !s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
+              {s.isAiMatch && !s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#1e3a8a', color: '#93C5FD', fontWeight: 700 }}>AI</span>}
+              {s.isManual && !s.isAiMatch && !s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: '#777', fontWeight: 500 }}>{s.time.toLocaleTimeString()}</span>
             </div>
           ))}
@@ -1352,29 +1434,72 @@ export default function Pod() {
             <button
               onClick={() => setShowIsbnCamera(true)}
               style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid #3B82F6', backgroundColor: 'transparent', color: '#93C5FD', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              📷 Auto-Read ISBN from Page (AI)
+              📷 Use Camera (match cover → ISBN)
             </button>
           </div>
         </div>
       )}
 
-      {/* AI ISBN camera */}
+      {/* AI camera — reads cover title and fuzzy-matches against the manifest */}
       {showIsbnCamera && (
         <BookCamera
-          mode="isbn"
+          mode="title"
           podId={podId}
           jobId={job?.id}
           onResult={(data) => {
             setShowIsbnCamera(false);
-            if (data?.isbn) {
-              setManualIsbn('');
-              setShowManualEntry(false);
-              handleScan(data.isbn, true);
-              setTimeout(refocusInput, 200);
-            }
+            handleAiCoverResult(data);
+            setTimeout(refocusInput, 200);
           }}
           onClose={() => { setShowIsbnCamera(false); setTimeout(refocusInput, 100); }}
         />
+      )}
+
+      {/* Ambiguous AI match — let the operator pick or reject */}
+      {aiMatchCandidates && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 16 }}
+          onClick={() => setAiMatchCandidates(null)}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ backgroundColor: '#0f0f0f', border: '2px solid #EAB308', borderRadius: 14, padding: 22, maxWidth: 560, width: '100%' }}>
+            <h2 style={{ color: '#EAB308', margin: '0 0 6px', fontSize: 20, fontWeight: 800 }}>Confirm match</h2>
+            <p style={{ color: '#bbb', margin: '0 0 14px', fontSize: 14 }}>
+              AI read the cover as: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle}"</strong>
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {aiMatchCandidates.candidates.map((c) => (
+                <button key={c.isbn}
+                  onClick={() => {
+                    const sel = aiMatchCandidates;
+                    setAiMatchCandidates(null);
+                    handleScan(c.isbn, { isManual: true, source: 'ai-match', capturedTitle: sel.capturedTitle, matchScore: c.score });
+                  }}
+                  style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po} · {c.isbn}</div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : '#EAB308' }}>
+                    {Math.round(c.score * 100)}%
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button onClick={() => {
+                const sel = aiMatchCandidates;
+                setAiMatchCandidates(null);
+                openExceptionForCapture(sel.capturedTitle, sel.photo);
+              }}
+                style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid #F97316', backgroundColor: 'transparent', color: '#fdba74', fontWeight: 700, cursor: 'pointer' }}>
+                None of these — log exception
+              </button>
+              <button onClick={() => setAiMatchCandidates(null)}
+                style={{ padding: '12px 18px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#2a2a2a', color: '#ccc', fontWeight: 700, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* spacer to keep next block intact */}
@@ -1387,9 +1512,9 @@ export default function Pod() {
       {/* Action buttons — keyboard shortcuts (Ctrl+1/2/3) shown so operators don't need a mouse */}
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
         <button onClick={() => setShowIsbnCamera(true)}
-          title="Press Ctrl+1"
+          title="Press Ctrl+1 — reads the cover and matches to a manifest ISBN"
           style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <span>📷 Camera Entry (AI)</span>
+          <span>📷 Camera Match (AI)</span>
           <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
         </button>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
@@ -1414,8 +1539,9 @@ export default function Pod() {
 
       {showExceptionModal && (
         <ExceptionModal podId={podId} scannerId={operatorName}
+          prefill={exceptionPrefill}
           onSubmit={handleException}
-          onClose={() => { setShowExceptionModal(false); setTimeout(refocusInput, 100); }} />
+          onClose={() => { setShowExceptionModal(false); setExceptionPrefill(null); setTimeout(refocusInput, 100); }} />
       )}
 
       {/* Duplicate confirmation modal */}

@@ -156,8 +156,9 @@ export default function Dashboard() {
         const podIdU = String(podId).toUpperCase();
         const podScans = scans.filter((s) => String(s.podId || '').toUpperCase() === podIdU);
         const standardScans = podScans.filter((s) => s.type === 'standard');
-        const autoExc = podScans.filter((s) => s.type === 'exception' && s.source !== 'manual');
+        const autoExc = podScans.filter((s) => s.type === 'exception' && s.source !== 'manual' && s.source !== 'ai-match');
         const manualScans = podScans.filter((s) => s.source === 'manual');
+        const aiMatchScans = podScans.filter((s) => s.source === 'ai-match');
         const recentStandard = podScans.filter((s) => {
           const ts = s.timestamp?.toDate?.(); return ts && ts.getTime() > fifteenMinAgo && s.type === 'standard';
         });
@@ -167,7 +168,7 @@ export default function Dashboard() {
           ? Math.round((recentStandard.length / Math.min(15, minutes)) * 60) : 0;
         const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 10));
         pods[podId] = { id: podId, scanCount: standardScans.length,
-          exceptionCount: autoExc.length, manualCount: manualScans.length, pace, targetPerHour, scanners };
+          exceptionCount: autoExc.length, manualCount: manualScans.length, aiMatchCount: aiMatchScans.length, pace, targetPerHour, scanners };
         const byOp = {};
         for (const s of podScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
         opStats[podId] = byOp;
@@ -380,7 +381,7 @@ export default function Dashboard() {
   const combinedExceptions = useMemo(() => {
     const auto = allScans.filter((s) => s.type === 'exception').map((s) => ({
       id: s.id, kind: 'auto', isbn: s.isbn, podId: s.podId, scannerId: s.scannerId,
-      label: s.poName === 'EXCEPTIONS' ? 'NOT IN MANIFEST' : s.source === 'manual' ? 'MANUAL ENTRY' : 'EXCEPTION',
+      label: s.poName === 'EXCEPTIONS' ? 'NOT IN MANIFEST' : s.source === 'ai-match' ? 'AI MATCHED' : s.source === 'manual' ? 'MANUAL ENTRY' : 'EXCEPTION',
       title: null, photo: null, timestamp: s.timestamp,
     }));
     const manual = allExceptions.map((ex) => ({
@@ -597,11 +598,12 @@ export default function Dashboard() {
   // Totals
   const totalScans = Object.values(podData).reduce((sum, p) => sum + p.scanCount, 0);
   const totalManual = Object.values(podData).reduce((sum, p) => sum + (p.manualCount || 0), 0);
+  const totalAiMatch = Object.values(podData).reduce((sum, p) => sum + (p.aiMatchCount || 0), 0);
   const totalAutoExceptions = Object.values(podData).reduce((sum, p) => sum + p.exceptionCount, 0);
   const totalExceptions = totalAutoExceptions + allExceptions.length;
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
   const dailyTarget = job?.meta?.dailyTarget || 22000;
-  const remaining = Math.max(0, dailyTarget - (totalScans + totalAutoExceptions + totalManual));
+  const remaining = Math.max(0, dailyTarget - (totalScans + totalAutoExceptions + totalManual + totalAiMatch));
   const estHoursLeft = totalPace > 0 ? (remaining / totalPace).toFixed(1) : '—';
 
   const handleExportToday = async () => {
@@ -648,8 +650,8 @@ export default function Dashboard() {
       const [scanSnap, excSnap] = await Promise.all([getDocs(q1), getDocs(q2)]);
       const scans = scanSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const excs = excSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const standardCount = scans.filter((s) => s.type === 'standard' && s.source !== 'manual').length;
-      const exceptionCount = scans.filter((s) => s.type === 'exception' || s.source === 'manual').length + excs.length;
+      const standardCount = scans.filter((s) => s.type === 'standard' && s.source !== 'manual' && s.source !== 'ai-match').length;
+      const exceptionCount = scans.filter((s) => s.type === 'exception' || s.source === 'manual' || s.source === 'ai-match').length + excs.length;
       const totalAmount = standardCount * 0.40 + exceptionCount * 0.60;
       const { buf, fileName } = exportBillingXLSX(scans, excs, job.meta, weekStart, weekEnd);
       // Convert to base64 for Firestore storage
@@ -678,8 +680,9 @@ export default function Dashboard() {
   const generateDailySummary = async () => {
     if (!job) return;
     const today = new Date().toLocaleDateString();
-    const standardCount = allScans.filter((s) => s.type === 'standard' && s.source !== 'manual').length;
+    const standardCount = allScans.filter((s) => s.type === 'standard' && s.source !== 'manual' && s.source !== 'ai-match').length;
     const manualCount = allScans.filter((s) => s.source === 'manual').length;
+    const aiMatchCount = allScans.filter((s) => s.source === 'ai-match').length;
     const exceptionCount = allScans.filter((s) => s.type === 'exception').length + allExceptions.length;
 
     // PO progress
@@ -710,12 +713,13 @@ export default function Dashboard() {
       jobId: job.id,
       jobName: job.meta.name || 'Unknown',
       date: today,
-      totalScans: standardCount + manualCount + exceptionCount,
+      totalScans: standardCount + manualCount + aiMatchCount + exceptionCount,
       standardScans: standardCount,
       manualEntries: manualCount,
+      aiMatched: aiMatchCount,
       exceptions: exceptionCount,
       dailyTarget: job.meta.dailyTarget || 22000,
-      pctOfTarget: Math.round(((standardCount + manualCount + exceptionCount) / (job.meta.dailyTarget || 22000)) * 100),
+      pctOfTarget: Math.round(((standardCount + manualCount + aiMatchCount + exceptionCount) / (job.meta.dailyTarget || 22000)) * 100),
       poProgress,
       laborHours: parseFloat(laborHours.toFixed(1)),
       scansPerHour: laborHours > 0 ? Math.round(allScans.length / laborHours) : 0,
@@ -823,6 +827,10 @@ export default function Dashboard() {
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalManual > 0 ? '#3B82F6' : '#888' }}>{totalManual}</div>
           <div style={st.summaryLabel}>Manual Entries</div>
+        </div>
+        <div style={st.summaryItem}>
+          <div style={{ ...st.summaryValue, color: totalAiMatch > 0 ? '#93C5FD' : '#888' }}>{totalAiMatch}</div>
+          <div style={st.summaryLabel}>AI Matched</div>
         </div>
         <div style={st.summaryItem}>
           <div style={st.summaryValue}>{totalPace}</div>

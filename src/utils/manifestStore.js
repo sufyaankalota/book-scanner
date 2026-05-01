@@ -4,6 +4,11 @@
  * stores ISBNs in chunk documents of ~5000 each using hash-based distribution.
  *
  * 8.6M ISBNs → ~1,738 chunk docs → ~35 batch writes (vs 21,700 previously).
+ *
+ * Chunk value format:
+ *   - Legacy:  isbns[isbn] = poName (string)
+ *   - Current: isbns[isbn] = { p: poName, t: title } (titles enable AI cover
+ *              fuzzy-matching). Both formats are read transparently.
  */
 import { db } from '../firebase';
 import { collection, doc, getDoc, getDocs, writeBatch, query, orderBy, limit, startAfter } from 'firebase/firestore';
@@ -20,25 +25,40 @@ function hashIsbn(isbn, numChunks) {
   return ((h % numChunks) + numChunks) % numChunks;
 }
 
+// ── Helpers ──
+export function getPoFromEntry(entry) {
+  if (entry == null) return null;
+  return typeof entry === 'string' ? entry : (entry.p || null);
+}
+export function getTitleFromEntry(entry) {
+  if (entry == null) return null;
+  return typeof entry === 'string' ? null : (entry.t || null);
+}
+
 /**
  * Write manifest as chunked documents.
  * @param {string} parentPath - e.g. 'po-uploads/po_123' or 'jobs/job_123'
- * @param {Object} manifest - { isbn: poName, ... }
+ * @param {Object} manifest - { isbn: poName, ... }  OR  { isbn: { po, title }, ... }
  * @param {Function} onProgress - (chunksWritten, totalChunks) => void
  * @returns {Object} manifestMeta to store on parent document
  */
 export async function writeManifestChunks(parentPath, manifest, onProgress) {
   const entries = Object.entries(manifest);
-  if (!entries.length) return { chunked: true, totalIsbns: 0, numChunks: 0, poCounts: {} };
+  if (!entries.length) return { chunked: true, totalIsbns: 0, numChunks: 0, poCounts: {}, hasTitles: false };
 
   const numChunks = Math.ceil(entries.length / CHUNK_SIZE);
   const chunks = {};
   const poCounts = {};
+  let hasTitles = false;
 
-  for (const [isbn, po] of entries) {
+  for (const [isbn, raw] of entries) {
+    const po = typeof raw === 'string' ? raw : raw?.po;
+    const title = typeof raw === 'string' ? null : (raw?.title || null);
+    if (!po) continue;
+    if (title) hasTitles = true;
     const idx = hashIsbn(isbn, numChunks);
     if (!chunks[idx]) chunks[idx] = {};
-    chunks[idx][isbn] = po;
+    chunks[idx][isbn] = title ? { p: po, t: title } : po;
     poCounts[po] = (poCounts[po] || 0) + 1;
   }
 
@@ -55,7 +75,7 @@ export async function writeManifestChunks(parentPath, manifest, onProgress) {
     if (onProgress) onProgress(written, chunkArr.length);
   }
 
-  return { chunked: true, totalIsbns: entries.length, numChunks, chunkSize: CHUNK_SIZE, poCounts };
+  return { chunked: true, totalIsbns: entries.length, numChunks, chunkSize: CHUNK_SIZE, poCounts, hasTitles };
 }
 
 // ── Chunk cache for per-ISBN lookups during scanning ──
@@ -67,13 +87,14 @@ export function clearChunkCache() { _cache.clear(); }
 /**
  * Look up a single ISBN. Fetches only the relevant chunk doc (cached).
  * ~50ms first hit per chunk, instant thereafter.
+ * Returns the PO name string (works with both legacy and current chunk formats).
  */
 export async function lookupIsbn(parentPath, isbn, numChunks) {
   const idx = hashIsbn(isbn, numChunks);
   const chunkId = `c${String(idx).padStart(5, '0')}`;
   const key = `${parentPath}/${chunkId}`;
 
-  if (_cache.has(key)) return _cache.get(key)[isbn] || null;
+  if (_cache.has(key)) return getPoFromEntry(_cache.get(key)[isbn]);
 
   const snap = await getDoc(doc(db, parentPath, 'manifest-chunks', chunkId));
   if (!snap.exists()) return null;
@@ -81,7 +102,54 @@ export async function lookupIsbn(parentPath, isbn, numChunks) {
   const isbns = snap.data().isbns || {};
   if (_cache.size >= CACHE_MAX) _cache.delete(_cache.keys().next().value);
   _cache.set(key, isbns);
-  return isbns[isbn] || null;
+  return getPoFromEntry(isbns[isbn]);
+}
+
+/**
+ * Load every chunk under parentPath, returning a flat title-index for
+ * AI cover→ISBN fuzzy matching. Caller decides when to invoke (typically
+ * when the operator first opens the AI camera flow). Cached per-parentPath.
+ *
+ * Returns: [{ isbn, po, title }] (entries with a title only — ISBN-only
+ * legacy entries are skipped since there's nothing to fuzzy-match against).
+ */
+const _titleIndexCache = new Map();
+export async function loadTitleIndex(parentPath, numChunks, onProgress) {
+  if (_titleIndexCache.has(parentPath)) return _titleIndexCache.get(parentPath);
+  const out = [];
+  const PAR = 8;
+  const total = numChunks || 0;
+  let done = 0;
+  for (let start = 0; start < total; start += PAR) {
+    const end = Math.min(start + PAR, total);
+    const reads = [];
+    for (let i = start; i < end; i++) {
+      reads.push(getDoc(doc(db, parentPath, 'manifest-chunks', `c${String(i).padStart(5, '0')}`)));
+    }
+    const snaps = await Promise.all(reads);
+    for (const snap of snaps) {
+      if (!snap.exists()) continue;
+      const isbns = snap.data().isbns || {};
+      // Also warm the per-ISBN cache to avoid double-reads later
+      const cacheKey = `${parentPath}/${snap.id}`;
+      if (_cache.size >= CACHE_MAX) _cache.delete(_cache.keys().next().value);
+      _cache.set(cacheKey, isbns);
+      for (const [isbn, raw] of Object.entries(isbns)) {
+        const po = getPoFromEntry(raw);
+        const title = getTitleFromEntry(raw);
+        if (po && title) out.push({ isbn, po, title });
+      }
+    }
+    done = end;
+    if (onProgress) onProgress(done, total);
+  }
+  _titleIndexCache.set(parentPath, out);
+  return out;
+}
+
+export function clearTitleIndexCache(parentPath) {
+  if (parentPath) _titleIndexCache.delete(parentPath);
+  else _titleIndexCache.clear();
 }
 
 /**
@@ -171,5 +239,5 @@ export async function readChunkPreview(parentPath, maxEntries = 50) {
   const snap = await getDoc(doc(db, parentPath, 'manifest-chunks', 'c00000'));
   if (!snap.exists()) return [];
   const isbns = snap.data().isbns || {};
-  return Object.entries(isbns).slice(0, maxEntries);
+  return Object.entries(isbns).slice(0, maxEntries).map(([isbn, raw]) => [isbn, getPoFromEntry(raw), getTitleFromEntry(raw)]);
 }

@@ -9,21 +9,24 @@ const EXCEPTION_REASON_KEYS = [
   'reasonOther',
 ];
 
-export default function ExceptionModal({ podId, scannerId, onSubmit, onClose }) {
+export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, onClose }) {
   const [reason, setReason] = useState('');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(prefill?.title || '');
   const [step, setStep] = useState('reason');
-  const [photoData, setPhotoData] = useState(null);
+  const [photoData, setPhotoData] = useState(prefill?.photo || null);
   const titleRef = useRef(null);
   const fileRef = useRef(null);
   const [showAiCamera, setShowAiCamera] = useState(false);
-  const [aiUsed, setAiUsed] = useState(false);
+  const [aiUsed, setAiUsed] = useState(!!prefill?.title);
 
   const handleReasonSelect = (r) => {
     setReason(r);
     setStep('details');
-    // Open camera immediately as the default capture path
-    setShowAiCamera(true);
+    // If we already have a title (e.g. from Pod's AI cover capture), skip the camera
+    // and jump straight to confirming details. Otherwise open the camera.
+    if (!title.trim() && !photoData) {
+      setShowAiCamera(true);
+    }
     setTimeout(() => titleRef.current?.focus(), 100);
   };
 

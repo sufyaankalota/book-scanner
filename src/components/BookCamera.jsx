@@ -164,8 +164,8 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
     const SAMPLE_H = 48;
     const SIMILARITY_THRESHOLD = 6;     // mean absolute pixel diff to count as "same"
     const MIN_VARIANCE = 250;           // require some content in frame
-    const STABLE_MS = 800;
-    const tickEvery = 120;
+    const STABLE_MS = 500;              // shorter wait — the operator's hands are usually steady fast
+    const tickEvery = 100;
     let lastTick = 0;
 
     if (!sampleRef.current) {
@@ -264,8 +264,11 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
 
     // ISBN text on copyright pages is tiny, so keep more resolution for ISBN mode.
     // Title covers are large and readable, 1024 is plenty.
-    const TARGET = mode === 'isbn' ? 1800 : 1024;
-    const QUALITY = mode === 'isbn' ? 0.92 : 0.85;
+    // Smaller image keeps upload fast; with detail:'low' on the server side
+    // the model only sees ~85 tokens regardless of resolution, so 768 is plenty
+    // for cover-title legibility. ISBN mode keeps higher res (rarely used now).
+    const TARGET = mode === 'isbn' ? 1800 : 768;
+    const QUALITY = mode === 'isbn' ? 0.92 : 0.82;
     const scale = Math.min(TARGET / Math.max(cw, ch), 1);
     canvas.width = Math.round(cw * scale);
     canvas.height = Math.round(ch * scale);

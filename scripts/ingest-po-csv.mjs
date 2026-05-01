@@ -79,9 +79,11 @@ async function streamParse(path) {
   let header = null;
   let isbnIdx = -1;
   let poIdx = -1;
+  let titleIdx = -1;
   let processed = 0;
   let skipped = 0;
   let dupes = 0;
+  let withTitle = 0;
   const t0 = Date.now();
   let lastLog = t0;
 
@@ -92,19 +94,22 @@ async function streamParse(path) {
     if (!header) {
       header = cols;
       isbnIdx = cols.findIndex((c) => /isbn/i.test(c));
-      poIdx = cols.findIndex((c) => /po|purchase.?order/i.test(c));
+      poIdx = cols.findIndex((c) => /^(po|po.?name|purchase.?order)/i.test(c));
+      titleIdx = cols.findIndex((c) => /title|book.?name/i.test(c));
       if (isbnIdx === -1 || poIdx === -1) {
         throw new Error('Could not find ISBN and PO columns. Headers: ' + cols.join(', '));
       }
-      console.log(`Header: ISBN col=${isbnIdx}, PO col=${poIdx}`);
+      console.log(`Header: ISBN col=${isbnIdx}, PO col=${poIdx}, Title col=${titleIdx >= 0 ? titleIdx : 'none'}`);
       continue;
     }
     const isbn = String(cols[isbnIdx] || '').replace(/[-\s]/g, '').trim();
     const po = String(cols[poIdx] || '').trim();
+    const title = titleIdx >= 0 ? String(cols[titleIdx] || '').trim() : '';
     if (!isbn || !po) { skipped++; continue; }
     if (manifest.has(isbn)) { dupes++; continue; }
-    manifest.set(isbn, po);
+    manifest.set(isbn, title ? { p: po, t: title } : po);
     poSet.add(po);
+    if (title) withTitle++;
     processed++;
     const now = Date.now();
     if (now - lastLog > 2000) {
@@ -114,17 +119,18 @@ async function streamParse(path) {
       lastLog = now;
     }
   }
-  console.log(`Parse done: ${processed.toLocaleString()} unique ISBNs, ${poSet.size} POs, ${dupes.toLocaleString()} dupes, ${skipped.toLocaleString()} skipped (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
-  return { manifest, poNames: [...poSet] };
+  console.log(`Parse done: ${processed.toLocaleString()} unique ISBNs, ${poSet.size} POs, ${withTitle.toLocaleString()} with titles, ${dupes.toLocaleString()} dupes, ${skipped.toLocaleString()} skipped (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  return { manifest, poNames: [...poSet], hasTitles: withTitle > 0 };
 }
 
 function bucketize(manifest, numChunks) {
   const chunks = new Array(numChunks);
   const poCounts = {};
-  for (const [isbn, po] of manifest) {
+  for (const [isbn, raw] of manifest) {
     const idx = hashIsbn(isbn, numChunks);
     if (!chunks[idx]) chunks[idx] = {};
-    chunks[idx][isbn] = po;
+    chunks[idx][isbn] = raw;
+    const po = typeof raw === 'string' ? raw : raw.p;
     poCounts[po] = (poCounts[po] || 0) + 1;
   }
   return { chunks, poCounts };
@@ -195,7 +201,7 @@ async function main() {
   console.log(`Size: ${sizeMB} MB`);
   if (DRY_RUN) console.log('** DRY RUN — no Firestore writes **');
 
-  const { manifest, poNames } = await streamParse(filePath);
+  const { manifest, poNames, hasTitles } = await streamParse(filePath);
   const numChunks = Math.ceil(manifest.size / CHUNK_SIZE);
   console.log(`numChunks=${numChunks}, chunkSize=${CHUNK_SIZE}`);
 
@@ -249,6 +255,7 @@ async function main() {
       numChunks,
       chunkSize: CHUNK_SIZE,
       poCounts,
+      hasTitles,
     },
   });
 

@@ -1,7 +1,13 @@
 /**
  * Manifest parsing — CSV and XLSX upload support.
  * CSV files are parsed in chunks for 100MB+ support.
- * Returns a Map of ISBN -> PO Name (first occurrence wins for duplicate ISBNs).
+ *
+ * Returns { manifest, poNames } where:
+ *   - manifest[isbn] = { po, title }  if a Title column exists
+ *   - manifest[isbn] = po (string)    for legacy CSVs without titles
+ * (writeManifestChunks transparently handles both shapes.)
+ *
+ * First occurrence of a duplicate ISBN wins.
  */
 import * as XLSX from 'xlsx';
 
@@ -16,6 +22,7 @@ function parseCSVStream(file, onProgress) {
     let header = null;
     let isbnIdx = -1;
     let poIdx = -1;
+    let titleIdx = -1;
     let skipped = 0;
     let processed = 0;
     let leftover = '';
@@ -43,7 +50,8 @@ function parseCSVStream(file, onProgress) {
         if (!header) {
           header = cols;
           isbnIdx = cols.findIndex((c) => /isbn/i.test(c));
-          poIdx = cols.findIndex((c) => /po|purchase.?order/i.test(c));
+          poIdx = cols.findIndex((c) => /^(po|po.?name|purchase.?order)/i.test(c));
+          titleIdx = cols.findIndex((c) => /title|book.?name/i.test(c));
           if (isbnIdx === -1 || poIdx === -1) {
             reject(new Error('Could not find ISBN and PO columns. Headers found: ' + cols.join(', ')));
             return false;
@@ -53,9 +61,13 @@ function parseCSVStream(file, onProgress) {
 
         const isbn = String(cols[isbnIdx] || '').replace(/[-\s]/g, '').trim();
         const po = String(cols[poIdx] || '').trim();
+        const title = titleIdx >= 0 ? String(cols[titleIdx] || '').trim() : '';
 
         if (!isbn || !po) { skipped++; continue; }
-        if (!manifest[isbn]) { manifest[isbn] = po; poSet.add(po); }
+        if (!manifest[isbn]) {
+          manifest[isbn] = title ? { po, title } : po;
+          poSet.add(po);
+        }
         processed++;
       }
       return true;
@@ -117,7 +129,8 @@ export function parseManifestFile(file, onProgress) {
         // Find column headers from first row
         const keys = Object.keys(rows[0]);
         const isbnKey = keys.find((k) => /isbn/i.test(k));
-        const poKey = keys.find((k) => /po|purchase.?order/i.test(k));
+        const poKey = keys.find((k) => /^(po|po.?name|purchase.?order)/i.test(k));
+        const titleKey = keys.find((k) => /title|book.?name/i.test(k));
 
         if (!isbnKey || !poKey) {
           reject(
@@ -133,6 +146,7 @@ export function parseManifestFile(file, onProgress) {
         for (const row of rows) {
           const isbn = String(row[isbnKey] || '').replace(/[-\s]/g, '').trim();
           const po = String(row[poKey] || '').trim();
+          const title = titleKey ? String(row[titleKey] || '').trim() : '';
 
           if (!isbn || !po) {
             skipped++;
@@ -140,7 +154,7 @@ export function parseManifestFile(file, onProgress) {
           }
 
           if (!manifest[isbn]) {
-            manifest[isbn] = po;
+            manifest[isbn] = title ? { po, title } : po;
           }
         }
 
@@ -148,7 +162,7 @@ export function parseManifestFile(file, onProgress) {
           console.warn(`Manifest: skipped ${skipped} rows with missing ISBN or PO`);
         }
 
-        const poNames = [...new Set(Object.values(manifest))];
+        const poNames = [...new Set(Object.values(manifest).map((v) => typeof v === 'string' ? v : v.po))];
         resolve({ manifest, poNames });
       } catch (err) {
         reject(new Error('Failed to parse file: ' + err.message));

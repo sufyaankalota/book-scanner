@@ -183,7 +183,9 @@ export default function Setup() {
     try {
       const result = await parseManifestFile(file, (pct) => setParseProgress(pct));
       setManifest(result.manifest); setPoNames(result.poNames);
-      setManifestPreview(Object.entries(result.manifest).slice(0, 50));
+      setManifestPreview(Object.entries(result.manifest).slice(0, 50).map(([isbn, v]) =>
+        typeof v === 'string' ? [isbn, v] : [isbn, v.po, v.title]
+      ));
       const colors = {};
       result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
       setPoColors(colors);
@@ -408,7 +410,9 @@ export default function Setup() {
     try {
       const result = await parseManifestFile(file, (pct) => setQParseProgress(pct));
       setQManifest(result.manifest); setQPoNames(result.poNames);
-      setQManifestPreview(Object.entries(result.manifest).slice(0, 50));
+      setQManifestPreview(Object.entries(result.manifest).slice(0, 50).map(([isbn, v]) =>
+        typeof v === 'string' ? [isbn, v] : [isbn, v.po, v.title]
+      ));
       const colors = {};
       result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
       setQPoColors(colors); setQParseProgress(100);
@@ -1163,11 +1167,18 @@ export default function Setup() {
                 <label style={s.label}>Manifest Preview (first 50 rows)</label>
                 <div style={{ maxHeight: 200, overflowY: 'auto', backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #333', fontSize: 13 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr><th style={s.th}>ISBN</th><th style={s.th}>PO</th></tr></thead>
+                    <thead><tr><th style={s.th}>ISBN</th><th style={s.th}>Title</th><th style={s.th}>PO</th></tr></thead>
                     <tbody>
-                      {manifestPreview.map(([isbn, po]) => (
-                        <tr key={isbn}><td style={s.td}>{isbn}</td><td style={s.td}>{po}</td></tr>
-                      ))}
+                      {manifestPreview.map((row) => {
+                        const [isbn, po, title] = row;
+                        return (
+                          <tr key={isbn}>
+                            <td style={s.td}>{isbn}</td>
+                            <td style={{ ...s.td, color: title ? '#ddd' : '#666', fontStyle: title ? 'normal' : 'italic' }}>{title || '—'}</td>
+                            <td style={s.td}>{po}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
