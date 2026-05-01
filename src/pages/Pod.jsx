@@ -323,22 +323,23 @@ export default function Pod() {
   useEffect(() => {
     if (!isScanning) return;
     const handler = (e) => {
-      // Quick-action shortcuts (F-keys avoid being captured by the hidden
-      // scanner input). All require active scanning + no other modal open.
+      // Quick-action shortcuts. Use Ctrl+digit (Chromebook-kiosk-safe — F1/F2/F3
+      // are reserved by ChromeOS, and scanners never emit Ctrl modifiers so they
+      // won't collide with barcode scans).
       const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm;
-      if (noModal) {
-        if (e.key === 'F1') {
+      if (noModal && e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (e.key === '1') {
           e.preventDefault();
           setShowIsbnCamera(true);
           return;
         }
-        if (e.key === 'F2') {
+        if (e.key === '2') {
           e.preventDefault();
           setShowManualEntry(true);
           setTimeout(() => manualInputRef.current?.focus(), 100);
           return;
         }
-        if (e.key === 'F3') {
+        if (e.key === '3') {
           e.preventDefault();
           setShowExceptionModal(true);
           return;
@@ -1402,25 +1403,25 @@ export default function Pod() {
         </div>
       )}
 
-      {/* Action buttons — keyboard shortcuts (F1/F2/F3) shown so operators don't need a mouse */}
+      {/* Action buttons — keyboard shortcuts (Ctrl+1/2/3) shown so operators don't need a mouse */}
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
         <button onClick={() => setShowIsbnCamera(true)}
-          title="Press F1"
+          title="Press Ctrl+1"
           style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           <span>📷 Camera Entry (AI)</span>
-          <kbd style={kbdHintStyle}>F1</kbd>
+          <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
         </button>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
-          title="Press F2"
+          title="Press Ctrl+2"
           style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 14, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           <span>⌨️ Type ISBN</span>
-          <kbd style={kbdHintStyle}>F2</kbd>
+          <kbd style={kbdHintStyle}>Ctrl + 2</kbd>
         </button>
         <button onClick={() => setShowExceptionModal(true)}
-          title="Press F3 or Esc"
+          title="Press Ctrl+3 or Esc"
           style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '14px 20px', fontSize: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           <span>⚠️ Log Exception</span>
-          <kbd style={kbdHintStyle}>F3</kbd>
+          <kbd style={kbdHintStyle}>Ctrl + 3</kbd>
         </button>
       </div>
 
@@ -1474,9 +1475,9 @@ export default function Pod() {
             <h2 style={{ color: '#fff', marginTop: 0, fontSize: 20, textAlign: 'center' }}>⌨️ Keyboard Shortcuts</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                ['F1', 'Camera Entry (AI ISBN scan)'],
-                ['F2', 'Type ISBN manually'],
-                ['F3', 'Log exception'],
+                ['Ctrl + 1', 'Camera Entry (AI ISBN scan)'],
+                ['Ctrl + 2', 'Type ISBN manually'],
+                ['Ctrl + 3', 'Log exception'],
                 ['Esc', 'Log exception (alternate)'],
                 ['?', 'Toggle this help overlay'],
                 ['Enter', 'Submit / Advance'],
