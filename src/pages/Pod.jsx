@@ -714,9 +714,10 @@ export default function Pod() {
     }
     if (poName) {
       const color = job.poColors?.[poName] || '#22C55E';
+      const poNum = job.poNumbers?.[poName];
       playColorBeep(color);
-      if (ttsEnabled) speak(getColorName(color));
-      flash(color, `${getColorName(color)} ${t('gaylord')}`);
+      if (ttsEnabled) speak(poNum ? `number ${poNum}, ${getColorName(color)}` : getColorName(color));
+      flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`);
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {

@@ -40,6 +40,7 @@ export default function Setup() {
   const [manifestPreview, setManifestPreview] = useState([]);
   const [poNames, setPoNames] = useState([]);
   const [poColors, setPoColors] = useState({});
+  const [poNumbers, setPoNumbers] = useState({});
   const [fileError, setFileError] = useState('');
   const [parseProgress, setParseProgress] = useState(0);
   const [parsing, setParsing] = useState(false);
@@ -114,6 +115,7 @@ export default function Setup() {
   const [qManifest, setQManifest] = useState(null);
   const [qPoNames, setQPoNames] = useState([]);
   const [qPoColors, setQPoColors] = useState({});
+  const [qPoNumbers, setQPoNumbers] = useState({});
   const [qFileError, setQFileError] = useState('');
   const [qParsing, setQParsing] = useState(false);
   const [qParseProgress, setQParseProgress] = useState(0);
@@ -187,8 +189,13 @@ export default function Setup() {
         typeof v === 'string' ? [isbn, v] : [isbn, v.po, v.title]
       ));
       const colors = {};
-      result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
+      const numbers = {};
+      result.poNames.forEach((po, i) => {
+        colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex;
+        numbers[po] = i + 1;
+      });
       setPoColors(colors);
+      setPoNumbers(numbers);
       setParseProgress(100);
     } catch (err) { setFileError(err.message); setManifest(null); setPoNames([]); setManifestPreview([]); }
     setParsing(false);
@@ -219,11 +226,15 @@ export default function Setup() {
         }
       }
       const colors = {};
+      const numbers = {};
       const savedColors = upload.poColors || {};
+      const savedNumbers = upload.poNumbers || {};
       (upload.poNames || []).forEach((po, i) => {
         colors[po] = savedColors[po] || DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex;
+        numbers[po] = savedNumbers[po] || (i + 1);
       });
       setPoColors(colors);
+      setPoNumbers(numbers);
       setSelectedUploadId(upload.id);
     } catch (err) {
       setFileError('Failed to load PO upload: ' + err.message);
@@ -259,6 +270,7 @@ export default function Setup() {
           floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0,
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
+        poNumbers: mode === 'multi' ? poNumbers : {},
       });
       let jobManifestMeta = null;
       if (mode === 'multi') {
@@ -286,7 +298,7 @@ export default function Setup() {
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
       setActivateProgress({ written: 0, total: 0, label: '' });
-      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
+      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
       setEditFloaters(Number(floaters) || 0); setEditRunners(Number(runners) || 0);
       setEditSupervisors(Number(supervisors) || 0);
@@ -346,6 +358,7 @@ export default function Setup() {
           floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0,
           queued: true, queueOrder: Date.now(), location: qLocation.trim() || '', createdAt: serverTimestamp() },
         poColors: qMode === 'multi' ? qPoColors : {},
+        poNumbers: qMode === 'multi' ? qPoNumbers : {},
       });
       if (qMode === 'multi') {
         if (qManifest) {
@@ -369,14 +382,14 @@ export default function Setup() {
       }
       logAudit('job_queued', { jobId, name: qJobName.trim(), mode: qMode });
       setQueueProgress({ written: 0, total: 0, label: '' });
-      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {} };
+      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {}, poNumbers: qMode === 'multi' ? qPoNumbers : {} };
       setQueuedJobs((prev) => [...prev, newJob]);
       // Reset form
       setQJobName(''); setQMode('single'); setQDailyTarget(22000); setQWorkingHours(8);
       setQPods(DEFAULT_PODS); setQPodInput(DEFAULT_PODS.join(', ')); setQLocation('');
       setQFloaters(2); setQRunners(2);
       setQSupervisors(1);
-      setQManifest(null); setQPoNames([]); setQPoColors({}); setQManifestPreview([]);
+      setQManifest(null); setQPoNames([]); setQPoColors({}); setQPoNumbers({}); setQManifestPreview([]);
       setQFileError(''); setShowQueueForm(false);
     } catch (err) { toast('Failed to queue job: ' + err.message, 'error'); }
     setQSaving(false);
@@ -414,9 +427,13 @@ export default function Setup() {
         typeof v === 'string' ? [isbn, v] : [isbn, v.po, v.title]
       ));
       const colors = {};
-      result.poNames.forEach((po, i) => { colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex; });
-      setQPoColors(colors); setQParseProgress(100);
-    } catch (err) { setQFileError(err.message); setQManifest(null); setQPoNames([]); setQPoColors({}); }
+      const numbers = {};
+      result.poNames.forEach((po, i) => {
+        colors[po] = DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex;
+        numbers[po] = i + 1;
+      });
+      setQPoColors(colors); setQPoNumbers(numbers); setQParseProgress(100);
+    } catch (err) { setQFileError(err.message); setQManifest(null); setQPoNames([]); setQPoColors({}); setQPoNumbers({}); }
     setQParsing(false);
   };
 
@@ -441,11 +458,14 @@ export default function Setup() {
         setQManifestPreview(Object.entries(man).slice(0, 50));
       }
       const colors = {};
+      const numbers = {};
       const savedColors = upload.poColors || {};
+      const savedNumbers = upload.poNumbers || {};
       (upload.poNames || []).forEach((po, i) => {
         colors[po] = savedColors[po] || DEFAULT_COLORS[i % DEFAULT_COLORS.length].hex;
+        numbers[po] = savedNumbers[po] || (i + 1);
       });
-      setQPoColors(colors); setQSelectedUploadId(upload.id);
+      setQPoColors(colors); setQPoNumbers(numbers); setQSelectedUploadId(upload.id);
     } catch (err) { setQFileError('Failed to load PO upload: ' + err.message); }
   };
 
@@ -695,9 +715,10 @@ export default function Setup() {
               {activeJob.meta.location && <p style={s.text}><strong>Location:</strong> {activeJob.meta.location}</p>}
               {activeJob.meta.mode === 'multi' && activeJob.poColors && (
                 <div style={{ marginTop: 12 }}>
-                  <strong style={s.text}>PO Colors:</strong>
+                  <strong style={s.text}>PO Colors &amp; Numbers:</strong>
                   {Object.entries(activeJob.poColors).map(([po, color]) => (
                     <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                      <span style={{ ...s.text, minWidth: 32, textAlign: 'center', fontWeight: 700, color: '#fbbf24' }}>#{activeJob.poNumbers?.[po] ?? '—'}</span>
                       <div style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: color, border: '1px solid #555' }} />
                       <span style={s.text}>{po}</span>
                     </div>
@@ -1008,6 +1029,10 @@ export default function Setup() {
                       {qPoNames.map((po) => (
                         <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
                           <span style={{ ...s.text, minWidth: 120, fontSize: 14 }}>{po}</span>
+                          <input type="number" min={1} value={qPoNumbers[po] ?? ''}
+                            onChange={(e) => setQPoNumbers({ ...qPoNumbers, [po]: e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0) })}
+                            title="Gaylord / bin number"
+                            style={{ ...s.input, width: 70, textAlign: 'center', flex: 'none' }} />
                           <select value={qPoColors[po] || DEFAULT_COLORS[0].hex}
                             onChange={(e) => setQPoColors({ ...qPoColors, [po]: e.target.value })} style={{ ...s.input, flex: 1 }}>
                             {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
@@ -1150,6 +1175,10 @@ export default function Setup() {
                 {poNames.map((po) => (
                   <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
                     <span style={{ ...s.text, minWidth: 120, fontSize: 14 }}>{po}</span>
+                    <input type="number" min={1} value={poNumbers[po] ?? ''}
+                      onChange={(e) => setPoNumbers({ ...poNumbers, [po]: e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0) })}
+                      title="Gaylord / bin number"
+                      style={{ ...s.input, width: 70, textAlign: 'center', flex: 'none' }} />
                     <select value={poColors[po] || DEFAULT_COLORS[0].hex}
                       onChange={(e) => setPoColors({ ...poColors, [po]: e.target.value })} style={{ ...s.input, flex: 1 }}>
                       {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
