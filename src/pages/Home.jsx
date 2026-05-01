@@ -8,6 +8,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import TodayLeaderboard from '../components/TodayLeaderboard';
 
 export default function Home() {
   const { currentUser, logout } = useAuth();
@@ -144,6 +145,9 @@ export default function Home() {
           </span>
         </div>
       )}
+
+      {/* Today's leaderboard — visible on the home/landing page */}
+      {job && <TodayLeaderboard job={job} compact />}
 
       {/* Navigation */}
       <nav style={styles.nav}>

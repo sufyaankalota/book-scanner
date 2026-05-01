@@ -5,6 +5,7 @@ import {
   collection, query, where, onSnapshot,
 } from 'firebase/firestore';
 import { usePresence } from '../hooks/usePresence';
+import TodayLeaderboard from '../components/TodayLeaderboard';
 
 const STORAGE_KEY = 'kiosk_assigned_pods';
 const DEVICE_NAME_KEY = 'kiosk_device_name';
@@ -200,6 +201,9 @@ export default function PodSelect() {
           ⚙️
         </button>
       </div>
+
+      {/* Live leaderboard — visible to operators before they pick a pod */}
+      {job && <TodayLeaderboard job={job} compact />}
 
       {/* Pod cards */}
       <div style={styles.podGrid}>

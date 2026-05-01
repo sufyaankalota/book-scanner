@@ -25,6 +25,7 @@ import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, expo
 import { logAudit } from '../utils/audit';
 import { copyManifestChunks } from '../utils/manifestStore';
 import { useToast } from '../components/Toast';
+import TodayLeaderboard from '../components/TodayLeaderboard';
 
 export default function Dashboard() {
   const { show: toast } = useToast();
@@ -859,6 +860,9 @@ export default function Dashboard() {
       <div style={st.progressContainer}>
         <div style={{ ...st.progressBar, width: `${Math.min(100, (totalScans / dailyTarget) * 100)}%` }} />
       </div>
+
+      {/* Today's leaderboard + pace alert */}
+      <TodayLeaderboard job={job} />
 
       {/* Auto-refresh indicator */}
       {lastUpdated && (
