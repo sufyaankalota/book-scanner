@@ -1510,26 +1510,30 @@ export default function Pod() {
         </div>
       )}
 
-      {/* Action buttons — keyboard shortcuts (Ctrl+1/2/3) shown so operators don't need a mouse */}
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
+      {/* Action buttons — Camera is the primary path (auto-falls to exception when no match);
+          Type ISBN for hand-keying barcodes; Log Exception only for severely damaged books. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
         <button onClick={() => setShowIsbnCamera(true)}
-          title="Press Ctrl+1 — reads the cover and matches to a manifest ISBN"
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <span>📷 Camera Match (AI)</span>
+          title="Press Ctrl+1 — reads the cover, matches to manifest, auto-logs exception if no match"
+          style={{ ...styles.secondaryBtn, margin: 0, borderColor: '#3B82F6', backgroundColor: '#1e3a8a', color: '#dbeafe', fontSize: 18, padding: '20px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, fontWeight: 800 }}>
+          <span>📷 Scan Book Cover (AI)</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#93c5fd' }}>Auto-matches to ISBN · falls back to exception if not found</span>
           <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
         </button>
-        <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
-          title="Press Ctrl+2"
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 14, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <span>⌨️ Type ISBN</span>
-          <kbd style={kbdHintStyle}>Ctrl + 2</kbd>
-        </button>
-        <button onClick={() => setShowExceptionModal(true)}
-          title="Press Ctrl+3 or Esc"
-          style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '14px 20px', fontSize: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <span>⚠️ Log Exception</span>
-          <kbd style={kbdHintStyle}>Ctrl + 3</kbd>
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
+            title="Press Ctrl+2"
+            style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 13, padding: '10px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <span>⌨️ Type ISBN</span>
+            <kbd style={kbdHintStyle}>Ctrl + 2</kbd>
+          </button>
+          <button onClick={() => setShowExceptionModal(true)}
+            title="Press Ctrl+3 or Esc — only for severely damaged books"
+            style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '10px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <span>⚠️ Damaged / Exception</span>
+            <kbd style={kbdHintStyle}>Ctrl + 3</kbd>
+          </button>
+        </div>
       </div>
 
       {!job && (
