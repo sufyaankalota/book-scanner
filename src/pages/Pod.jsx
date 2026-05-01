@@ -6,7 +6,7 @@ import {
   query, where, onSnapshot, serverTimestamp, Timestamp, runTransaction,
 } from 'firebase/firestore';
 import { isValidISBN, cleanISBN, detectBarcodeType } from '../utils/isbn';
-import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, playDisconnectAlarm, speak, getVolume, setVolume } from '../utils/audio';
+import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, speak, getVolume, setVolume } from '../utils/audio';
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
@@ -115,9 +115,6 @@ export default function Pod() {
 
   // Voice callout for PO color (Multi-PO mode). Off by default; persists per device.
   const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('pod-tts') === '1');
-  // Audible alarm threshold for scanner-disconnect (escalates idle warning).
-  const SCANNER_DISCONNECT_MS = 5 * 60 * 1000;
-  const disconnectAlarmRef = useRef(null);
 
   const totalScans = Math.max(localCount, firestoreCount);
   const isScanning = phase === PHASE_SCANNING;
@@ -226,42 +223,14 @@ export default function Pod() {
     return () => clearInterval(interval);
   }, []);
 
-  // ─── Scanner idle detection + audible disconnect alarm ───
-  const disconnectAlarmStartRef = useRef(0);
-  const disconnectAlarmGaveUpRef = useRef(false);
-  const ALARM_MAX_RING_MS = 2 * 60 * 1000; // ring for 2 min, then quiet down so an empty pod doesn't blare
+  // ─── Scanner idle detection (visual warning only — disconnect alarm disabled) ───
   useEffect(() => {
-    if (!isScanning) {
-      setShowIdleWarning(false);
-      if (disconnectAlarmRef.current) { disconnectAlarmRef.current(); disconnectAlarmRef.current = null; }
-      disconnectAlarmStartRef.current = 0;
-      disconnectAlarmGaveUpRef.current = false;
-      return;
-    }
+    if (!isScanning) { setShowIdleWarning(false); return; }
     const interval = setInterval(() => {
       const ref = lastScanTime ? lastScanTime.getTime() : (scanStartTimeRef.current || Date.now());
-      const idleMs = Date.now() - ref;
-      setShowIdleWarning(idleMs > IDLE_WARNING_MS);
-      if (idleMs > SCANNER_DISCONNECT_MS) {
-        if (!disconnectAlarmRef.current && !disconnectAlarmGaveUpRef.current) {
-          disconnectAlarmRef.current = playDisconnectAlarm();
-          disconnectAlarmStartRef.current = Date.now();
-        } else if (disconnectAlarmRef.current && Date.now() - disconnectAlarmStartRef.current > ALARM_MAX_RING_MS) {
-          // Auto-stop the alarm after ringing for 2 min so it doesn't loop forever
-          disconnectAlarmRef.current();
-          disconnectAlarmRef.current = null;
-          disconnectAlarmGaveUpRef.current = true;
-        }
-      } else if (disconnectAlarmRef.current) {
-        disconnectAlarmRef.current();
-        disconnectAlarmRef.current = null;
-        disconnectAlarmGaveUpRef.current = false;
-      }
+      setShowIdleWarning(Date.now() - ref > IDLE_WARNING_MS);
     }, 10000);
-    return () => {
-      clearInterval(interval);
-      if (disconnectAlarmRef.current) { disconnectAlarmRef.current(); disconnectAlarmRef.current = null; }
-    };
+    return () => clearInterval(interval);
   }, [isScanning, lastScanTime]); // eslint-disable-line
 
   // ─── Auto-close idle shift (30 min no scans) ───
