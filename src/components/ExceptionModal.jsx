@@ -2,36 +2,23 @@ import React, { useState, useRef, useEffect } from 'react';
 import { t } from '../utils/locale';
 import BookCamera from './BookCamera';
 
-const EXCEPTION_REASON_KEYS = [
-  'reasonDamaged',
-  'reasonNoIsbn',
-  'reasonOther',
-];
-
 export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, onClose }) {
-  // When AI capture pre-filled the title/photo, we already know it's a book that
-  // didn't match the manifest — skip the reason picker and default to "No Match".
-  const initialReason = prefill?.title || prefill?.photo ? 'reasonNoMatch' : '';
-  const initialStep = prefill?.title || prefill?.photo ? 'details' : 'reason';
-  const [reason, setReason] = useState(initialReason);
+  // Single auto-reason — we no longer ask the operator. If they hit the exception
+  // button it's always either AI couldn't match or the book has no readable ISBN.
+  const [reason] = useState('reasonNoMatch');
   const [title, setTitle] = useState(prefill?.title || '');
-  const [step, setStep] = useState(initialStep);
+  const [step, setStep] = useState('details');
   const [photoData, setPhotoData] = useState(prefill?.photo || null);
   const titleRef = useRef(null);
   const fileRef = useRef(null);
-  const [showAiCamera, setShowAiCamera] = useState(false);
+  const [showAiCamera, setShowAiCamera] = useState(!prefill?.title && !prefill?.photo);
   const [aiUsed, setAiUsed] = useState(!!prefill?.title);
 
-  const handleReasonSelect = (r) => {
-    setReason(r);
-    setStep('details');
-    // If we already have a title (e.g. from Pod's AI cover capture), skip the camera
-    // and jump straight to confirming details. Otherwise open the camera.
-    if (!title.trim() && !photoData) {
-      setShowAiCamera(true);
-    }
+  // Auto-open camera if no prefill
+  useEffect(() => {
     setTimeout(() => titleRef.current?.focus(), 100);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── File upload (fallback) ───
   const handleFilePhoto = (e) => {
@@ -60,7 +47,7 @@ export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, on
   const handleSubmit = () => {
     if (needsPhoto && !photoData) return;
     // Store English reason text in Firestore for consistency
-    const REASON_EN = { reasonDamaged: 'Damaged / Unsellable', reasonNoIsbn: 'No ISBN Barcode', reasonNoMatch: 'AI No Match', reasonOther: 'Other' };
+    const REASON_EN = { reasonNoMatch: 'No ISBN / No Match' };
     onSubmit({
       reason: REASON_EN[reason] || reason,
       isbn: null,
@@ -96,18 +83,7 @@ export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, on
         </div>
 
         {step === 'reason' && (
-          <div>
-            <p style={styles.subtitle}>{t('whatsTheIssue')}</p>
-            {EXCEPTION_REASON_KEYS.map((rKey) => (
-              <button
-                key={rKey}
-                onClick={() => handleReasonSelect(rKey)}
-                style={styles.reasonBtn}
-              >
-                {t(rKey)}
-              </button>
-            ))}
-          </div>
+          <div></div>
         )}
 
         {step === 'details' && (
