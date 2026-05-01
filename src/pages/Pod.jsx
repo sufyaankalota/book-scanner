@@ -323,6 +323,27 @@ export default function Pod() {
   useEffect(() => {
     if (!isScanning) return;
     const handler = (e) => {
+      // Quick-action shortcuts (F-keys avoid being captured by the hidden
+      // scanner input). All require active scanning + no other modal open.
+      const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm;
+      if (noModal) {
+        if (e.key === 'F1') {
+          e.preventDefault();
+          setShowIsbnCamera(true);
+          return;
+        }
+        if (e.key === 'F2') {
+          e.preventDefault();
+          setShowManualEntry(true);
+          setTimeout(() => manualInputRef.current?.focus(), 100);
+          return;
+        }
+        if (e.key === 'F3') {
+          e.preventDefault();
+          setShowExceptionModal(true);
+          return;
+        }
+      }
       if (e.key === 'Escape' && !showExceptionModal && !showSwitchOperator && !showSettings) {
         e.preventDefault(); setShowExceptionModal(true); return;
       }
@@ -333,7 +354,7 @@ export default function Pod() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, refocusInput]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, refocusInput]);
 
   // ─── Load active job ───
   useEffect(() => {
@@ -1381,19 +1402,25 @@ export default function Pod() {
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* Action buttons — keyboard shortcuts (F1/F2/F3) shown so operators don't need a mouse */}
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
         <button onClick={() => setShowIsbnCamera(true)}
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15, padding: '14px 20px' }}>
-          📷 Camera Entry (AI)
+          title="Press F1"
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#3B82F6', color: '#93c5fd', fontSize: 15, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <span>📷 Camera Entry (AI)</span>
+          <kbd style={kbdHintStyle}>F1</kbd>
         </button>
         <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
-          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 14, padding: '14px 20px' }}>
-          ⌨️ Type ISBN
+          title="Press F2"
+          style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 14, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <span>⌨️ Type ISBN</span>
+          <kbd style={kbdHintStyle}>F2</kbd>
         </button>
         <button onClick={() => setShowExceptionModal(true)}
-          style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '14px 20px', fontSize: 15 }}>
-          ⚠️ Log Exception
+          title="Press F3 or Esc"
+          style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '14px 20px', fontSize: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <span>⚠️ Log Exception</span>
+          <kbd style={kbdHintStyle}>F3</kbd>
         </button>
       </div>
 
@@ -1447,7 +1474,10 @@ export default function Pod() {
             <h2 style={{ color: '#fff', marginTop: 0, fontSize: 20, textAlign: 'center' }}>⌨️ Keyboard Shortcuts</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                ['Esc', 'Open exception modal'],
+                ['F1', 'Camera Entry (AI ISBN scan)'],
+                ['F2', 'Type ISBN manually'],
+                ['F3', 'Log exception'],
+                ['Esc', 'Log exception (alternate)'],
                 ['?', 'Toggle this help overlay'],
                 ['Enter', 'Submit / Advance'],
                 ['Space', 'Resume from pause'],
@@ -1470,6 +1500,19 @@ export default function Pod() {
 // ═══════════════════════════════════════════
 // Styles
 // ═══════════════════════════════════════════
+const kbdHintStyle = {
+  fontFamily: 'monospace',
+  fontSize: 11,
+  fontWeight: 700,
+  padding: '2px 8px',
+  borderRadius: 4,
+  backgroundColor: 'rgba(255,255,255,0.12)',
+  border: '1px solid rgba(255,255,255,0.25)',
+  color: 'currentColor',
+  letterSpacing: 0.5,
+  lineHeight: 1.2,
+};
+
 const styles = {
   container: {
     minHeight: '100vh', color: 'var(--text, #fff)', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
