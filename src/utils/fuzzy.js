@@ -15,7 +15,12 @@ export function normalizeTitle(s) {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '') // strip diacritic combining marks
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ') // keep letters/numbers (any script), drop punctuation
+    // Remove apostrophe-like marks WITHOUT inserting a space — so "L'Enfant"
+    // collapses to "lenfant" instead of splitting into two tokens. Covers
+    // ASCII ', curly ’ ‘, modifier letter apostrophe ʼ, prime ′, backtick `,
+    // acute ´, and Hebrew geresh ׳.
+    .replace(/['\u2019\u2018\u02BC\u2032`\u00B4\u05F3]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ') // remaining punctuation → space
     .replace(/\s+/g, ' ')
     .trim();
 }

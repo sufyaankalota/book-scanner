@@ -2,9 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { normalizeTitle, tokens, similarity, findMatches, classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from './fuzzy';
 
 describe('normalizeTitle', () => {
-  it('preserves nothing fancy — lowercase ASCII only', () => {
+  it('collapses apostrophes (no token split) and drops other punctuation', () => {
     expect(normalizeTitle('Harry Potter & the Sorcerer\u2019s Stone'))
-      .toBe('harry potter the sorcerer s stone');
+      .toBe('harry potter the sorcerers stone');
+  });
+
+  it('treats every apostrophe variant as letter-glue, not separator', () => {
+    // L'Enfant should stay one token regardless of apostrophe style
+    expect(normalizeTitle("L'Enfant")).toBe('lenfant');
+    expect(normalizeTitle('L\u2019Enfant')).toBe('lenfant');
+    expect(normalizeTitle('L\u2018Enfant')).toBe('lenfant');
+    expect(normalizeTitle('L\u02BCEnfant')).toBe('lenfant');
   });
 
   it('strips diacritics for compare', () => {
