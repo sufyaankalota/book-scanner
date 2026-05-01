@@ -1270,24 +1270,55 @@ export default function Setup() {
               </div>
               <button onClick={async () => {
                 if (!window.confirm(`Delete job "${pj.meta.name}" and ALL its data? This cannot be undone.`)) return;
+                const safeStep = async (label, fn) => {
+                  try { await fn(); }
+                  catch (err) { console.warn(`[delete-job] ${label} failed:`, err); }
+                };
                 try {
-                  const scanSnap = await getDocs(query(collection(db, 'scans'), where('jobId', '==', pj.id)));
-                  const excSnap = await getDocs(query(collection(db, 'exceptions'), where('jobId', '==', pj.id)));
-                  const shiftSnap = await getDocs(query(collection(db, 'shifts'), where('jobId', '==', pj.id)));
-                  const bolSnap = await getDocs(query(collection(db, 'bols'), where('jobId', '==', pj.id)));
-                  // Delete manifest chunks if chunked
-                  if (pj.manifestMeta?.chunked) {
-                    await deleteManifestChunks(`jobs/${pj.id}`, pj.manifestMeta.numChunks);
-                  }
-                  const mfSnap = await getDocs(collection(db, 'jobs', pj.id, 'manifest'));
-                  const allDocs = [...scanSnap.docs, ...excSnap.docs, ...shiftSnap.docs, ...bolSnap.docs, ...mfSnap.docs];
-                  let batch = writeBatch(db); let c = 0;
-                  for (const d of allDocs) { batch.delete(d.ref); c++; if (c % 400 === 0) { await batch.commit(); batch = writeBatch(db); } }
-                  batch.delete(doc(db, 'jobs', pj.id));
-                  await batch.commit();
-                  logAudit('job_deleted', { jobId: pj.id, jobName: pj.meta.name, deletedRecords: c });
+                  // Delete sub-collections in parallel where possible; isolate failures
+                  // so a single 500-error doesn't abort the whole delete.
+                  let totalDeleted = 0;
+                  const deleteSnap = async (snap) => {
+                    let batch = writeBatch(db); let c = 0;
+                    for (const d of snap.docs) {
+                      batch.delete(d.ref); c++;
+                      if (c % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+                    }
+                    if (c % 400 !== 0) await batch.commit();
+                    totalDeleted += c;
+                  };
+                  await safeStep('scans', async () => {
+                    const s = await getDocs(query(collection(db, 'scans'), where('jobId', '==', pj.id)));
+                    await deleteSnap(s);
+                  });
+                  await safeStep('exceptions', async () => {
+                    const s = await getDocs(query(collection(db, 'exceptions'), where('jobId', '==', pj.id)));
+                    await deleteSnap(s);
+                  });
+                  await safeStep('shifts', async () => {
+                    const s = await getDocs(query(collection(db, 'shifts'), where('jobId', '==', pj.id)));
+                    await deleteSnap(s);
+                  });
+                  await safeStep('bols', async () => {
+                    const s = await getDocs(query(collection(db, 'bols'), where('jobId', '==', pj.id)));
+                    await deleteSnap(s);
+                  });
+                  await safeStep('manifest-chunks', async () => {
+                    if (pj.manifestMeta?.chunked) await deleteManifestChunks(`jobs/${pj.id}`, pj.manifestMeta.numChunks);
+                  });
+                  await safeStep('legacy-manifest', async () => {
+                    const mfSnap = await getDocs(collection(db, 'jobs', pj.id, 'manifest'));
+                    await deleteSnap(mfSnap);
+                  });
+                  // Always delete the job doc last, even if a sub-step failed
+                  await deleteDoc(doc(db, 'jobs', pj.id));
+                  logAudit('job_deleted', { jobId: pj.id, jobName: pj.meta.name, deletedRecords: totalDeleted });
                   setPastJobs((prev) => prev.filter((j) => j.id !== pj.id));
-                } catch (err) { toast('Delete failed: ' + err.message, 'error'); }
+                  toast(`Deleted "${pj.meta.name}" (${totalDeleted} records)`, 'success');
+                } catch (err) {
+                  console.error('[delete-job] fatal:', err);
+                  toast('Delete failed: ' + (err?.message || err), 'error');
+                }
               }} style={{ ...s.dangerBtn, fontSize: 13, padding: '8px 16px' }}>🗑 Delete</button>
             </div>
           ))}
