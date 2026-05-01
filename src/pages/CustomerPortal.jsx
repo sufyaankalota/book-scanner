@@ -134,32 +134,30 @@ export default function CustomerPortal() {
   }, []);
 
   // Data Loading (only when authenticated)
+  // Load full list of jobs the customer can browse (active + all past, excluding queued)
+  const [allJobs, setAllJobs] = useState([]);
   useEffect(() => {
     if (!authenticated) return;
-    // Try active job first
-    const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
-    const unsub = onSnapshot(q, async (snap) => {
-      if (!snap.empty) {
-        const d = snap.docs[0];
-        const picked = { id: d.id, ...d.data() };
-        if (picked) {
-          setJob(picked);
-        } else {
-          setJob(null);
+    const unsub = onSnapshot(collection(db, 'jobs'), (snap) => {
+      const jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .filter((j) => !j.meta?.queued)
+        .sort((a, b) => {
+          // Active first, then by closedAt desc, then by createdAt desc
+          if (a.meta?.active && !b.meta?.active) return -1;
+          if (!a.meta?.active && b.meta?.active) return 1;
+          const at = a.meta?.closedAt?.toDate?.()?.getTime() || a.meta?.createdAt?.toDate?.()?.getTime() || 0;
+          const bt = b.meta?.closedAt?.toDate?.()?.getTime() || b.meta?.createdAt?.toDate?.()?.getTime() || 0;
+          return bt - at;
+        });
+      setAllJobs(jobs);
+      // If no job selected yet, pick active or most recent
+      setJob((current) => {
+        if (current && jobs.some((j) => j.id === current.id)) {
+          // refresh meta in case live
+          return jobs.find((j) => j.id === current.id) || current;
         }
-      } else {
-        // No active job – load most recently closed job for historical data
-        try {
-          const closedSnap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
-          if (!closedSnap.empty) {
-            const sorted = closedSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-              .sort((a, b) => (b.meta.closedAt?.toDate?.()?.getTime() || 0) - (a.meta.closedAt?.toDate?.()?.getTime() || 0));
-            setJob(sorted[0] || null);
-          } else {
-            setJob(null);
-          }
-        } catch { setJob(null); }
-      }
+        return jobs[0] || null;
+      });
       setLoading(false);
     });
     return unsub;
@@ -655,7 +653,25 @@ ${allExcs.map((exc, i) => `<div class="exc">
       <div style={st.topBar}>
         <div>
           <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>BookFlow Portal</span>
-          {job && <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 14, marginLeft: 12 }}>{job.meta.name}{!job.meta.active ? ' (completed)' : ''}</span>}
+          {allJobs.length > 0 && (
+            <select
+              value={job?.id || ''}
+              onChange={(e) => {
+                const picked = allJobs.find((j) => j.id === e.target.value);
+                if (picked) setJob(picked);
+              }}
+              style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 6, background: '#1a1a1a', color: '#fff', border: '1px solid #333', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              title="Switch job">
+              {allJobs.map((j) => {
+                const closed = j.meta?.closedAt?.toDate?.()?.toLocaleDateString();
+                return (
+                  <option key={j.id} value={j.id}>
+                    {j.meta?.name}{j.meta?.active ? ' · ACTIVE' : closed ? ` · ${closed}` : ' · completed'}
+                  </option>
+                );
+              })}
+            </select>
+          )}
         </div>
         <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
       </div>
@@ -701,9 +717,9 @@ ${allExcs.map((exc, i) => `<div class="exc">
         </div>
       )}
 
-      {!job?.meta?.active && (
+      {!job?.meta?.active && job && (
         <div style={{ ...st.card, textAlign: 'center', padding: '20px', marginBottom: 16 }}>
-          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>No active job right now. Showing data from the most recent job{job ? ` (${job.meta.name})` : ''}.</p>
+          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>📁 Viewing completed job: <strong style={{ color: '#ccc' }}>{job.meta.name}</strong>{job.meta.closedAt?.toDate?.() ? ` (closed ${job.meta.closedAt.toDate().toLocaleDateString()})` : ''}. Use the dropdown above to switch jobs.</p>
         </div>
       )}
 
