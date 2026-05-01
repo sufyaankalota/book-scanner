@@ -611,9 +611,10 @@ export default function Pod() {
   const handleAiCoverResult = (data) => {
     if (!data) return;
     const capturedTitle = (data.title || '').trim();
+    const capturedAuthor = (data.author || '').trim();
     const photo = data.image || null;
-    if (!capturedTitle) {
-      flash('#F97316', 'AI couldn\u2019t read the title — please log an exception', 2500);
+    if (!capturedTitle && !capturedAuthor) {
+      flash('#F97316', 'AI couldn\u2019t read the cover — please log an exception', 2500);
       openExceptionForCapture('', photo);
       return;
     }
@@ -623,20 +624,23 @@ export default function Pod() {
       openExceptionForCapture(capturedTitle, photo);
       return;
     }
-    const matches = findMatches(capturedTitle, titleIndex, { topK: 3, minScore: MATCH_AMBIGUOUS - 0.05 });
+    // Combine title + author so a cover where AI captured only the author still matches
+    // a manifest entry that has both (e.g. "Elie Wiesel One Generation After").
+    const searchString = [capturedTitle, capturedAuthor].filter(Boolean).join(' ');
+    const matches = findMatches(searchString, titleIndex, { topK: 3, minScore: MATCH_AMBIGUOUS - 0.05 });
     if (!matches.length || matches[0].score < MATCH_AMBIGUOUS) {
       // No reasonable match → exception with title prefilled
-      openExceptionForCapture(capturedTitle, photo);
+      openExceptionForCapture(capturedTitle || capturedAuthor, photo);
       return;
     }
     const top = matches[0];
     if (classify(top.score) === 'confident') {
       // Auto-accept and book it as an AI-matched (manual-billed) scan
-      handleScan(top.isbn, { isManual: true, source: 'ai-match', capturedTitle, matchScore: top.score });
+      handleScan(top.isbn, { isManual: true, source: 'ai-match', capturedTitle: searchString, matchScore: top.score });
       return;
     }
     // Ambiguous — ask the operator to pick
-    setAiMatchCandidates({ capturedTitle, photo, candidates: matches });
+    setAiMatchCandidates({ capturedTitle: searchString, photo, candidates: matches });
   };
 
   // ─── Process scan (after validation/confirmation) ───

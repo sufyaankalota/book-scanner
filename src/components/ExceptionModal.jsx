@@ -5,14 +5,17 @@ import BookCamera from './BookCamera';
 const EXCEPTION_REASON_KEYS = [
   'reasonDamaged',
   'reasonNoIsbn',
-  'reasonNotBook',
   'reasonOther',
 ];
 
 export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, onClose }) {
-  const [reason, setReason] = useState('');
+  // When AI capture pre-filled the title/photo, we already know it's a book that
+  // didn't match the manifest — skip the reason picker and default to "No Match".
+  const initialReason = prefill?.title || prefill?.photo ? 'reasonNoMatch' : '';
+  const initialStep = prefill?.title || prefill?.photo ? 'details' : 'reason';
+  const [reason, setReason] = useState(initialReason);
   const [title, setTitle] = useState(prefill?.title || '');
-  const [step, setStep] = useState('reason');
+  const [step, setStep] = useState(initialStep);
   const [photoData, setPhotoData] = useState(prefill?.photo || null);
   const titleRef = useRef(null);
   const fileRef = useRef(null);
@@ -57,7 +60,7 @@ export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, on
   const handleSubmit = () => {
     if (needsPhoto && !photoData) return;
     // Store English reason text in Firestore for consistency
-    const REASON_EN = { reasonDamaged: 'Damaged / Unsellable', reasonNoIsbn: 'No ISBN Barcode', reasonNotBook: 'Not a Book', reasonOther: 'Other' };
+    const REASON_EN = { reasonDamaged: 'Damaged / Unsellable', reasonNoIsbn: 'No ISBN Barcode', reasonNoMatch: 'AI No Match', reasonOther: 'Other' };
     onSubmit({
       reason: REASON_EN[reason] || reason,
       isbn: null,
