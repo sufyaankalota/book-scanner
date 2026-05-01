@@ -107,3 +107,60 @@ const COLOR_TONES = {
 export function playColorBeep(hex) {
   playTone(COLOR_TONES[hex] || 880, 0.15, 0.25);
 }
+
+// ─── Scanner disconnect alarm ───
+// Loud, repeating siren-style tone meant to grab attention from across the warehouse.
+// Returns a stop() function so the caller can cancel when scanning resumes.
+export function playDisconnectAlarm() {
+  let cancelled = false;
+  let timer = null;
+
+  const burst = () => {
+    if (cancelled) return;
+    try {
+      const vol = getVolume() / 100;
+      if (vol === 0) { timer = setTimeout(burst, 1500); return; }
+      const ctx = getAudioContext();
+      const now = ctx.currentTime;
+      // Two-tone siren: 800Hz → 1200Hz → 800Hz, ~1s total
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.linearRampToValueAtTime(1200, now + 0.3);
+      osc.frequency.linearRampToValueAtTime(800, now + 0.6);
+      gain.gain.setValueAtTime(0.6 * vol, now);
+      gain.gain.setValueAtTime(0.6 * vol, now + 0.55);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.6);
+    } catch {}
+    timer = setTimeout(burst, 1500);
+  };
+  burst();
+
+  return () => { cancelled = true; if (timer) clearTimeout(timer); };
+}
+
+// ─── Speech synthesis ───
+// Used for Multi-PO color callouts so operators don't need to look at the screen.
+// Browser TTS support varies — fail silently if unavailable.
+let lastSpoken = { text: '', time: 0 };
+export function speak(text, { rate = 1.1, pitch = 1, dedupMs = 800 } = {}) {
+  try {
+    if (!('speechSynthesis' in window)) return;
+    const vol = getVolume() / 100;
+    if (vol === 0) return;
+    const t = String(text || '').trim();
+    if (!t) return;
+    // Avoid stutter when the same callout fires twice in quick succession
+    if (t === lastSpoken.text && Date.now() - lastSpoken.time < dedupMs) return;
+    lastSpoken = { text: t, time: Date.now() };
+    // Cancel queued utterances so callouts stay current
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(t);
+    u.rate = rate; u.pitch = pitch; u.volume = vol;
+    window.speechSynthesis.speak(u);
+  } catch {}
+}
+

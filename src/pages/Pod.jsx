@@ -3,10 +3,10 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import {
   collection, doc, getDocs, getDoc, addDoc, setDoc, deleteDoc, updateDoc,
-  query, where, onSnapshot, serverTimestamp, Timestamp,
+  query, where, onSnapshot, serverTimestamp, Timestamp, runTransaction,
 } from 'firebase/firestore';
 import { isValidISBN, cleanISBN, detectBarcodeType } from '../utils/isbn';
-import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, getVolume, setVolume } from '../utils/audio';
+import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, playDisconnectAlarm, speak, getVolume, setVolume } from '../utils/audio';
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
@@ -113,6 +113,12 @@ export default function Pod() {
   const jobIsbnCountsRef = useRef({}); // { isbn: count } for dedup across entire job
   const [pendingOffline, setPendingOffline] = useState(0);
 
+  // Voice callout for PO color (Multi-PO mode). Off by default; persists per device.
+  const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('pod-tts') === '1');
+  // Audible alarm threshold for scanner-disconnect (escalates idle warning).
+  const SCANNER_DISCONNECT_MS = 5 * 60 * 1000;
+  const disconnectAlarmRef = useRef(null);
+
   const totalScans = Math.max(localCount, firestoreCount);
   const isScanning = phase === PHASE_SCANNING;
   const isPaused = phase === PHASE_PAUSED;
@@ -128,6 +134,50 @@ export default function Pod() {
       localStorage.setItem('operator-history', JSON.stringify(updated));
       setOperatorHistory(updated);
     } catch {}
+  };
+
+  // ─── Atomic pod claim ───
+  // Race-safe: if another operator is already heartbeating this pod, refuse.
+  // Otherwise stamp the claim before advancing — the regular heartbeat will
+  // immediately overwrite this with full state.
+  const claimPod = async (name) => {
+    const ref = doc(db, 'presence', podId);
+    try {
+      return await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.exists()) {
+          const d = snap.data();
+          const lastSeen = d.lastSeen?.toDate?.();
+          const isRecent = lastSeen && Date.now() - lastSeen.getTime() < 60000;
+          const otherOperator = d.operator && d.operator.toLowerCase() !== name.trim().toLowerCase();
+          if (d.online && isRecent && otherOperator) {
+            return { ok: false, currentOperator: d.operator };
+          }
+        }
+        tx.set(ref, {
+          podId, operator: name.trim(), status: PHASE_PAIR_SCANNER,
+          online: true, scanners: [], lastSeen: serverTimestamp(),
+        }, { merge: true });
+        return { ok: true };
+      });
+    } catch (err) {
+      // Network or rules failure — degrade to a soft check (existing podLocked banner).
+      return { ok: true, degraded: true, error: err?.message };
+    }
+  };
+
+  const advanceFromOperator = async () => {
+    const name = operatorName.trim();
+    if (!name) return;
+    const result = await claimPod(name);
+    if (!result.ok) {
+      setPodLocked(true);
+      flash('#EF4444', `Pod in use by ${result.currentOperator}`, 2500);
+      return;
+    }
+    saveOperatorToHistory(name);
+    setPodLocked(false);
+    setPhase(PHASE_PAIR_SCANNER);
   };
 
   // ─── Font size ───
@@ -176,15 +226,31 @@ export default function Pod() {
     return () => clearInterval(interval);
   }, []);
 
-  // ─── Scanner idle detection ───
+  // ─── Scanner idle detection + audible disconnect alarm ───
   useEffect(() => {
-    if (!isScanning) { setShowIdleWarning(false); return; }
+    if (!isScanning) {
+      setShowIdleWarning(false);
+      if (disconnectAlarmRef.current) { disconnectAlarmRef.current(); disconnectAlarmRef.current = null; }
+      return;
+    }
     const interval = setInterval(() => {
       const ref = lastScanTime ? lastScanTime.getTime() : (scanStartTimeRef.current || Date.now());
-      setShowIdleWarning(Date.now() - ref > IDLE_WARNING_MS);
+      const idleMs = Date.now() - ref;
+      setShowIdleWarning(idleMs > IDLE_WARNING_MS);
+      if (idleMs > SCANNER_DISCONNECT_MS) {
+        if (!disconnectAlarmRef.current) {
+          disconnectAlarmRef.current = playDisconnectAlarm();
+        }
+      } else if (disconnectAlarmRef.current) {
+        disconnectAlarmRef.current();
+        disconnectAlarmRef.current = null;
+      }
     }, 10000);
-    return () => clearInterval(interval);
-  }, [isScanning, lastScanTime]);
+    return () => {
+      clearInterval(interval);
+      if (disconnectAlarmRef.current) { disconnectAlarmRef.current(); disconnectAlarmRef.current = null; }
+    };
+  }, [isScanning, lastScanTime]); // eslint-disable-line
 
   // ─── Auto-close idle shift (30 min no scans) ───
   useEffect(() => {
@@ -296,7 +362,7 @@ export default function Pod() {
     return unsub;
   }, []);
 
-  // ─── Pod lock check ───
+  // ─── Pod lock check (uses 60s threshold to flag stale sessions sooner) ───
   useEffect(() => {
     if (phase !== PHASE_OPERATOR) return;
     (async () => {
@@ -305,7 +371,7 @@ export default function Pod() {
         if (presDoc.exists()) {
           const data = presDoc.data();
           const lastSeen = data.lastSeen?.toDate?.();
-          const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 90000);
+          const isRecent = lastSeen && (Date.now() - lastSeen.getTime() < 60000);
           if (data.online && isRecent && data.operator) setPodLocked(true);
         }
       } catch {}
@@ -565,6 +631,7 @@ export default function Pod() {
     if (poName) {
       const color = job.poColors?.[poName] || '#22C55E';
       playColorBeep(color);
+      if (ttsEnabled) speak(getColorName(color));
       flash(color, `${getColorName(color)} ${t('gaylord')}`);
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual }, ...prev].slice(0, 20));
@@ -636,8 +703,19 @@ export default function Pod() {
   const handlePairScan = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const val = e.target.value.trim(); e.target.value = '';
-      if (val) { setScannerPaired(true); setPhase(PHASE_READY); }
+      const raw = e.target.value.trim(); e.target.value = '';
+      if (!raw) return;
+      // Require a real barcode — prevents accidental keyboard pairing or fake input.
+      // Accepts ISBN-10/13, EAN-13, UPC-A; falls back to permissive 8–18 digit code.
+      const cleaned = cleanISBN(raw);
+      const isLikelyBarcode = isValidISBN(cleaned) || /^\d{8,18}$/.test(cleaned);
+      if (!isLikelyBarcode) {
+        playErrorBeep();
+        flash('#EF4444', 'NOT A BARCODE — use scanner', 1500);
+        return;
+      }
+      setScannerPaired(true);
+      setPhase(PHASE_READY);
     }
   };
 
@@ -710,7 +788,7 @@ export default function Pod() {
           <input type="text" value={operatorName}
             onChange={(e) => setOperatorName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && operatorName.trim()) { saveOperatorToHistory(operatorName); setPodLocked(false); setPhase(PHASE_PAIR_SCANNER); }
+              if (e.key === 'Enter' && operatorName.trim()) advanceFromOperator();
             }}
             placeholder="e.g. John, Maria..." style={styles.setupInput} autoFocus />
 
@@ -730,7 +808,7 @@ export default function Pod() {
           )}
 
           <button
-            onClick={() => { if (operatorName.trim()) { saveOperatorToHistory(operatorName); setPodLocked(false); setPhase(PHASE_PAIR_SCANNER); } }}
+            onClick={() => { if (operatorName.trim()) advanceFromOperator(); }}
             disabled={!operatorName.trim()}
             style={{ ...styles.primaryBtn, marginTop: 16, opacity: operatorName.trim() ? 1 : 0.5 }}
           >Next → Pair Scanner</button>
@@ -1087,6 +1165,19 @@ export default function Pod() {
                 {lang === 'en' ? '🇺🇸 English' : '🇲🇽 Español'}
               </button>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <input
+                type="checkbox"
+                checked={ttsEnabled}
+                onChange={(e) => {
+                  setTtsEnabled(e.target.checked);
+                  localStorage.setItem('pod-tts', e.target.checked ? '1' : '0');
+                }}
+              />
+              <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600 }}>
+                🗣️ Voice callout (Multi-PO color)
+              </span>
+            </label>
           </div>
         </div>
       )}

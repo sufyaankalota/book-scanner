@@ -4,19 +4,32 @@ import { db } from '../firebase';
 import {
   collection, query, where, onSnapshot,
 } from 'firebase/firestore';
+import { usePresence } from '../hooks/usePresence';
 
 const STORAGE_KEY = 'kiosk_assigned_pods';
 const DEVICE_NAME_KEY = 'kiosk_device_name';
+const MAX_DEVICE_NAME = 40;
+
+// Strip control chars / HTML so a pasted device name can't break the UI or render markup elsewhere.
+function sanitizeDeviceName(s) {
+  return String(s || '')
+    .replace(/[<>"'&]/g, '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, MAX_DEVICE_NAME);
+}
 
 function getAssignedPods() {
   try {
     const v = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(v) && v.length > 0 ? v : null;
+    if (!Array.isArray(v) || v.length === 0) return null;
+    // Defensive: only allow short alphanumeric pod ids
+    return v.filter((p) => typeof p === 'string' && /^[A-Z0-9]{1,4}$/i.test(p)).map((p) => p.toUpperCase());
   } catch { return null; }
 }
 
 function getDeviceName() {
-  return localStorage.getItem(DEVICE_NAME_KEY) || '';
+  return sanitizeDeviceName(localStorage.getItem(DEVICE_NAME_KEY) || '');
 }
 
 export default function PodSelect() {
@@ -25,8 +38,9 @@ export default function PodSelect() {
   const [deviceName, setDeviceName] = useState(getDeviceName);
   const [setupMode, setSetupMode] = useState(!getAssignedPods());
   const [job, setJob] = useState(null);
-  const [presence, setPresence] = useState({});
-  const [presenceRaw, setPresenceRaw] = useState({});
+  const [jobLoading, setJobLoading] = useState(true);
+  const [jobError, setJobError] = useState(null);
+  const { presence } = usePresence(60000);
 
   // Setup form state
   const [selectedPods, setSelectedPods] = useState(getAssignedPods() || []);
@@ -35,42 +49,27 @@ export default function PodSelect() {
   // Load active job to get available pods
   useEffect(() => {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
-    const unsub = onSnapshot(q, (snap) => {
-      if (!snap.empty) {
-        const d = snap.docs[0];
-        setJob({ id: d.id, ...d.data() });
-      } else {
-        setJob(null);
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        if (!snap.empty) {
+          const d = snap.docs[0];
+          setJob({ id: d.id, ...d.data() });
+        } else {
+          setJob(null);
+        }
+        setJobLoading(false);
+        setJobError(null);
+      },
+      (err) => {
+        setJobError(err?.message || 'Failed to load job');
+        setJobLoading(false);
       }
-    });
+    );
     return unsub;
   }, []);
 
-  // Listen to pod presence
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'presence'), (snap) => {
-      const data = {};
-      snap.forEach((d) => { data[d.id] = d.data(); });
-      setPresenceRaw(data);
-    });
-    return unsub;
-  }, []);
-
-  // Re-evaluate online status every 10 seconds
-  useEffect(() => {
-    const evaluate = () => {
-      const evaluated = {};
-      for (const [id, p] of Object.entries(presenceRaw)) {
-        const lastSeen = p.lastSeen?.toDate?.();
-        const isRecent = lastSeen && Date.now() - lastSeen.getTime() < 90000;
-        evaluated[id] = { ...p, online: p.online && isRecent };
-      }
-      setPresence(evaluated);
-    };
-    evaluate();
-    const interval = setInterval(evaluate, 10000);
-    return () => clearInterval(interval);
-  }, [presenceRaw]);
+  // Listen to pod presence — handled by usePresence hook above
 
   const allPods = job?.meta?.pods || ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
@@ -85,10 +84,11 @@ export default function PodSelect() {
   const saveSetup = () => {
     if (selectedPods.length === 0) return;
     const sorted = [...selectedPods].sort();
+    const cleanName = sanitizeDeviceName(editDeviceName);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-    localStorage.setItem(DEVICE_NAME_KEY, editDeviceName.trim());
+    localStorage.setItem(DEVICE_NAME_KEY, cleanName);
     setAssignedPods(sorted);
-    setDeviceName(editDeviceName.trim());
+    setDeviceName(cleanName);
     setSetupMode(false);
   };
 
@@ -113,8 +113,9 @@ export default function PodSelect() {
           <input
             type="text"
             value={editDeviceName}
-            onChange={(e) => setEditDeviceName(e.target.value)}
+            onChange={(e) => setEditDeviceName(sanitizeDeviceName(e.target.value))}
             placeholder="e.g. Laptop-1, Station-A..."
+            maxLength={MAX_DEVICE_NAME}
             style={styles.input}
           />
 
@@ -179,7 +180,17 @@ export default function PodSelect() {
               {job.meta.name} · {job.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'}
             </p>
           )}
-          {!job && (
+          {jobLoading && !job && (
+            <p style={{ color: '#888', fontSize: 14, fontWeight: 600, margin: '4px 0 0' }}>
+              Loading job…
+            </p>
+          )}
+          {jobError && (
+            <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
+              ⚠️ Connection error — retrying
+            </p>
+          )}
+          {!job && !jobLoading && !jobError && (
             <p style={{ color: '#EF4444', fontSize: 14, fontWeight: 600, margin: '4px 0 0' }}>
               No active job
             </p>
