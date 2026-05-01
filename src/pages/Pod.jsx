@@ -227,10 +227,15 @@ export default function Pod() {
   }, []);
 
   // ─── Scanner idle detection + audible disconnect alarm ───
+  const disconnectAlarmStartRef = useRef(0);
+  const disconnectAlarmGaveUpRef = useRef(false);
+  const ALARM_MAX_RING_MS = 2 * 60 * 1000; // ring for 2 min, then quiet down so an empty pod doesn't blare
   useEffect(() => {
     if (!isScanning) {
       setShowIdleWarning(false);
       if (disconnectAlarmRef.current) { disconnectAlarmRef.current(); disconnectAlarmRef.current = null; }
+      disconnectAlarmStartRef.current = 0;
+      disconnectAlarmGaveUpRef.current = false;
       return;
     }
     const interval = setInterval(() => {
@@ -238,12 +243,19 @@ export default function Pod() {
       const idleMs = Date.now() - ref;
       setShowIdleWarning(idleMs > IDLE_WARNING_MS);
       if (idleMs > SCANNER_DISCONNECT_MS) {
-        if (!disconnectAlarmRef.current) {
+        if (!disconnectAlarmRef.current && !disconnectAlarmGaveUpRef.current) {
           disconnectAlarmRef.current = playDisconnectAlarm();
+          disconnectAlarmStartRef.current = Date.now();
+        } else if (disconnectAlarmRef.current && Date.now() - disconnectAlarmStartRef.current > ALARM_MAX_RING_MS) {
+          // Auto-stop the alarm after ringing for 2 min so it doesn't loop forever
+          disconnectAlarmRef.current();
+          disconnectAlarmRef.current = null;
+          disconnectAlarmGaveUpRef.current = true;
         }
       } else if (disconnectAlarmRef.current) {
         disconnectAlarmRef.current();
         disconnectAlarmRef.current = null;
+        disconnectAlarmGaveUpRef.current = false;
       }
     }, 10000);
     return () => {
