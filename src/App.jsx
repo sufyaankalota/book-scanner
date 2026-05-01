@@ -11,6 +11,7 @@ const Setup = lazy(() => import('./pages/Setup'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const JobHistory = lazy(() => import('./pages/JobHistory'));
 const Kiosk = lazy(() => import('./pages/Kiosk'));
+const PodSelect = lazy(() => import('./pages/PodSelect'));
 const CustomerPortal = lazy(() => import('./pages/CustomerPortal'));
 const Users = lazy(() => import('./pages/Users'));
 
@@ -72,6 +73,7 @@ export default function App() {
                 <Route path="/" element={<AuthGate><Home /></AuthGate>} />
                 <Route path="/setup" element={<AuthGate requiredRole="admin"><Setup /></AuthGate>} />
                 <Route path="/pod" element={<Pod />} />
+                <Route path="/pods" element={<PodSelect />} />
                 <Route path="/dashboard" element={<AuthGate requiredRole="manager"><Dashboard /></AuthGate>} />
                 <Route path="/kiosk" element={<Kiosk />} />
                 <Route path="/portal" element={<CustomerPortal />} />

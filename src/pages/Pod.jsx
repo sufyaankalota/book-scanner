@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import {
   collection, doc, getDocs, getDoc, addDoc, setDoc, deleteDoc, updateDoc,
@@ -38,6 +38,9 @@ const AUTO_CLOSE_SHIFT_MS = 30 * 60 * 1000; // 30 minutes idle → auto-close sh
 export default function Pod() {
   const [searchParams] = useSearchParams();
   const podId = (searchParams.get('id') || 'A').trim().toUpperCase();
+  const fromPods = searchParams.get('from') === 'pods';
+  const backPath = fromPods ? '/pods' : '/';
+  const navigate = useNavigate();
 
   const savedState = (() => {
     try { const s = sessionStorage.getItem(`pod_${podId}_state`); return s ? JSON.parse(s) : {}; } catch { return {}; }
@@ -663,6 +666,8 @@ export default function Pod() {
     setRecentScans([]); scanStartTimeRef.current = null;
     setScanStreak(0); setBreakMinutesUsed(0);
     sessionStorage.removeItem(`pod_${podId}_state`);
+    // On kiosk devices, go back to pod selector
+    if (fromPods) navigate('/pods');
   };
 
   // Dismiss supervisor message
@@ -691,7 +696,7 @@ export default function Pod() {
   if (phase === PHASE_OPERATOR) {
     return (
       <div style={styles.container}>
-        <Link to="/" style={styles.backLink}>← Back to Home</Link>
+        <Link to={backPath} style={styles.backLink}>{fromPods ? '← Back to Pods' : '← Back to Home'}</Link>
         <h1 style={styles.podTitle}>Pod {podId}</h1>
         <div style={styles.setupCard}>
           <div style={styles.stepIndicator}>Step 1 of 2</div>
@@ -740,7 +745,7 @@ export default function Pod() {
   if (phase === PHASE_PAIR_SCANNER) {
     return (
       <div style={styles.container}>
-        <Link to="/" style={styles.backLink}>← Back to Home</Link>
+        <Link to={backPath} style={styles.backLink}>{fromPods ? '← Back to Pods' : '← Back to Home'}</Link>
         <h1 style={styles.podTitle}>Pod {podId}</h1>
         <div style={styles.setupCard}>
           <div style={styles.stepIndicator}>Step 2 of 2</div>
@@ -775,7 +780,7 @@ export default function Pod() {
   if (phase === PHASE_READY) {
     return (
       <div style={styles.container}>
-        <Link to="/" style={styles.backLink}>← Back to Home</Link>
+        <Link to={backPath} style={styles.backLink}>{fromPods ? '← Back to Pods' : '← Back to Home'}</Link>
         <h1 style={styles.podTitle}>Pod {podId}</h1>
         <div style={styles.setupCard}>
           <h2 style={styles.setupHeading}>✓ {t('scanReady')}</h2>
@@ -960,8 +965,8 @@ export default function Pod() {
               style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 16, width: 280, borderColor: '#EF4444', color: '#EF4444' }}>
               🚪 {t('endShift')}
             </button>
-            <Link to="/" style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 14, textDecoration: 'none', display: 'block', textAlign: 'center', width: 280 }}>
-              ← Back to Home
+            <Link to={backPath} style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 14, textDecoration: 'none', display: 'block', textAlign: 'center', width: 280 }}>
+              {fromPods ? '← Back to Pods' : '← Back to Home'}
             </Link>
           </div>
 
