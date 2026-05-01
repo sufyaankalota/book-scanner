@@ -1270,6 +1270,13 @@ export default function Setup() {
               </div>
               <button onClick={async () => {
                 if (!window.confirm(`Delete job "${pj.meta.name}" and ALL its data? This cannot be undone.`)) return;
+                const typed = window.prompt(`To confirm, type the job name exactly:\n\n${pj.meta.name}`);
+                if (typed === null) return; // cancel
+                if ((typed || '').trim() !== (pj.meta.name || '').trim()) {
+                  toast('Job name did not match — delete cancelled.', 'error');
+                  return;
+                }
+                if (!window.confirm('Last chance — permanently delete this job and ALL its scans, exceptions, BOLs, shifts, and manifest?')) return;
                 const safeStep = async (label, fn) => {
                   try { await fn(); }
                   catch (err) { console.warn(`[delete-job] ${label} failed:`, err); }
