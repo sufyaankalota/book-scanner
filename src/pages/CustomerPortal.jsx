@@ -491,13 +491,31 @@ export default function CustomerPortal() {
       return d && d.toISOString().slice(0, 10) === date && s.type === 'standard';
     });
     const wb = XLSX.utils.book_new();
+    const sourceLabel = (s) => {
+      if (s.source === 'ai-match') return 'AI Matched';
+      if (s.source === 'manual') return 'Manual Entry';
+      return 'Standard Scan';
+    };
     const data = dayScans.map((s) => ({
-      ISBN: s.isbn, PO: s.poName || '', Timestamp: toDateStr(s.timestamp),
+      ISBN: s.isbn,
+      PO: s.poName || '',
+      Type: sourceLabel(s),
+      'Captured Title': s.capturedTitle || '',
+      'Match Score': s.matchScore != null ? Number(s.matchScore).toFixed(2) : '',
+      Pod: s.podId || '',
+      Operator: s.scannerId || '',
+      Timestamp: toDateStr(s.timestamp),
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), 'Scanned Items');
+    const aiCount = dayScans.filter((s) => s.source === 'ai-match').length;
+    const manualCount = dayScans.filter((s) => s.source === 'manual').length;
+    const standardCount = dayScans.length - aiCount - manualCount;
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
       { Metric: 'Date', Value: date },
-      { Metric: 'Units Scanned', Value: data.length },
+      { Metric: 'Total Units', Value: data.length },
+      { Metric: 'Standard Scans', Value: standardCount },
+      { Metric: 'AI Matched', Value: aiCount },
+      { Metric: 'Manual Entries', Value: manualCount },
     ]), 'Summary');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     downloadBlob(buf, 'scans_' + date + '.xlsx');
@@ -515,16 +533,27 @@ export default function CustomerPortal() {
     const wb = XLSX.utils.book_new();
     const data = [
       ...dayAutoExc.map((s) => ({
-        ISBN: s.isbn, Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest', Title: '', Timestamp: toDateStr(s.timestamp),
+        ISBN: s.isbn,
+        Title: s.capturedTitle || '',
+        Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest',
+        'Has Photo': 'No',
+        Pod: s.podId || '',
+        Operator: s.scannerId || '',
+        Timestamp: toDateStr(s.timestamp),
       })),
       ...dayManualExc.map((ex) => ({
-        ISBN: ex.isbn || '', Reason: ex.reason, Title: ex.title || '',
-        'Has Photo': ex.photo ? 'Yes' : 'No', Timestamp: toDateStr(ex.timestamp),
+        ISBN: ex.isbn || '',
+        Title: ex.title || '',
+        Reason: ex.reason || '',
+        'Has Photo': ex.photo ? 'Yes' : 'No',
+        Pod: ex.podId || '',
+        Operator: ex.scannerId || '',
+        Timestamp: toDateStr(ex.timestamp),
       })),
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No exceptions' }]), 'Exceptions');
     const disclaimer = XLSX.utils.json_to_sheet([
-      { Note: 'DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
+      { Note: 'DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy. Photos are available in the HTML/PDF photo report (one click away in the Reports tab).' },
     ]);
     XLSX.utils.book_append_sheet(wb, disclaimer, 'Disclaimer');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
