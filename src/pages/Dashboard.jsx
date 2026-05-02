@@ -155,7 +155,8 @@ export default function Dashboard() {
       for (const podId of job.meta.pods || []) {
         const podIdU = String(podId).toUpperCase();
         const podScans = scans.filter((s) => String(s.podId || '').toUpperCase() === podIdU);
-        const standardScans = podScans.filter((s) => s.type === 'standard');
+        // Regular scans = type=standard with no special source (true ISBN-matched scans @ $0.40)
+        const regularScans = podScans.filter((s) => s.type === 'standard' && !s.source);
         const autoExc = podScans.filter((s) => s.type === 'exception' && s.source !== 'manual' && s.source !== 'ai-match');
         const manualScans = podScans.filter((s) => s.source === 'manual');
         const aiMatchScans = podScans.filter((s) => s.source === 'ai-match');
@@ -167,7 +168,9 @@ export default function Dashboard() {
         const pace = minutes > 0 && recentStandard.length > 0
           ? Math.round((recentStandard.length / Math.min(15, minutes)) * 60) : 0;
         const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 10));
-        pods[podId] = { id: podId, scanCount: standardScans.length,
+        pods[podId] = { id: podId,
+          regularCount: regularScans.length,
+          scanCount: regularScans.length, // legacy alias — PodCard reads scanCount
           exceptionCount: autoExc.length, manualCount: manualScans.length, aiMatchCount: aiMatchScans.length, pace, targetPerHour, scanners };
         const byOp = {};
         for (const s of podScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
@@ -595,15 +598,17 @@ export default function Dashboard() {
     return arr;
   }, [allScans, allExceptions]);
 
-  // Totals
-  const totalScans = Object.values(podData).reduce((sum, p) => sum + p.scanCount, 0);
+  // Totals — 4-bucket model matching billing exactly
+  const totalRegular = Object.values(podData).reduce((sum, p) => sum + (p.regularCount || p.scanCount || 0), 0);
   const totalManual = Object.values(podData).reduce((sum, p) => sum + (p.manualCount || 0), 0);
   const totalAiMatch = Object.values(podData).reduce((sum, p) => sum + (p.aiMatchCount || 0), 0);
   const totalAutoExceptions = Object.values(podData).reduce((sum, p) => sum + p.exceptionCount, 0);
+  const totalProcessed = totalRegular + totalManual + totalAiMatch + totalAutoExceptions;
+  const totalScans = totalRegular; // legacy alias
   const totalExceptions = totalAutoExceptions + allExceptions.length;
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
   const dailyTarget = job?.meta?.dailyTarget || 22000;
-  const remaining = Math.max(0, dailyTarget - (totalScans + totalAutoExceptions + totalManual + totalAiMatch));
+  const remaining = Math.max(0, dailyTarget - totalProcessed);
   const estHoursLeft = totalPace > 0 ? (remaining / totalPace).toFixed(1) : '—';
 
   const handleExportToday = async () => {
@@ -820,23 +825,27 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Summary bar */}
+      {/* Summary bar — buckets match billing exactly */}
       <div style={st.summaryRow}>
         <div style={st.summaryItem}>
-          <div style={st.summaryValue}>{totalScans.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Scanned / {dailyTarget.toLocaleString()}</div>
+          <div style={{ ...st.summaryValue, color: '#22C55E' }}>{totalRegular.toLocaleString()}</div>
+          <div style={st.summaryLabel}>Regular @ $0.40</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalExceptions > 0 ? '#F97316' : '#888' }}>{totalExceptions}</div>
-          <div style={st.summaryLabel}>Total Exceptions</div>
+          <div style={{ ...st.summaryValue, color: totalManual > 0 ? '#3B82F6' : '#888' }}>{totalManual.toLocaleString()}</div>
+          <div style={st.summaryLabel}>Manual @ $0.60</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalManual > 0 ? '#3B82F6' : '#888' }}>{totalManual}</div>
-          <div style={st.summaryLabel}>Manual Entries</div>
+          <div style={{ ...st.summaryValue, color: totalAiMatch > 0 ? '#93C5FD' : '#888' }}>{totalAiMatch.toLocaleString()}</div>
+          <div style={st.summaryLabel}>AI Camera @ $0.60</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalAiMatch > 0 ? '#93C5FD' : '#888' }}>{totalAiMatch}</div>
-          <div style={st.summaryLabel}>AI Matched</div>
+          <div style={{ ...st.summaryValue, color: totalAutoExceptions > 0 ? '#F97316' : '#888' }}>{totalAutoExceptions.toLocaleString()}</div>
+          <div style={st.summaryLabel}>Logged Exc @ $0.60</div>
+        </div>
+        <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
+          <div style={{ ...st.summaryValue, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
+          <div style={st.summaryLabel}>Total Processed / {dailyTarget.toLocaleString()}</div>
         </div>
         <div style={st.summaryItem}>
           <div style={st.summaryValue}>{totalPace}</div>
@@ -865,14 +874,14 @@ export default function Dashboard() {
           </div>
         )}
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: '#F59E0B' }}>{totalScans >= 1500 ? `${Math.floor(totalScans / 2000)}–${Math.floor(totalScans / 1500)}` : '—'}</div>
+          <div style={{ ...st.summaryValue, color: '#F59E0B' }}>{totalRegular >= 1500 ? `${Math.floor(totalRegular / 2000)}–${Math.floor(totalRegular / 1500)}` : '—'}</div>
           <div style={st.summaryLabel}>Est. Gaylords</div>
         </div>
       </div>
 
       {/* Progress bar */}
       <div style={st.progressContainer}>
-        <div style={{ ...st.progressBar, width: `${Math.min(100, (totalScans / dailyTarget) * 100)}%` }} />
+        <div style={{ ...st.progressBar, width: `${Math.min(100, (totalProcessed / dailyTarget) * 100)}%` }} />
       </div>
 
       {/* Today's leaderboard + pace alert */}

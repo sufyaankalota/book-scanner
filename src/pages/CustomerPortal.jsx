@@ -241,30 +241,43 @@ export default function CustomerPortal() {
   }, [authenticated, job]);
 
   // Computed
+  // ─── Categorization (matches billing exactly) ───
+  // Every processed unit falls into exactly ONE bucket so the four counts sum
+  // to Total Processed. Billing rules: regular = $0.40, all others = $0.60.
+  //   regular   → type=standard, no special source         (plain barcode)
+  //   manual    → source='manual'                          (operator typed)
+  //   aiCamera  → source='ai-match'                        (AI extracted from cover)
+  //   exception → type=exception with no source + exceptions collection rows
+  const bucketOf = (s) => {
+    if (s.source === 'manual') return 'manual';
+    if (s.source === 'ai-match') return 'aiCamera';
+    if (s.type === 'exception') return 'exception';
+    return 'regular';
+  };
+
   const dailyBreakdown = useMemo(() => {
     const byDay = {};
+    const ensure = (key) => {
+      if (!byDay[key]) byDay[key] = { total: 0, regular: 0, manual: 0, aiCamera: 0, exceptions: 0 };
+      return byDay[key];
+    };
     for (const s of allScans) {
       const d = s.timestamp?.toDate?.();
       if (!d) continue;
-      const key = d.toISOString().slice(0, 10);
-      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0, manual: 0 };
-      byDay[key].total++;
-      if (s.type === 'exception') {
-        if (s.source === 'manual') byDay[key].manual++;
-        else byDay[key].exceptions++;
-      } else if (s.source === 'manual') {
-        byDay[key].manual++;
-      } else {
-        byDay[key].standard++;
-      }
+      const day = ensure(d.toISOString().slice(0, 10));
+      day.total++;
+      const bucket = bucketOf(s);
+      if (bucket === 'regular') day.regular++;
+      else if (bucket === 'manual') day.manual++;
+      else if (bucket === 'aiCamera') day.aiCamera++;
+      else day.exceptions++;
     }
     for (const ex of allExceptions) {
       const d = ex.timestamp?.toDate?.();
       if (!d) continue;
-      const key = d.toISOString().slice(0, 10);
-      if (!byDay[key]) byDay[key] = { total: 0, standard: 0, exceptions: 0, manual: 0 };
-      byDay[key].total++;
-      byDay[key].exceptions++;
+      const day = ensure(d.toISOString().slice(0, 10));
+      day.total++;
+      day.exceptions++;
     }
     return Object.entries(byDay)
       .sort((a, b) => b[0].localeCompare(a[0]))
@@ -299,10 +312,11 @@ export default function CustomerPortal() {
     .map(([date, excs]) => [date, excs.sort((a, b) => b.time.getTime() - a.time.getTime())]);
   }, [allScans, allExceptions]);
 
-  const totalScannedCount = allScans.filter((s) => s.type === 'standard').length;
-  const totalManualCount = allScans.filter((s) => s.source === 'manual').length;
-  const totalExcCount = allScans.filter((s) => s.type === 'exception' && s.source !== 'manual').length + allExceptions.length;
-  const totalProcessed = allScans.length + allExceptions.length;
+  const totalRegularCount = allScans.filter((s) => bucketOf(s) === 'regular').length;
+  const totalManualCount = allScans.filter((s) => bucketOf(s) === 'manual').length;
+  const totalAiCameraCount = allScans.filter((s) => bucketOf(s) === 'aiCamera').length;
+  const totalLoggedExcCount = allScans.filter((s) => bucketOf(s) === 'exception').length + allExceptions.length;
+  const totalProcessed = totalRegularCount + totalManualCount + totalAiCameraCount + totalLoggedExcCount;
   const todayKey = new Date().toISOString().slice(0, 10);
   const todayData = dailyBreakdown.find((d) => d.date === todayKey);
 
@@ -492,14 +506,14 @@ export default function CustomerPortal() {
     });
     const wb = XLSX.utils.book_new();
     const sourceLabel = (s) => {
-      if (s.source === 'ai-match') return 'AI Matched';
-      if (s.source === 'manual') return 'Manual Entry';
-      return 'Standard Scan';
+      if (s.source === 'ai-match') return 'AI Camera ($0.60)';
+      if (s.source === 'manual') return 'Manual Entry ($0.60)';
+      return 'Regular Scan ($0.40)';
     };
     const data = dayScans.map((s) => ({
       ISBN: s.isbn,
       PO: s.poName || '',
-      Type: sourceLabel(s),
+      Category: sourceLabel(s),
       'Captured Title': s.capturedTitle || '',
       'Match Score': s.matchScore != null ? Number(s.matchScore).toFixed(2) : '',
       Pod: s.podId || '',
@@ -509,13 +523,13 @@ export default function CustomerPortal() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), 'Scanned Items');
     const aiCount = dayScans.filter((s) => s.source === 'ai-match').length;
     const manualCount = dayScans.filter((s) => s.source === 'manual').length;
-    const standardCount = dayScans.length - aiCount - manualCount;
+    const regularCount = dayScans.length - aiCount - manualCount;
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
       { Metric: 'Date', Value: date },
       { Metric: 'Total Units', Value: data.length },
-      { Metric: 'Standard Scans', Value: standardCount },
-      { Metric: 'AI Matched', Value: aiCount },
-      { Metric: 'Manual Entries', Value: manualCount },
+      { Metric: 'Regular Scans ($0.40)', Value: regularCount },
+      { Metric: 'Manual Entries ($0.60)', Value: manualCount },
+      { Metric: 'AI Camera ($0.60)', Value: aiCount },
     ]), 'Summary');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     downloadBlob(buf, 'scans_' + date + '.xlsx');
@@ -707,41 +721,38 @@ ${allExcs.map((exc, i) => `<div class="exc">
 
       {job && (
         <div style={st.statsRow}>
+          {/* Today total — sum of all 4 buckets */}
           <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#22C55E' }}>{(todayData?.standard || 0).toLocaleString()}</div>
-            <div style={st.statLbl}>Today's Scanned</div>
+            <div style={{ ...st.statVal, color: '#fff' }}>{(todayData?.total || 0).toLocaleString()}</div>
+            <div style={st.statLbl}>Today's Total</div>
           </div>
+
+          {/* Today's Est. Gaylords — still based on regular only */}
           <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: (todayData?.exceptions || 0) > 0 ? '#F97316' : '#888' }}>
-              {todayData?.exceptions || 0}
-            </div>
-            <div style={st.statLbl}>Today's Exceptions</div>
-          </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: (todayData?.manual || 0) > 0 ? '#3B82F6' : '#888' }}>
-              {todayData?.manual || 0}
-            </div>
-            <div style={st.statLbl}>Today's Manual</div>
-          </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#22C55E' }}>{totalScannedCount.toLocaleString()}</div>
-            <div style={st.statLbl}>Total Scanned</div>
-          </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: totalExcCount > 0 ? '#F97316' : '#888' }}>{totalExcCount}</div>
-            <div style={st.statLbl}>Total Exceptions</div>
-          </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: totalManualCount > 0 ? '#3B82F6' : '#888' }}>{totalManualCount}</div>
-            <div style={st.statLbl}>Total Manual</div>
-          </div>
-          <div style={st.statBox}>
-            <div style={st.statVal}>{totalProcessed.toLocaleString()}</div>
-            <div style={st.statLbl}>Total Processed</div>
-          </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.standard || 0) >= 1500 ? `${Math.floor((todayData?.standard || 0) / 2000)}–${Math.floor((todayData?.standard || 0) / 1500)}` : '—'}</div>
+            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.regular || 0) >= 1500 ? `${Math.floor((todayData?.regular || 0) / 2000)}–${Math.floor((todayData?.regular || 0) / 1500)}` : '—'}</div>
             <div style={st.statLbl}>Today's Est. Gaylords</div>
+          </div>
+
+          {/* The 4-bucket totals — these sum to Total Processed and match billing exactly */}
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: '#22C55E' }}>{totalRegularCount.toLocaleString()}</div>
+            <div style={st.statLbl}>Regular Scans <span style={st.rateChip}>$0.40</span></div>
+          </div>
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: totalManualCount > 0 ? '#3B82F6' : '#888' }}>{totalManualCount.toLocaleString()}</div>
+            <div style={st.statLbl}>Manual Entries <span style={st.rateChip}>$0.60</span></div>
+          </div>
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: totalAiCameraCount > 0 ? '#93C5FD' : '#888' }}>{totalAiCameraCount.toLocaleString()}</div>
+            <div style={st.statLbl}>AI Camera <span style={st.rateChip}>$0.60</span></div>
+          </div>
+          <div style={st.statBox}>
+            <div style={{ ...st.statVal, color: totalLoggedExcCount > 0 ? '#F97316' : '#888' }}>{totalLoggedExcCount.toLocaleString()}</div>
+            <div style={st.statLbl}>Exceptions <span style={st.rateChip}>$0.60</span></div>
+          </div>
+          <div style={{ ...st.statBox, borderColor: '#EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
+            <div style={{ ...st.statVal, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
+            <div style={st.statLbl}>Total Processed</div>
           </div>
         </div>
       )}
@@ -830,24 +841,29 @@ ${allExcs.map((exc, i) => `<div class="exc">
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
-                {d.standard >= 1500 && (
+                {d.regular > 0 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>? {d.standard.toLocaleString()} scanned</span>
-                  </div>
-                )}
-                {d.standard >= 1500 && (
-                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>📦 {Math.floor(d.standard / 2000)}–{Math.floor(d.standard / 1500)} gaylords</span>
-                  </div>
-                )}
-                {d.exceptions > 0 && (
-                  <div style={{ padding: '6px 12px', backgroundColor: '#7f1d1d22', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
+                    <span style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>✅ {d.regular.toLocaleString()} regular</span>
                   </div>
                 )}
                 {(d.manual || 0) > 0 && (
                   <div style={{ padding: '6px 12px', backgroundColor: 'rgba(59,130,246,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>{d.manual} manual entr{d.manual > 1 ? 'ies' : 'y'}</span>
+                    <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>⌨️ {d.manual} manual</span>
+                  </div>
+                )}
+                {(d.aiCamera || 0) > 0 && (
+                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(147,197,253,0.1)', borderRadius: 6, display: 'inline-block' }}>
+                    <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>📷 {d.aiCamera} AI camera</span>
+                  </div>
+                )}
+                {d.exceptions > 0 && (
+                  <div style={{ padding: '6px 12px', backgroundColor: '#7f1d1d22', borderRadius: 6, display: 'inline-block' }}>
+                    <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>⚠️ {d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+                {d.regular >= 1500 && (
+                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
+                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>📦 {Math.floor(d.regular / 2000)}–{Math.floor(d.regular / 1500)} gaylords</span>
                   </div>
                 )}
               </div>
@@ -930,6 +946,10 @@ ${allExcs.map((exc, i) => `<div class="exc">
             const active = billingReports.filter((r) => !r.archived);
             const totalStandard = active.reduce((s, r) => s + (r.standardCount || 0), 0);
             const totalExc = active.reduce((s, r) => s + (r.exceptionCount || 0), 0);
+            const totalManual = active.reduce((s, r) => s + (r.manualCount || 0), 0);
+            const totalAi = active.reduce((s, r) => s + (r.aiMatchCount || 0), 0);
+            const totalLogged = active.reduce((s, r) => s + (r.loggedExceptionCount || 0), 0);
+            const hasBreakdown = totalManual + totalAi + totalLogged > 0;
             const totalAmt = totalStandard * 0.40 + totalExc * 0.60;
             return active.length > 0 ? (
               <div style={{ ...st.card, border: '1px solid #2D2B6B', background: 'linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 100%)' }}>
@@ -937,7 +957,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   <div>
                     <div style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Estimated Invoice Total</div>
                     <div style={{ color: '#EAB308', fontSize: 36, fontWeight: 900, fontFamily: 'monospace', marginTop: 4 }}>${totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                    <div style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>Across {active.length} billing report{active.length !== 1 ? 's' : ''}</div>
+                    <div style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>Across {active.length} billing report{active.length !== 1 ? 's' : ''} · {(totalStandard + totalExc).toLocaleString()} total units</div>
                   </div>
                   <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                     <div style={{ textAlign: 'center' }}>
@@ -952,6 +972,14 @@ ${allExcs.map((exc, i) => `<div class="exc">
                     </div>
                   </div>
                 </div>
+                {hasBreakdown && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed #333', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Exceptions made up of:</span>
+                    <span style={{ color: '#fdba74', fontSize: 13, fontWeight: 600 }}>⌨️ {totalManual.toLocaleString()} manual</span>
+                    <span style={{ color: '#93c5fd', fontSize: 13, fontWeight: 600 }}>📷 {totalAi.toLocaleString()} AI camera</span>
+                    <span style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600 }}>⚠️ {totalLogged.toLocaleString()} logged</span>
+                  </div>
+                )}
               </div>
             ) : null;
           })()}
@@ -1066,7 +1094,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
               <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
                 <div>
                   <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{d.date}</span>
-                  <span style={{ color: '#888', fontSize: 13, marginLeft: 12 }}>{d.standard.toLocaleString()} units</span>
+                  <span style={{ color: '#888', fontSize: 13, marginLeft: 12 }}>{(d.total || 0).toLocaleString()} units</span>
                 </div>
                 <button onClick={() => exportDailyScans(d.date)} style={st.smallBtn}>Download</button>
               </div>
@@ -1361,6 +1389,10 @@ const st = {
   },
   statVal: { fontSize: 'clamp(20px, 4vw, 28px)', fontWeight: 800, color: '#f0f0f0', lineHeight: 1, letterSpacing: '-0.5px' },
   statLbl: { fontSize: 10, color: '#555', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 },
+  rateChip: {
+    fontSize: 9, fontWeight: 700, padding: '2px 5px', marginLeft: 4, borderRadius: 3,
+    backgroundColor: 'rgba(234,179,8,0.12)', color: '#EAB308', letterSpacing: 0.3,
+  },
   tabBar: { display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap' },
   tab: {
     padding: '8px 14px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#1e1e1e',
