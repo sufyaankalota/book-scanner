@@ -103,8 +103,11 @@ export default function Billing() {
         setExporting(false);
         return;
       }
-      const standardCount = scans.filter((s) => s.type === 'standard' && s.source !== 'manual').length;
-      const exceptionCount = scans.filter((s) => s.type === 'exception' || s.source === 'manual').length + excs.length;
+      const standardCount = scans.filter((s) => s.type === 'standard' && s.source !== 'manual' && s.source !== 'ai-match').length;
+      const manualCount = scans.filter((s) => s.source === 'manual').length;
+      const aiMatchCount = scans.filter((s) => s.source === 'ai-match').length;
+      const loggedExceptionCount = scans.filter((s) => s.type === 'exception').length + excs.length;
+      const exceptionCount = manualCount + aiMatchCount + loggedExceptionCount;
       const totalAmount = standardCount * 0.40 + exceptionCount * 0.60;
       const { buf, fileName } = exportBillingXLSX(scans, excs, selectedJob.meta, weekStart, weekEnd);
 
@@ -120,6 +123,9 @@ export default function Billing() {
         weekEnd: Timestamp.fromDate(weekEnd),
         standardCount,
         exceptionCount,
+        manualCount,
+        aiMatchCount,
+        loggedExceptionCount,
         totalUnits: standardCount + exceptionCount,
         totalAmount,
         fileName,

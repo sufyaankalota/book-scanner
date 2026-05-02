@@ -277,11 +277,23 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
   const RATE_REGULAR = 0.40;
   const RATE_EXCEPTION = 0.60;
 
-  const standardScans = scans.filter((s) => s.type === 'standard' && s.source !== 'manual');
-  const exceptionScans = scans.filter((s) => s.type === 'exception' || s.source === 'manual');
-  const totalExceptions = exceptionScans.length + exceptions.length;
+  // Categorize scans 4 ways for breakdown visibility, but billing is still
+  // 2-tier: regular @ $0.40 vs everything-else @ $0.60.
+  // - Regular: type=standard AND no source (plain barcode scan)
+  // - Manual: source='manual' (operator typed the ISBN)
+  // - AI Camera: source='ai-match' (cover photo → AI extracted ISBN)
+  // - Exception: type='exception' OR doc in `exceptions` collection
+  const isManual = (s) => s.source === 'manual';
+  const isAi = (s) => s.source === 'ai-match';
+  const isException = (s) => s.type === 'exception';
+  const standardScans = scans.filter((s) => s.type === 'standard' && !isManual(s) && !isAi(s));
+  const manualScans = scans.filter(isManual);
+  const aiScans = scans.filter(isAi);
+  const exceptionScansFromCollection = exceptions.length;
+  const exceptionScansInline = scans.filter(isException).length;
+  const totalExceptionBucket = manualScans.length + aiScans.length + exceptionScansInline + exceptionScansFromCollection;
   const regularAmount = standardScans.length * RATE_REGULAR;
-  const exceptionAmount = totalExceptions * RATE_EXCEPTION;
+  const exceptionAmount = totalExceptionBucket * RATE_EXCEPTION;
   const totalAmount = regularAmount + exceptionAmount;
 
   // Sheet 1: Billing Summary (the one you'd use for invoicing)
@@ -289,54 +301,68 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
     { Item: 'Customer / Job', Detail: jobMeta.name || '', Qty: '', Rate: '', Amount: '' },
     { Item: 'Billing Period', Detail: `${startStr} – ${endStr}`, Qty: '', Rate: '', Amount: '' },
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
-    { Item: 'Regular Scans', Detail: '', Qty: standardScans.length, Rate: `$${RATE_REGULAR.toFixed(2)}`, Amount: `$${regularAmount.toFixed(2)}` },
-    { Item: 'Exceptions', Detail: '', Qty: totalExceptions, Rate: `$${RATE_EXCEPTION.toFixed(2)}`, Amount: `$${exceptionAmount.toFixed(2)}` },
+    { Item: 'Regular Scans', Detail: 'Plain barcode scan', Qty: standardScans.length, Rate: `$${RATE_REGULAR.toFixed(2)}`, Amount: `$${regularAmount.toFixed(2)}` },
+    { Item: 'Exceptions Total', Detail: 'Manual + AI Camera + Exceptions', Qty: totalExceptionBucket, Rate: `$${RATE_EXCEPTION.toFixed(2)}`, Amount: `$${exceptionAmount.toFixed(2)}` },
+    { Item: '   • Manual entries', Detail: 'Operator typed ISBN', Qty: manualScans.length, Rate: '', Amount: '' },
+    { Item: '   • AI Camera entries', Detail: 'AI extracted ISBN from cover photo', Qty: aiScans.length, Rate: '', Amount: '' },
+    { Item: '   • Logged exceptions', Detail: 'Damaged / no-barcode', Qty: exceptionScansInline + exceptionScansFromCollection, Rate: '', Amount: '' },
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
-    { Item: 'TOTAL UNITS', Detail: '', Qty: standardScans.length + totalExceptions, Rate: '', Amount: `$${totalAmount.toFixed(2)}` },
+    { Item: 'TOTAL UNITS', Detail: '', Qty: standardScans.length + totalExceptionBucket, Rate: '', Amount: `$${totalAmount.toFixed(2)}` },
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
     { Item: 'DISCLAIMER', Detail: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.', Qty: '', Rate: '', Amount: '' },
   ];
   const ws1 = XLSX.utils.json_to_sheet(summaryRows);
   // Widen columns
-  ws1['!cols'] = [{ wch: 20 }, { wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
+  ws1['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, ws1, 'Billing Summary');
 
-  // Sheet 2: Daily breakdown
+  // Sheet 2: Daily breakdown — split by category
   const dailyMap = {};
+  const bumpDay = (d, key) => {
+    const date = d?.toDate ? d.toDate() : new Date(d);
+    const k = date.toLocaleDateString();
+    if (!dailyMap[k]) dailyMap[k] = { date: k, standard: 0, manual: 0, ai: 0, exception: 0 };
+    dailyMap[k][key]++;
+  };
   for (const s of scans) {
-    const d = s.timestamp?.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
-    const key = d.toLocaleDateString();
-    if (!dailyMap[key]) dailyMap[key] = { date: key, standard: 0, exceptions: 0 };
-    if (s.type === 'standard' && s.source !== 'manual') dailyMap[key].standard++;
-    else dailyMap[key].exceptions++;
+    if (isException(s)) bumpDay(s.timestamp, 'exception');
+    else if (isManual(s)) bumpDay(s.timestamp, 'manual');
+    else if (isAi(s)) bumpDay(s.timestamp, 'ai');
+    else bumpDay(s.timestamp, 'standard');
   }
-  for (const ex of exceptions) {
-    const d = ex.timestamp?.toDate ? ex.timestamp.toDate() : new Date(ex.timestamp);
-    const key = d.toLocaleDateString();
-    if (!dailyMap[key]) dailyMap[key] = { date: key, standard: 0, exceptions: 0 };
-    dailyMap[key].exceptions++;
-  }
+  for (const ex of exceptions) bumpDay(ex.timestamp, 'exception');
+
   const dailyRows = Object.values(dailyMap)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .map((d) => ({
-      Date: d.date,
-      'Regular Scans': d.standard,
-      Exceptions: d.exceptions,
-      'Day Total': d.standard + d.exceptions,
-      Amount: `$${(d.standard * RATE_REGULAR + d.exceptions * RATE_EXCEPTION).toFixed(2)}`,
-    }));
+    .map((d) => {
+      const excBucket = d.manual + d.ai + d.exception;
+      return {
+        Date: d.date,
+        'Regular Scans': d.standard,
+        'Manual': d.manual,
+        'AI Camera': d.ai,
+        'Exceptions': d.exception,
+        'Day Total': d.standard + excBucket,
+        Amount: `$${(d.standard * RATE_REGULAR + excBucket * RATE_EXCEPTION).toFixed(2)}`,
+      };
+    });
   // Add totals row
-  const totalRegular = dailyRows.reduce((s, r) => s + r['Regular Scans'], 0);
-  const totalExc = dailyRows.reduce((s, r) => s + r.Exceptions, 0);
+  const tStandard = dailyRows.reduce((s, r) => s + r['Regular Scans'], 0);
+  const tManual = dailyRows.reduce((s, r) => s + r['Manual'], 0);
+  const tAi = dailyRows.reduce((s, r) => s + r['AI Camera'], 0);
+  const tExc = dailyRows.reduce((s, r) => s + r['Exceptions'], 0);
+  const tBucket = tManual + tAi + tExc;
   dailyRows.push({
     Date: 'TOTAL',
-    'Regular Scans': totalRegular,
-    Exceptions: totalExc,
-    'Day Total': totalRegular + totalExc,
-    Amount: `$${(totalRegular * RATE_REGULAR + totalExc * RATE_EXCEPTION).toFixed(2)}`,
+    'Regular Scans': tStandard,
+    'Manual': tManual,
+    'AI Camera': tAi,
+    'Exceptions': tExc,
+    'Day Total': tStandard + tBucket,
+    Amount: `$${(tStandard * RATE_REGULAR + tBucket * RATE_EXCEPTION).toFixed(2)}`,
   });
   const ws2 = XLSX.utils.json_to_sheet(dailyRows);
-  ws2['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  ws2['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 11 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, ws2, 'Daily Breakdown');
 
   // Sheet 3: By Pod
@@ -371,5 +397,16 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
   const tag = weekStart.toISOString().slice(0, 10);
   const fileName = `${jobMeta.name || 'billing'}_billing_${tag}.xlsx`;
   downloadBlob(buf, fileName);
-  return { buf, fileName };
+  return {
+    buf,
+    fileName,
+    breakdown: {
+      standardCount: standardScans.length,
+      manualCount: manualScans.length,
+      aiMatchCount: aiScans.length,
+      loggedExceptionCount: exceptionScansInline + exceptionScansFromCollection,
+      exceptionBucketCount: totalExceptionBucket,
+      totalAmount,
+    },
+  };
 }

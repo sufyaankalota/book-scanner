@@ -651,7 +651,10 @@ export default function Dashboard() {
       const scans = scanSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const excs = excSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const standardCount = scans.filter((s) => s.type === 'standard' && s.source !== 'manual' && s.source !== 'ai-match').length;
-      const exceptionCount = scans.filter((s) => s.type === 'exception' || s.source === 'manual' || s.source === 'ai-match').length + excs.length;
+      const manualCount = scans.filter((s) => s.source === 'manual').length;
+      const aiMatchCount = scans.filter((s) => s.source === 'ai-match').length;
+      const loggedExceptionCount = scans.filter((s) => s.type === 'exception').length + excs.length;
+      const exceptionCount = manualCount + aiMatchCount + loggedExceptionCount;
       const totalAmount = standardCount * 0.40 + exceptionCount * 0.60;
       const { buf, fileName } = exportBillingXLSX(scans, excs, job.meta, weekStart, weekEnd);
       // Convert to base64 for Firestore storage
@@ -664,6 +667,9 @@ export default function Dashboard() {
         weekEnd: Timestamp.fromDate(weekEnd),
         standardCount,
         exceptionCount,
+        manualCount,
+        aiMatchCount,
+        loggedExceptionCount,
         totalUnits: standardCount + exceptionCount,
         totalAmount,
         fileName,

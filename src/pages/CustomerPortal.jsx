@@ -1027,6 +1027,22 @@ ${allExcs.map((exc, i) => `<div class="exc">
                       <div style={{ color: '#888', fontSize: 12 }}>Total Amount</div>
                     </div>
                   </div>
+
+                  {/* Breakdown of the $0.60 exception bucket — only shown for reports generated after the breakdown fields were added */}
+                  {(report.manualCount != null || report.aiMatchCount != null || report.loggedExceptionCount != null) && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #333', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Exceptions made up of:</span>
+                      <span style={{ color: '#fdba74', fontSize: 13, fontWeight: 600 }}>
+                        ⌨️ {(report.manualCount || 0).toLocaleString()} manual typed
+                      </span>
+                      <span style={{ color: '#93c5fd', fontSize: 13, fontWeight: 600 }}>
+                        📷 {(report.aiMatchCount || 0).toLocaleString()} AI camera
+                      </span>
+                      <span style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600 }}>
+                        ⚠️ {(report.loggedExceptionCount || 0).toLocaleString()} logged exceptions
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
