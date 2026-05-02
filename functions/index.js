@@ -252,7 +252,7 @@ exports.extractFromImage = onCall({
 
   const prompt = mode === 'isbn'
     ? `Find the ISBN (10 or 13 digit number) on this book photo. ISBNs are usually labeled "ISBN" and may appear on the copyright page, back cover, or under a barcode. 13-digit ISBNs start with 978 or 979. Strip hyphens. Watch for 0/O, 1/I/l, 5/S, 8/B confusions. Respond ONLY with strict JSON: {"isbn":"<digits-only-or-null>","confidence":<0-1>}.`
-    : `Read the main title of this book cover. Preserve the exact spelling, capitalization, accents, and non-Latin characters as printed — do NOT translate or transliterate. Ignore subtitles, taglines, series numbers, edition labels, and publisher names. Respond ONLY with strict JSON: {"title":"<string>","author":"<string-or-null>","confidence":<0-1>}.`;
+    : `Read the book cover. Identify the main title and author, AND list every other prominent piece of text visible on the cover. Preserve exact spelling, capitalization, accents, and non-Latin characters — do NOT translate or transliterate. Respond ONLY with strict JSON: {"title":"<main title>","author":"<author name or null>","coverText":"<all visible prominent text concatenated with spaces>","confidence":<0-1>}.`;
 
   const body = {
     model: 'gpt-4o',
@@ -266,7 +266,7 @@ exports.extractFromImage = onCall({
       ],
     }],
     response_format: { type: 'json_object' },
-    max_tokens: 120,
+    max_tokens: 200,
     temperature: 0,
   };
 
@@ -312,6 +312,7 @@ exports.extractFromImage = onCall({
     result = {
       title: result.title ? String(result.title).trim() : null,
       author: result.author ? String(result.author).trim() : null,
+      coverText: result.coverText ? String(result.coverText).trim() : null,
       confidence: Number(result.confidence) || 0,
     };
   }

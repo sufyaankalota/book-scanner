@@ -612,8 +612,9 @@ export default function Pod() {
     if (!data) return;
     const capturedTitle = (data.title || '').trim();
     const capturedAuthor = (data.author || '').trim();
+    const coverText = (data.coverText || '').trim();
     const photo = data.image || null;
-    if (!capturedTitle && !capturedAuthor) {
+    if (!capturedTitle && !capturedAuthor && !coverText) {
       flash('#F97316', 'AI couldn\u2019t read the cover — please log an exception', 2500);
       openExceptionForCapture('', photo);
       return;
@@ -621,26 +622,44 @@ export default function Pod() {
     if (!titleIndex || !titleIndex.length) {
       // No manifest titles available → send straight to exception with prefilled title
       flash('#F97316', 'No title manifest loaded — logging exception', 2500);
-      openExceptionForCapture(capturedTitle, photo);
+      openExceptionForCapture(capturedTitle || coverText, photo);
       return;
     }
-    // Combine title + author so a cover where AI captured only the author still matches
-    // a manifest entry that has both (e.g. "Elie Wiesel One Generation After").
-    const searchString = [capturedTitle, capturedAuthor].filter(Boolean).join(' ');
-    const matches = findMatches(searchString, titleIndex, { topK: 3, minScore: MATCH_AMBIGUOUS - 0.05 });
-    if (!matches.length || matches[0].score < MATCH_AMBIGUOUS) {
-      // No reasonable match → exception with title prefilled
-      openExceptionForCapture(capturedTitle || capturedAuthor, photo);
+    // Try multiple search strings — pick the one that produces the best match.
+    // This handles cases where AI mis-classifies title vs author, or only catches
+    // part of the cover text. Each variant is searched independently and we take
+    // the highest-scoring result across all of them.
+    const searchVariants = [
+      [capturedTitle, capturedAuthor].filter(Boolean).join(' '),
+      coverText,
+      capturedTitle,
+      capturedAuthor,
+    ].filter((s, i, arr) => s && arr.indexOf(s) === i); // dedupe + drop empties
+
+    let best = null;
+    let bestVariant = '';
+    for (const variant of searchVariants) {
+      const ms = findMatches(variant, titleIndex, { topK: 3, minScore: MATCH_AMBIGUOUS - 0.05 });
+      if (ms.length && (!best || ms[0].score > best[0].score)) {
+        best = ms;
+        bestVariant = variant;
+      }
+    }
+
+    if (!best || best[0].score < MATCH_AMBIGUOUS) {
+      // No reasonable match → exception with title prefilled (favor longest variant for clarity)
+      const prefill = coverText || capturedTitle || capturedAuthor || '';
+      openExceptionForCapture(prefill, photo);
       return;
     }
-    const top = matches[0];
+    const top = best[0];
     if (classify(top.score) === 'confident') {
       // Auto-accept and book it as an AI-matched (manual-billed) scan
-      handleScan(top.isbn, { isManual: true, source: 'ai-match', capturedTitle: searchString, matchScore: top.score });
+      handleScan(top.isbn, { isManual: true, source: 'ai-match', capturedTitle: bestVariant, matchScore: top.score });
       return;
     }
     // Ambiguous — ask the operator to pick
-    setAiMatchCandidates({ capturedTitle: searchString, photo, candidates: matches });
+    setAiMatchCandidates({ capturedTitle: bestVariant, photo, candidates: best });
   };
 
   // ─── Process scan (after validation/confirmation) ───
