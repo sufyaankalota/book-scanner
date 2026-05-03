@@ -11,12 +11,13 @@
  *              fuzzy-matching). Both formats are read transparently.
  */
 import { db } from '../firebase';
-import { collection, doc, getDoc, getDocs, writeBatch, query, orderBy, limit, startAfter } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, writeBatch, setDoc, query, orderBy, limit, startAfter } from 'firebase/firestore';
 import { isbnAlternates } from './isbn';
 
 export const CHUNK_SIZE = 5000;
 const WRITE_BATCH = 50; // chunk docs per Firestore batch (conservative for large map docs)
 const COPY_PAGE = 50; // chunk docs to read+write at a time during copy (limits memory)
+const COPY_WRITE_PAR = 10; // parallel single-doc writes during copy (avoids batch payload limit on chunks with titles)
 
 function hashIsbn(isbn, numChunks) {
   let h = 0;
@@ -65,13 +66,13 @@ export async function writeManifestChunks(parentPath, manifest, onProgress) {
 
   const chunkArr = Object.entries(chunks);
   let written = 0;
-  for (let i = 0; i < chunkArr.length; i += WRITE_BATCH) {
-    const batch = writeBatch(db);
-    const slice = chunkArr.slice(i, i + WRITE_BATCH);
-    for (const [idx, isbns] of slice) {
-      batch.set(doc(db, parentPath, 'manifest-chunks', `c${String(idx).padStart(5, '0')}`), { isbns });
-    }
-    await batch.commit();
+  // Single-doc writes with bounded concurrency: avoids the ~11MB Firestore batch
+  // payload limit when chunks contain titles (~500KB each).
+  for (let i = 0; i < chunkArr.length; i += COPY_WRITE_PAR) {
+    const slice = chunkArr.slice(i, i + COPY_WRITE_PAR);
+    await Promise.all(slice.map(([idx, isbns]) =>
+      setDoc(doc(db, parentPath, 'manifest-chunks', `c${String(idx).padStart(5, '0')}`), { isbns })
+    ));
     written += slice.length;
     if (onProgress) onProgress(written, chunkArr.length);
   }
@@ -256,16 +257,14 @@ export async function backfillManifestChunks(parentPath, numChunks, onProgress) 
   // 3. Write back. Merge additions into the existing chunk's isbns map.
   const dirtyIdxs = [...additions.keys()];
   let written = 0;
-  for (let i = 0; i < dirtyIdxs.length; i += WRITE_BATCH) {
-    const batch = writeBatch(db);
-    const slice = dirtyIdxs.slice(i, i + WRITE_BATCH);
-    for (const idx of slice) {
+  for (let i = 0; i < dirtyIdxs.length; i += COPY_WRITE_PAR) {
+    const slice = dirtyIdxs.slice(i, i + COPY_WRITE_PAR);
+    await Promise.all(slice.map((idx) => {
       const existing = chunkData.get(idx)?.isbns || {};
       const merged = { ...existing, ...additions.get(idx) };
       const chunkId = chunkData.get(idx)?.id || `c${String(idx).padStart(5, '0')}`;
-      batch.set(doc(db, parentPath, 'manifest-chunks', chunkId), { isbns: merged });
-    }
-    await batch.commit();
+      return setDoc(doc(db, parentPath, 'manifest-chunks', chunkId), { isbns: merged });
+    }));
     written += slice.length;
     if (onProgress) onProgress({ phase: 'writing', done: written, total: dirtyIdxs.length });
   }
@@ -290,8 +289,21 @@ export async function backfillManifestChunks(parentPath, numChunks, onProgress) 
 export async function copyManifestChunks(sourcePath, destPath, onProgress, numChunks) {
   let written = 0;
 
+  // Helper: write an array of {id, data} entries via parallel single-doc setDoc.
+  // Avoids the ~11MB Firestore batch payload limit triggered by chunks containing titles.
+  async function writeAllSingle(entries) {
+    for (let i = 0; i < entries.length; i += COPY_WRITE_PAR) {
+      const slice = entries.slice(i, i + COPY_WRITE_PAR);
+      await Promise.all(slice.map(({ id, data }) =>
+        setDoc(doc(db, destPath, 'manifest-chunks', id), data)
+      ));
+    }
+  }
+
   if (numChunks) {
-    // Read + write in small batches by known chunk IDs (no collection scan needed)
+    // Read + write in small pages by known chunk IDs (no collection scan needed).
+    // Reads can be batched cheaply; writes are issued one-doc-at-a-time with concurrency
+    // because each chunk doc with embedded titles can be ~500KB.
     for (let start = 0; start < numChunks; start += COPY_PAGE) {
       const end = Math.min(start + COPY_PAGE, numChunks);
       const reads = [];
@@ -299,11 +311,11 @@ export async function copyManifestChunks(sourcePath, destPath, onProgress, numCh
         reads.push(getDoc(doc(db, sourcePath, 'manifest-chunks', `c${String(i).padStart(5, '0')}`)));
       }
       const snaps = await Promise.all(reads);
-      const batch = writeBatch(db);
+      const entries = [];
       for (const snap of snaps) {
-        if (snap.exists()) batch.set(doc(db, destPath, 'manifest-chunks', snap.id), snap.data());
+        if (snap.exists()) entries.push({ id: snap.id, data: snap.data() });
       }
-      await batch.commit();
+      await writeAllSingle(entries);
       written += end - start;
       if (onProgress) onProgress(written, numChunks);
     }
@@ -316,9 +328,8 @@ export async function copyManifestChunks(sourcePath, destPath, onProgress, numCh
         : query(collection(db, sourcePath, 'manifest-chunks'), orderBy('__name__'), limit(COPY_PAGE));
       const snap = await getDocs(q);
       if (snap.empty) break;
-      const batch = writeBatch(db);
-      snap.docs.forEach((d) => batch.set(doc(db, destPath, 'manifest-chunks', d.id), d.data()));
-      await batch.commit();
+      const entries = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+      await writeAllSingle(entries);
       written += snap.docs.length;
       if (onProgress) onProgress(written, written); // total unknown in fallback
       lastDoc = snap.docs[snap.docs.length - 1];

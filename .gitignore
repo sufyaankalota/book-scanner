@@ -9,3 +9,5 @@ dist
 .env.runtime
 backfill.log
 deploy.log
+
+scripts/.firebase-config.json
