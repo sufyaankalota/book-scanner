@@ -67,6 +67,47 @@ export function cleanISBN(code) {
   return code.replace(/[-\s]/g, '').trim();
 }
 
+/**
+ * Convert ISBN-13 → ISBN-10 (978- prefix only). Returns null for 979- prefix
+ * (those have no ISBN-10 form) or invalid input.
+ */
+export function isbn13To10(isbn13) {
+  if (!isbn13) return null;
+  const c = String(isbn13).replace(/[-\s]/g, '').trim();
+  if (c.length !== 13 || !/^\d{13}$/.test(c) || !c.startsWith('978')) return null;
+  const core = c.slice(3, 12); // 9 digits after '978' prefix, drop the EAN check digit
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(core[i], 10) * (10 - i);
+  const cd = (11 - (sum % 11)) % 11;
+  return core + (cd === 10 ? 'X' : String(cd));
+}
+
+/**
+ * Convert ISBN-10 → ISBN-13 (always 978- prefix, since ISBN-10 predates 979).
+ */
+export function isbn10To13(isbn10) {
+  if (!isbn10) return null;
+  const c = String(isbn10).replace(/[-\s]/g, '').trim().toUpperCase();
+  if (c.length !== 10 || !/^\d{9}[\dX]$/.test(c)) return null;
+  const core = '978' + c.slice(0, 9);
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += parseInt(core[i], 10) * (i % 2 === 0 ? 1 : 3);
+  const cd = (10 - (sum % 10)) % 10;
+  return core + String(cd);
+}
+
+/**
+ * Return both forms of an ISBN as { isbn13, isbn10 }. Either may be null.
+ * Use this anywhere you need to look up a manifest entry by either form.
+ */
+export function isbnAlternates(isbn) {
+  if (!isbn) return { isbn13: null, isbn10: null };
+  const c = String(isbn).replace(/[-\s]/g, '').trim().toUpperCase();
+  if (c.length === 13) return { isbn13: c, isbn10: isbn13To10(c) };
+  if (c.length === 10) return { isbn13: isbn10To13(c), isbn10: c };
+  return { isbn13: null, isbn10: null };
+}
+
 /** Detect barcode type: ISBN-13, ISBN-10, or Not ISBN */
 export function detectBarcodeType(code) {
   const cleaned = code.replace(/[-\s]/g, '').trim();

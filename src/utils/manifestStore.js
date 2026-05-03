@@ -12,6 +12,7 @@
  */
 import { db } from '../firebase';
 import { collection, doc, getDoc, getDocs, writeBatch, query, orderBy, limit, startAfter } from 'firebase/firestore';
+import { isbnAlternates } from './isbn';
 
 export const CHUNK_SIZE = 5000;
 const WRITE_BATCH = 50; // chunk docs per Firestore batch (conservative for large map docs)
@@ -88,8 +89,22 @@ export function clearChunkCache() { _cache.clear(); }
  * Look up a single ISBN. Fetches only the relevant chunk doc (cached).
  * ~50ms first hit per chunk, instant thereafter.
  * Returns the PO name string (works with both legacy and current chunk formats).
+ *
+ * On a miss, automatically retries with the ISBN-10/13 alternate form so
+ * customers get the right PO regardless of which barcode the manifest
+ * happened to list. This is safe: ISBN-10 ↔ ISBN-13 (978-prefix) is a
+ * lossless 1:1 mapping for the same physical book.
  */
 export async function lookupIsbn(parentPath, isbn, numChunks) {
+  const direct = await _lookupIsbnRaw(parentPath, isbn, numChunks);
+  if (direct) return direct;
+  const { isbn13, isbn10 } = isbnAlternates(isbn);
+  const alt = isbn === isbn13 ? isbn10 : isbn13;
+  if (!alt || alt === isbn) return null;
+  return _lookupIsbnRaw(parentPath, alt, numChunks);
+}
+
+async function _lookupIsbnRaw(parentPath, isbn, numChunks) {
   const idx = hashIsbn(isbn, numChunks);
   const chunkId = `c${String(idx).padStart(5, '0')}`;
   const key = `${parentPath}/${chunkId}`;

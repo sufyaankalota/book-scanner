@@ -8,8 +8,58 @@
  * (writeManifestChunks transparently handles both shapes.)
  *
  * First occurrence of a duplicate ISBN wins.
+ *
+ * Sibling backfill: many manifests duplicate each book as ISBN-13 (with title)
+ * + ISBN-10 (blank title). After parsing we walk every entry once and copy
+ * the title across to its alternate-form sibling so the AI fuzzy-match index
+ * covers every book regardless of which barcode is on the copy in hand.
  */
 import * as XLSX from 'xlsx';
+import { isbnAlternates } from './isbn';
+
+/**
+ * Walk the parsed manifest and propagate titles + POs across ISBN-10/13
+ * siblings. Mutates `manifest` in place. Returns count of entries patched.
+ *
+ * Rules (first non-null wins, never overwrites existing data):
+ *   - If A has a title and its sibling B exists without one → copy title.
+ *   - If A exists and its sibling B is missing entirely → synthesize B with
+ *     the same PO + title. (Helps when a customer only ships one form.)
+ *   - PO mismatch between siblings is left alone (rare; first one wins).
+ */
+function backfillIsbnSiblings(manifest) {
+  let patched = 0;
+  // Snapshot keys up front — we mutate during the loop and don't want to
+  // re-process newly-added siblings.
+  const keys = Object.keys(manifest);
+  for (const isbn of keys) {
+    const raw = manifest[isbn];
+    if (raw == null) continue;
+    const po = typeof raw === 'string' ? raw : raw.po;
+    const title = typeof raw === 'string' ? '' : (raw.title || '');
+    if (!po) continue;
+    const { isbn13, isbn10 } = isbnAlternates(isbn);
+    const siblingIsbn = isbn === isbn13 ? isbn10 : isbn13;
+    if (!siblingIsbn || siblingIsbn === isbn) continue;
+    const sib = manifest[siblingIsbn];
+    if (sib == null) {
+      // Sibling missing — synthesize it with the same PO + title
+      manifest[siblingIsbn] = title ? { po, title } : po;
+      patched++;
+      continue;
+    }
+    // Sibling exists. Backfill title if we have one and sibling doesn't.
+    if (title) {
+      const sibTitle = typeof sib === 'string' ? '' : (sib.title || '');
+      const sibPo = typeof sib === 'string' ? sib : sib.po;
+      if (!sibTitle && sibPo) {
+        manifest[siblingIsbn] = { po: sibPo, title };
+        patched++;
+      }
+    }
+  }
+  return patched;
+}
 
 /**
  * Stream-parse a CSV file in chunks to handle 100MB+ files without
@@ -83,6 +133,9 @@ function parseCSVStream(file, onProgress) {
           if (leftover) processLines(leftover, true);
           if (!header) { reject(new Error('File is empty or has no data rows')); return; }
           if (skipped > 0) console.warn(`Manifest: skipped ${skipped} rows with missing ISBN or PO`);
+          // Backfill ISBN-10 ↔ ISBN-13 siblings so every book is searchable by title
+          const patched = backfillIsbnSiblings(manifest);
+          if (patched > 0) console.info(`Manifest: backfilled ${patched.toLocaleString()} ISBN-10/13 sibling entries`);
           resolve({ manifest, poNames: [...poSet] });
           return;
         }
@@ -161,6 +214,10 @@ export function parseManifestFile(file, onProgress) {
         if (skipped > 0) {
           console.warn(`Manifest: skipped ${skipped} rows with missing ISBN or PO`);
         }
+
+        // Backfill ISBN-10 ↔ ISBN-13 siblings (titles + missing rows)
+        const patched = backfillIsbnSiblings(manifest);
+        if (patched > 0) console.info(`Manifest: backfilled ${patched.toLocaleString()} ISBN-10/13 sibling entries`);
 
         const poNames = [...new Set(Object.values(manifest).map((v) => typeof v === 'string' ? v : v.po))];
         resolve({ manifest, poNames });

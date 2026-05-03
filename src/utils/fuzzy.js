@@ -118,6 +118,12 @@ export function similarity(a, b) {
 // ─── Top-k matching against a title index ───
 // index = [{ isbn, po, title, ... }] (extra fields preserved on output)
 // Returns up to topK candidates sorted desc by score.
+//
+// Dedupes by canonical ISBN-13 so an ISBN-10/13 sibling pair (same book,
+// same title, two rows in the manifest) doesn't return two near-identical
+// candidates. The ISBN-13 form is preferred for downstream display/billing.
+import { isbnAlternates } from './isbn';
+
 export function findMatches(query, index, { topK = 3, minScore = 0.5 } = {}) {
   if (!query || !index?.length) return [];
   const out = [];
@@ -126,7 +132,22 @@ export function findMatches(query, index, { topK = 3, minScore = 0.5 } = {}) {
     if (score >= minScore) out.push({ ...row, score });
   }
   out.sort((a, b) => b.score - a.score);
-  return out.slice(0, topK);
+  // Dedupe by canonical ISBN-13 (or the raw ISBN if no 13-form), keeping
+  // the highest-scoring representative. Prefer ISBN-13 form for output.
+  const seen = new Map();
+  for (const cand of out) {
+    const { isbn13 } = isbnAlternates(cand.isbn);
+    const key = isbn13 || cand.isbn;
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, isbn13 ? { ...cand, isbn: isbn13 } : cand);
+    } else if (cand.score > existing.score) {
+      seen.set(key, isbn13 ? { ...cand, isbn: isbn13 } : cand);
+    }
+  }
+  return Array.from(seen.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
 }
 
 // ─── Confidence buckets (tunable) ───
