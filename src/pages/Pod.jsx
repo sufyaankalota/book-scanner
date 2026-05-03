@@ -381,9 +381,9 @@ export default function Pod() {
           } else if (picked.manifestMeta?.chunked) {
             clearChunkCache();
             // Pre-load title index in the background so AI camera flow is instant.
-            // Skipped for extreme manifests (>2M items) to avoid heavy reads.
+            // Skipped for extreme manifests (>10M items) to avoid heavy reads.
             const meta = picked.manifestMeta;
-            const tooBig = (meta.totalIsbns || 0) > 2000000;
+            const tooBig = (meta.totalIsbns || 0) > 10000000;
             if (meta.hasTitles === false || tooBig) {
               setTitleIndex([]);
               setTitleIndexStatus('empty');
