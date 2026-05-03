@@ -18,7 +18,9 @@ const DEFAULT_COLORS = [
   { name: 'Orange', hex: '#F97316' }, { name: 'Purple', hex: '#A855F7' },
   { name: 'Pink', hex: '#EC4899' }, { name: 'Teal', hex: '#14B8A6' },
   { name: 'Brown', hex: '#92400E' }, { name: 'Gold', hex: '#CA8A04' },
+  { name: 'Black', hex: '#0a0a0a' }, { name: 'White', hex: '#f5f5f5' },
 ];
+const DEFAULT_EXCEPTION_COLOR = '#F97316'; // orange — matches pre-existing kiosk flash
 const DEFAULT_PODS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
 export default function Setup() {
@@ -41,6 +43,8 @@ export default function Setup() {
   const [poNames, setPoNames] = useState([]);
   const [poColors, setPoColors] = useState({});
   const [poNumbers, setPoNumbers] = useState({});
+  const [exceptionColor, setExceptionColor] = useState(DEFAULT_EXCEPTION_COLOR);
+  const [exceptionNumber, setExceptionNumber] = useState('');
   const [fileError, setFileError] = useState('');
   const [parseProgress, setParseProgress] = useState(0);
   const [parsing, setParsing] = useState(false);
@@ -59,6 +63,8 @@ export default function Setup() {
   const [editFloaters, setEditFloaters] = useState('');
   const [editRunners, setEditRunners] = useState('');
   const [editSupervisors, setEditSupervisors] = useState('');
+  const [editExceptionColor, setEditExceptionColor] = useState(DEFAULT_EXCEPTION_COLOR);
+  const [editExceptionNumber, setEditExceptionNumber] = useState('');
 
   // PIN
   const [pinValue, setPinValue] = useState('');
@@ -116,6 +122,8 @@ export default function Setup() {
   const [qPoNames, setQPoNames] = useState([]);
   const [qPoColors, setQPoColors] = useState({});
   const [qPoNumbers, setQPoNumbers] = useState({});
+  const [qExceptionColor, setQExceptionColor] = useState(DEFAULT_EXCEPTION_COLOR);
+  const [qExceptionNumber, setQExceptionNumber] = useState('');
   const [qFileError, setQFileError] = useState('');
   const [qParsing, setQParsing] = useState(false);
   const [qParseProgress, setQParseProgress] = useState(0);
@@ -140,6 +148,8 @@ export default function Setup() {
             setEditFloaters(jobData.meta.floaters ?? 2);
             setEditRunners(jobData.meta.runners ?? 2);
             setEditSupervisors(jobData.meta.supervisors ?? 1);
+            setEditExceptionColor(jobData.exceptionColor || DEFAULT_EXCEPTION_COLOR);
+            setEditExceptionNumber(jobData.exceptionNumber ?? '');
           }
         }
         // Load branding
@@ -338,12 +348,16 @@ export default function Setup() {
         const d = existing.docs[0]; setActiveJob({ id: d.id, ...d.data() }); setSaving(false); return;
       }
       const jobId = `job_${Date.now()}`;
+      const excColor = mode === 'multi' ? (exceptionColor || DEFAULT_EXCEPTION_COLOR) : DEFAULT_EXCEPTION_COLOR;
+      const excNumber = mode === 'multi' && exceptionNumber !== '' ? Number(exceptionNumber) : null;
       await setDoc(doc(db, 'jobs', jobId), {
         meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true,
           floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0,
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
         poNumbers: mode === 'multi' ? poNumbers : {},
+        exceptionColor: excColor,
+        exceptionNumber: excNumber,
       });
       let jobManifestMeta = null;
       if (mode === 'multi') {
@@ -371,10 +385,11 @@ export default function Setup() {
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
       setActivateProgress({ written: 0, total: 0, label: '' });
-      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
+      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, exceptionColor: excColor, exceptionNumber: excNumber, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
       setEditFloaters(Number(floaters) || 0); setEditRunners(Number(runners) || 0);
       setEditSupervisors(Number(supervisors) || 0);
+      setEditExceptionColor(excColor); setEditExceptionNumber(excNumber ?? '');
     } catch (err) { toast('Failed to create job: ' + err.message, 'error'); }
     setSaving(false);
   };
@@ -404,6 +419,8 @@ export default function Setup() {
         setEditFloaters(nextQueued.meta.floaters ?? 2);
         setEditRunners(nextQueued.meta.runners ?? 2);
         setEditSupervisors(nextQueued.meta.supervisors ?? 1);
+        setEditExceptionColor(nextQueued.exceptionColor || DEFAULT_EXCEPTION_COLOR);
+        setEditExceptionNumber(nextQueued.exceptionNumber ?? '');
         setQueuedJobs((prev) => prev.slice(1));
       } else {
         setActiveJob(null);
@@ -426,12 +443,16 @@ export default function Setup() {
     setQSaving(true);
     try {
       const jobId = `job_${Date.now()}`;
+      const qExcColor = qMode === 'multi' ? (qExceptionColor || DEFAULT_EXCEPTION_COLOR) : DEFAULT_EXCEPTION_COLOR;
+      const qExcNumber = qMode === 'multi' && qExceptionNumber !== '' ? Number(qExceptionNumber) : null;
       await setDoc(doc(db, 'jobs', jobId), {
         meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false,
           floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0,
           queued: true, queueOrder: Date.now(), location: qLocation.trim() || '', createdAt: serverTimestamp() },
         poColors: qMode === 'multi' ? qPoColors : {},
         poNumbers: qMode === 'multi' ? qPoNumbers : {},
+        exceptionColor: qExcColor,
+        exceptionNumber: qExcNumber,
       });
       if (qMode === 'multi') {
         if (qManifest) {
@@ -605,9 +626,15 @@ export default function Setup() {
       const flo = Number(editFloaters) || 0;
       const run = Number(editRunners) || 0;
       const sup = Number(editSupervisors) || 0;
-      await updateDoc(doc(db, 'jobs', activeJob.id), { 'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods, 'meta.floaters': flo, 'meta.runners': run, 'meta.supervisors': sup });
+      const excColor = editExceptionColor || DEFAULT_EXCEPTION_COLOR;
+      const excNumber = editExceptionNumber !== '' ? Number(editExceptionNumber) : null;
+      await updateDoc(doc(db, 'jobs', activeJob.id), {
+        'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods,
+        'meta.floaters': flo, 'meta.runners': run, 'meta.supervisors': sup,
+        exceptionColor: excColor, exceptionNumber: excNumber,
+      });
       logAudit('job_edited', { jobId: activeJob.id });
-      setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run, supervisors: sup } });
+      setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run, supervisors: sup }, exceptionColor: excColor, exceptionNumber: excNumber });
       setEditMode(false);
       toast('Job updated', 'success');
     } catch (err) { toast('Failed to save: ' + err.message, 'error'); }
@@ -796,6 +823,11 @@ export default function Setup() {
                       <span style={s.text}>{po}</span>
                     </div>
                   ))}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingTop: 6, borderTop: '1px dashed #333' }}>
+                    <span style={{ ...s.text, minWidth: 32, textAlign: 'center', fontWeight: 700, color: '#fbbf24' }}>#{activeJob.exceptionNumber ?? '—'}</span>
+                    <div style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: activeJob.exceptionColor || DEFAULT_EXCEPTION_COLOR, border: '1px solid #555' }} />
+                    <span style={{ ...s.text, color: '#fdba74', fontWeight: 700 }}>EXCEPTIONS</span>
+                  </div>
                 </div>
               )}
               <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -830,6 +862,24 @@ export default function Setup() {
               <input type="number" value={editRunners} onChange={(e) => setEditRunners(e.target.value)} min={0} style={s.input} />
               <label style={s.label}>Supervisors <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>($17/hr)</span></label>
               <input type="number" value={editSupervisors} onChange={(e) => setEditSupervisors(e.target.value)} min={0} style={s.input} />
+              {activeJob.meta.mode === 'multi' && (
+                <>
+                  <label style={s.label}>Exception Bin <span style={{ color: '#888', fontWeight: 400, fontSize: 12 }}>(color + number announced when a book isn't on the manifest)</span></label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <input type="number" min={1} value={editExceptionNumber} placeholder="#"
+                      onChange={(e) => setEditExceptionNumber(e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0))}
+                      title="Exception bin / gaylord number"
+                      style={{ ...s.input, width: 70, textAlign: 'center', flex: 'none' }} />
+                    <select value={editExceptionColor} onChange={(e) => setEditExceptionColor(e.target.value)} style={{ ...s.input, flex: 1 }}>
+                      {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                      {editExceptionColor && !DEFAULT_COLORS.some((c) => c.hex === editExceptionColor) && (
+                        <option key={editExceptionColor} value={editExceptionColor}>Custom ({editExceptionColor})</option>
+                      )}
+                    </select>
+                    <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: editExceptionColor, border: '1px solid #555', flexShrink: 0 }} />
+                  </div>
+                </>
+              )}
               <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
                 <button onClick={handleEditSave} style={s.primaryBtn}>Save Changes</button>
                 <button onClick={() => setEditMode(false)} style={s.secondaryBtn}>Cancel</button>
@@ -1140,6 +1190,20 @@ export default function Setup() {
                           <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: qPoColors[po] || DEFAULT_COLORS[0].hex, border: '1px solid #555', flexShrink: 0 }} />
                         </div>
                       ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 8, borderTop: '1px dashed #333' }}>
+                        <span style={{ minWidth: 120, fontSize: 14, color: '#fdba74', fontWeight: 700 }}>EXCEPTIONS</span>
+                        <input type="number" min={1} value={qExceptionNumber} placeholder="#"
+                          onChange={(e) => setQExceptionNumber(e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0))}
+                          title="Exception bin / gaylord number"
+                          style={{ ...s.input, width: 70, textAlign: 'center', flex: 'none' }} />
+                        <select value={qExceptionColor} onChange={(e) => setQExceptionColor(e.target.value)} style={{ ...s.input, flex: 1 }}>
+                          {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                          {qExceptionColor && !DEFAULT_COLORS.some((c) => c.hex === qExceptionColor) && (
+                            <option key={qExceptionColor} value={qExceptionColor}>Custom ({qExceptionColor})</option>
+                          )}
+                        </select>
+                        <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: qExceptionColor, border: '1px solid #555', flexShrink: 0 }} />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1303,6 +1367,20 @@ export default function Setup() {
                     <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: poColors[po] || DEFAULT_COLORS[0].hex, border: '1px solid #555', flexShrink: 0 }} />
                   </div>
                 ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 8, borderTop: '1px dashed #333' }}>
+                  <span style={{ minWidth: 120, fontSize: 14, color: '#fdba74', fontWeight: 700 }}>EXCEPTIONS</span>
+                  <input type="number" min={1} value={exceptionNumber} placeholder="#"
+                    onChange={(e) => setExceptionNumber(e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0))}
+                    title="Exception bin / gaylord number"
+                    style={{ ...s.input, width: 70, textAlign: 'center', flex: 'none' }} />
+                  <select value={exceptionColor} onChange={(e) => setExceptionColor(e.target.value)} style={{ ...s.input, flex: 1 }}>
+                    {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                    {exceptionColor && !DEFAULT_COLORS.some((c) => c.hex === exceptionColor) && (
+                      <option key={exceptionColor} value={exceptionColor}>Custom ({exceptionColor})</option>
+                    )}
+                  </select>
+                  <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: exceptionColor, border: '1px solid #555', flexShrink: 0 }} />
+                </div>
               </div>
             )}
             {manifestPreview.length > 0 && (

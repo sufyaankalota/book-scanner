@@ -21,9 +21,16 @@ const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
   '#22C55E': 'GREEN', '#F97316': 'ORANGE', '#A855F7': 'PURPLE',
   '#EC4899': 'PINK', '#14B8A6': 'TEAL', '#92400E': 'BROWN',
-  '#CA8A04': 'GOLD',
+  '#CA8A04': 'GOLD', '#0a0a0a': 'BLACK', '#f5f5f5': 'WHITE',
 };
-function getColorName(hex) { return COLOR_NAMES[hex] || hex; }
+function getColorName(hex) {
+  if (!hex) return '';
+  const k = String(hex).toLowerCase();
+  for (const [key, name] of Object.entries(COLOR_NAMES)) {
+    if (key.toLowerCase() === k) return name;
+  }
+  return hex;
+}
 
 const PHASE_OPERATOR = 'operator';
 const PHASE_PAIR_SCANNER = 'pair_scanner';
@@ -755,7 +762,10 @@ export default function Pod() {
       });
     } else {
       playNotInManifestBeep();
-      flash('#F97316', t('notInManifest'), 2000);
+      const excColor = job.exceptionColor || '#F97316';
+      const excNum = job.exceptionNumber;
+      if (ttsEnabled) speak(excNum ? `number ${excNum}, ${getColorName(excColor)} exceptions` : `${getColorName(excColor)} exceptions`);
+      flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, 2000);
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
