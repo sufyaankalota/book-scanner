@@ -126,7 +126,7 @@ const styles = {
   empty: { color: 'var(--text-secondary, #888)', fontSize: 13, padding: '12px 4px', fontStyle: 'italic' },
   alert: {
     backgroundColor: '#7c2d12',
-    border: '1px solid #F97316',
+    border: '1px solid #EF4444',
     borderRadius: 8,
     padding: '10px 14px',
     marginBottom: 12,

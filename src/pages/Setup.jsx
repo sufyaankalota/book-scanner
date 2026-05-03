@@ -20,7 +20,7 @@ const DEFAULT_COLORS = [
   { name: 'Brown', hex: '#92400E' }, { name: 'Gold', hex: '#CA8A04' },
   { name: 'Black', hex: '#0a0a0a' }, { name: 'White', hex: '#f5f5f5' },
 ];
-const DEFAULT_EXCEPTION_COLOR = '#F97316'; // orange — matches pre-existing kiosk flash
+const DEFAULT_EXCEPTION_COLOR = '#EF4444'; // red — exceptions are red across the UI
 const DEFAULT_PODS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
 export default function Setup() {
@@ -850,9 +850,9 @@ export default function Setup() {
                     </div>
                   ))}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, paddingTop: 6, borderTop: '1px dashed #333' }}>
-                    <span style={{ ...s.text, minWidth: 32, textAlign: 'center', fontWeight: 700, color: '#fbbf24' }}>#{activeJob.exceptionNumber ?? '—'}</span>
+                    <span style={{ ...s.text, minWidth: 32, textAlign: 'center', fontWeight: 700, color: '#fca5a5' }}>#{activeJob.exceptionNumber ?? '—'}</span>
                     <div style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: activeJob.exceptionColor || DEFAULT_EXCEPTION_COLOR, border: '1px solid #555' }} />
-                    <span style={{ ...s.text, color: '#fdba74', fontWeight: 700 }}>EXCEPTIONS</span>
+                    <span style={{ ...s.text, color: '#fca5a5', fontWeight: 700 }}>EXCEPTIONS</span>
                   </div>
                 </div>
               )}
@@ -1244,7 +1244,7 @@ export default function Setup() {
                         </div>
                       ))}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 8, borderTop: '1px dashed #333' }}>
-                        <span style={{ minWidth: 120, fontSize: 14, color: '#fdba74', fontWeight: 700 }}>EXCEPTIONS</span>
+                        <span style={{ minWidth: 120, fontSize: 14, color: '#fca5a5', fontWeight: 700 }}>EXCEPTIONS</span>
                         <input type="number" min={1} value={qExceptionNumber} placeholder="#"
                           onChange={(e) => setQExceptionNumber(e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0))}
                           title="Exception bin / gaylord number"
@@ -1421,7 +1421,7 @@ export default function Setup() {
                   </div>
                 ))}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 8, borderTop: '1px dashed #333' }}>
-                  <span style={{ minWidth: 120, fontSize: 14, color: '#fdba74', fontWeight: 700 }}>EXCEPTIONS</span>
+                  <span style={{ minWidth: 120, fontSize: 14, color: '#fca5a5', fontWeight: 700 }}>EXCEPTIONS</span>
                   <input type="number" min={1} value={exceptionNumber} placeholder="#"
                     onChange={(e) => setExceptionNumber(e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0))}
                     title="Exception bin / gaylord number"

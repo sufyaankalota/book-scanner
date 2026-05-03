@@ -844,7 +844,7 @@ export default function Dashboard() {
           <div style={st.summaryLabel}>AI Camera{isOwner ? ' @ $0.60' : ''}</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalAutoExceptions > 0 ? '#F97316' : '#888' }}>{totalAutoExceptions.toLocaleString()}</div>
+          <div style={{ ...st.summaryValue, color: totalAutoExceptions > 0 ? '#EF4444' : '#888' }}>{totalAutoExceptions.toLocaleString()}</div>
           <div style={st.summaryLabel}>Logged Exc{isOwner ? ' @ $0.60' : ''}</div>
         </div>
         <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
@@ -993,7 +993,7 @@ export default function Dashboard() {
             </div>
           )}
           {jobProgress.totalExceptions > 0 && (
-            <div style={{ marginTop: 8, color: '#F97316', fontSize: 13 }}>
+            <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13 }}>
               ⚠ {jobProgress.totalExceptions.toLocaleString()} exception scan{jobProgress.totalExceptions !== 1 ? 's' : ''} (not in manifest)
             </div>
           )}

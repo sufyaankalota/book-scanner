@@ -101,7 +101,7 @@ export default function BulkIsbnLookup({ activeJob }) {
         <div style={{ marginTop: 16 }}>
           <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
             <span style={{ color: '#22C55E', fontWeight: 700 }}>✓ Found: {found.toLocaleString()}</span>
-            <span style={{ color: '#F97316', fontWeight: 700 }}>✗ Not in manifest: {missing.toLocaleString()}</span>
+            <span style={{ color: '#EF4444', fontWeight: 700 }}>✗ Not in manifest: {missing.toLocaleString()}</span>
             <button onClick={() => {
               const csv = ['ISBN,PO,Status', ...results.map((r) => `${r.isbn},${r.po || ''},${r.po ? 'FOUND' : 'NOT_IN_MANIFEST'}`)].join('\n');
               const blob = new Blob([csv], { type: 'text/csv' });

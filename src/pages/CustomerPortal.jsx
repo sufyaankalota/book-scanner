@@ -747,7 +747,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             <div style={st.statLbl}>AI Camera <span style={st.rateChip}>$0.60</span></div>
           </div>
           <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: totalLoggedExcCount > 0 ? '#F97316' : '#888' }}>{totalLoggedExcCount.toLocaleString()}</div>
+            <div style={{ ...st.statVal, color: totalLoggedExcCount > 0 ? '#EF4444' : '#888' }}>{totalLoggedExcCount.toLocaleString()}</div>
             <div style={st.statLbl}>Exceptions <span style={st.rateChip}>$0.60</span></div>
           </div>
           <div style={{ ...st.statBox, borderColor: '#EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
@@ -803,7 +803,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             </div>
           )}
           {jobProgress.totalExceptions > 0 && (
-            <div style={{ marginTop: 8, color: '#F97316', fontSize: 13 }}>
+            <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13 }}>
               ? {jobProgress.totalExceptions.toLocaleString()} total exception{jobProgress.totalExceptions !== 1 ? 's' : ''}
             </div>
           )}
@@ -858,7 +858,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                 )}
                 {d.exceptions > 0 && (
                   <div style={{ padding: '6px 12px', backgroundColor: '#7f1d1d22', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>⚠️ {d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
+                    <span style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>⚠️ {d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
                   </div>
                 )}
                 {d.regular >= 1500 && (
@@ -899,7 +899,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ color: '#fff', fontSize: 16, fontWeight: 700, margin: 0 }}>{date}</h3>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {excCount > 0 && <span style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>{excCount} exception{excCount > 1 ? 's' : ''}</span>}
+                  {excCount > 0 && <span style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>{excCount} exception{excCount > 1 ? 's' : ''}</span>}
                   {manualCount > 0 && <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>{manualCount} manual</span>}
                   <button onClick={() => exportDailyExceptions(date)} style={st.smallBtn}>Export</button>
                   <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>📷 Photos</button>
@@ -966,9 +966,9 @@ ${allExcs.map((exc, i) => `<div class="exc">
                       <div style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>${(totalStandard * 0.40).toFixed(2)}</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ color: '#F97316', fontSize: 20, fontWeight: 800 }}>{totalExc.toLocaleString()}</div>
+                      <div style={{ color: '#EF4444', fontSize: 20, fontWeight: 800 }}>{totalExc.toLocaleString()}</div>
                       <div style={{ color: '#888', fontSize: 11 }}>Exceptions @ $0.60</div>
-                      <div style={{ color: '#F97316', fontSize: 13, fontWeight: 600 }}>${(totalExc * 0.60).toFixed(2)}</div>
+                      <div style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>${(totalExc * 0.60).toFixed(2)}</div>
                     </div>
                   </div>
                 </div>
@@ -1041,7 +1041,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                       <div style={{ color: '#888', fontSize: 12 }}>Regular @ $0.40</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ color: '#F97316', fontSize: 22, fontWeight: 800 }}>{(report.exceptionCount || 0).toLocaleString()}</div>
+                      <div style={{ color: '#EF4444', fontSize: 22, fontWeight: 800 }}>{(report.exceptionCount || 0).toLocaleString()}</div>
                       <div style={{ color: '#888', fontSize: 12 }}>Exceptions @ $0.60</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
@@ -1114,7 +1114,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
               <div key={d.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #222' }}>
                 <div>
                   <span style={{ color: '#ccc', fontSize: 15, fontWeight: 600 }}>{d.date}</span>
-                  <span style={{ color: '#F97316', fontSize: 13, marginLeft: 12 }}>{d.exceptions} exceptions</span>
+                  <span style={{ color: '#EF4444', fontSize: 13, marginLeft: 12 }}>{d.exceptions} exceptions</span>
                 </div>
                 <button onClick={() => exportDailyExceptions(d.date)} style={st.smallBtn}>Download</button>
               </div>

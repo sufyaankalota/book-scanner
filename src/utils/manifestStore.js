@@ -133,7 +133,7 @@ const _titleIndexCache = new Map();
 export async function loadTitleIndex(parentPath, numChunks, onProgress) {
   if (_titleIndexCache.has(parentPath)) return _titleIndexCache.get(parentPath);
   const out = [];
-  const PAR = 8;
+  const PAR = 24;
   const total = numChunks || 0;
   let done = 0;
   for (let start = 0; start < total; start += PAR) {

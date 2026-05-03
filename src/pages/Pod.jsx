@@ -381,9 +381,9 @@ export default function Pod() {
           } else if (picked.manifestMeta?.chunked) {
             clearChunkCache();
             // Pre-load title index in the background so AI camera flow is instant.
-            // Skipped for huge manifests (>250k items) to avoid heavy reads.
+            // Skipped for extreme manifests (>2M items) to avoid heavy reads.
             const meta = picked.manifestMeta;
-            const tooBig = (meta.totalIsbns || 0) > 250000;
+            const tooBig = (meta.totalIsbns || 0) > 2000000;
             if (meta.hasTitles === false || tooBig) {
               setTitleIndex([]);
               setTitleIndexStatus('empty');
@@ -623,13 +623,13 @@ export default function Pod() {
     const coverText = (data.coverText || '').trim();
     const photo = data.image || null;
     if (!capturedTitle && !capturedAuthor && !coverText) {
-      flash('#F97316', 'AI couldn\u2019t read the cover — please log an exception', 2500);
+      flash('#EF4444', 'AI couldn\u2019t read the cover — please log an exception', 2500);
       openExceptionForCapture('', photo);
       return;
     }
     if (!titleIndex || !titleIndex.length) {
       // No manifest titles available → send straight to exception with prefilled title
-      flash('#F97316', 'No title manifest loaded — logging exception', 2500);
+      flash('#EF4444', 'No title manifest loaded — logging exception', 2500);
       openExceptionForCapture(capturedTitle || coverText, photo);
       return;
     }
@@ -684,7 +684,7 @@ export default function Pod() {
     const now = Date.now();
 
     if (!isValidISBN(isbn)) {
-      playErrorBeep(); flash('#EF4444', t('invalidIsbn'), 2000);
+      playErrorBeep(); flash('#F59E0B', t('invalidIsbn'), 2000);
       setLastBarcodeType(detectBarcodeType(isbn));
       return;
     }
@@ -764,7 +764,7 @@ export default function Pod() {
       });
     } else {
       playNotInManifestBeep();
-      const excColor = job.exceptionColor || '#F97316';
+      const excColor = job.exceptionColor || '#EF4444';
       const excNum = job.exceptionNumber;
       if (ttsEnabled) speak(excNum ? `number ${excNum}, ${getColorName(excColor)} exceptions` : `${getColorName(excColor)} exceptions`);
       flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, 2000);
@@ -816,7 +816,7 @@ export default function Pod() {
       isbn: data.isbn, title: data.title || null, reason: data.reason,
       photo: data.photo || null,
       timestamp: serverTimestamp(),
-    }).then(() => flash('#F97316', '✓ ' + t('exception'), 1000))
+    }).then(() => flash('#EF4444', '✓ ' + t('exception'), 1000))
       .catch(() => flash('#EF4444', t('failedLogException'), 1000));
   };
 
@@ -1356,7 +1356,7 @@ export default function Pod() {
           <div style={styles.statLabel}>Manual</div>
         </div>
         <div style={{ ...styles.stat, cursor: 'pointer' }} onClick={() => setShowExceptionModal(true)}>
-          <div style={{ ...styles.statValue, color: (autoExceptionCount + exceptionCount) > 0 ? '#F97316' : 'var(--text-secondary, #666)' }}>
+          <div style={{ ...styles.statValue, color: (autoExceptionCount + exceptionCount) > 0 ? '#EF4444' : 'var(--text-secondary, #666)' }}>
             {autoExceptionCount + exceptionCount}
           </div>
           <div style={styles.statLabel}>{t('exceptions')}</div>
@@ -1398,7 +1398,7 @@ export default function Pod() {
                 tabIndex={0}
                 title="Click to copy ISBN"
                 aria-label={`Copy ISBN ${s.isbn} to clipboard`}
-                style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: s.isException ? '#F97316' : s.poName === 'TRAINING' ? '#818cf8' : '#fff', cursor: 'pointer', userSelect: 'all' }}
+                style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: s.isException ? '#EF4444' : s.poName === 'TRAINING' ? '#818cf8' : '#fff', cursor: 'pointer', userSelect: 'all' }}
               >
                 {s.isbn}
               </span>
@@ -1417,13 +1417,13 @@ export default function Pod() {
 
       {/* Manual ISBN Entry */}
       {showManualEntry && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #F97316', borderRadius: 10, padding: 16, marginBottom: 12, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #EF4444', borderRadius: 10, padding: 16, marginBottom: 12, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ color: '#fdba74', fontWeight: 800, fontSize: 17 }}>⌨️ {t('manualIsbnEntry')}</span>
             <button onClick={() => { setShowManualEntry(false); setManualIsbn(''); setTimeout(refocusInput, 100); }}
               style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
-          <p style={{ color: '#F97316', fontSize: 14, margin: '0 0 4px', fontWeight: 700 }}>⚠️ {t('manualBilled')}</p>
+          <p style={{ color: '#EF4444', fontSize: 14, margin: '0 0 4px', fontWeight: 700 }}>⚠️ {t('manualBilled')}</p>
           <p style={{ color: '#999', fontSize: 14, margin: '0 0 8px', lineHeight: 1.4 }}>{t('manualEntryHint')}</p>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
@@ -1449,7 +1449,7 @@ export default function Pod() {
                 }
               }}
               placeholder="e.g. 978-0-13-468599-1"
-              style={{ flex: 1, padding: '14px 16px', borderRadius: 8, border: '2px solid #F97316', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', fontWeight: 600, outline: 'none' }}
+              style={{ flex: 1, padding: '14px 16px', borderRadius: 8, border: '2px solid #EF4444', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', fontWeight: 600, outline: 'none' }}
               autoFocus
             />
             <button
@@ -1463,7 +1463,7 @@ export default function Pod() {
                 }
               }}
               disabled={!manualIsbn.trim()}
-              style={{ padding: '14px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#F97316' : '#333', color: '#fff', fontSize: 17, fontWeight: 800, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
+              style={{ padding: '14px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#EF4444' : '#333', color: '#fff', fontSize: 17, fontWeight: 800, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
             >Scan ↵</button>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -1526,7 +1526,7 @@ export default function Pod() {
                 setAiMatchCandidates(null);
                 openExceptionForCapture(sel.capturedTitle, sel.photo);
               }}
-                style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid #F97316', backgroundColor: 'transparent', color: '#fdba74', fontWeight: 700, cursor: 'pointer' }}>
+                style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}>
                 None of these — log exception
               </button>
               <button onClick={() => setAiMatchCandidates(null)}
@@ -1705,8 +1705,8 @@ const styles = {
   paceBar: { height: '100%', borderRadius: 5, transition: 'width 0.5s ease, background-color 0.5s ease' },
   exceptionBtn: {
     marginTop: 'clamp(10px, 2vh, 18px)', alignSelf: 'center', padding: 'clamp(10px, 2vh, 16px) clamp(20px, 4vw, 32px)', borderRadius: 10,
-    border: '2px solid #F97316', backgroundColor: 'rgba(249,115,22,0.15)',
-    color: '#F97316', fontSize: 'clamp(14px, 2vw, 16px)', fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
+    border: '2px solid #EF4444', backgroundColor: 'rgba(239,68,68,0.15)',
+    color: '#EF4444', fontSize: 'clamp(14px, 2vw, 16px)', fontWeight: 800, cursor: 'pointer', letterSpacing: 1,
   },
   flashOverlay: { position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, pointerEvents: 'none' },
   flashText: { fontSize: 'clamp(48px, 10vw, 72px)', fontWeight: 900, textAlign: 'center', color: '#fff', textShadow: '2px 2px 12px rgba(0,0,0,0.8)', padding: 20 },

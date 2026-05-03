@@ -254,7 +254,7 @@ export default function JobHistory() {
                     <span style={{ flex: 1, color: '#ddd', fontSize: 15, fontWeight: 600 }}>{op.name}</span>
                     <span style={{ fontFamily: 'monospace', color: '#fff', fontWeight: 700 }}>{op.scans.toLocaleString()}</span>
                     {op.exceptions > 0 && (
-                      <span style={{ fontSize: 11, color: '#F97316', backgroundColor: '#7f1d1d', padding: '1px 6px', borderRadius: 4 }}>
+                      <span style={{ fontSize: 11, color: '#EF4444', backgroundColor: '#7f1d1d', padding: '1px 6px', borderRadius: 4 }}>
                         {op.exceptions} exc
                       </span>
                     )}

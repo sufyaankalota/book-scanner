@@ -102,7 +102,7 @@ export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, on
               <p style={{ color: '#22C55E', fontSize: 12, marginTop: 4, marginBottom: 0 }}>✓ Title read by AI — photo saved for verification — you can edit it above</p>
             )}
 
-            <p style={{ ...styles.fieldLabel, marginTop: 16, color: needsPhoto && !photoData ? '#F97316' : 'var(--text-secondary, #aaa)' }}>
+            <p style={{ ...styles.fieldLabel, marginTop: 16, color: needsPhoto && !photoData ? '#EF4444' : 'var(--text-secondary, #aaa)' }}>
               📸 {t('photo')} {needsPhoto ? t('photoRequired') : t('photoOptional')}:
             </p>
 
@@ -164,7 +164,7 @@ export default function ExceptionModal({ podId, scannerId, prefill, onSubmit, on
             </div>
 
             {needsPhoto && !photoData && (
-              <p style={{ color: '#F97316', fontSize: 14, fontWeight: 700, marginTop: 10, marginBottom: 0 }}>
+              <p style={{ color: '#EF4444', fontSize: 14, fontWeight: 700, marginTop: 10, marginBottom: 0 }}>
                 ⚠️ {t('photoRequiredWarning')}
               </p>
             )}
@@ -204,7 +204,7 @@ const styles = {
     padding: '28px 24px',
     width: '100%',
     maxWidth: 560,
-    border: '2px solid #F97316',
+    border: '2px solid #EF4444',
     position: 'relative',
     maxHeight: '92vh',
     overflowY: 'auto',
@@ -291,7 +291,7 @@ const styles = {
     padding: '12px 14px',
     borderRadius: 8,
     backgroundColor: '#422006',
-    border: '1px solid #F97316',
+    border: '1px solid #EF4444',
   },
   instructionIcon: { fontSize: 24 },
   instructionText: { color: '#fdba74', fontSize: 15, lineHeight: 1.4, fontWeight: 700 },
@@ -300,7 +300,7 @@ const styles = {
     padding: '14px 20px',
     borderRadius: 10,
     border: 'none',
-    backgroundColor: '#F97316',
+    backgroundColor: '#EF4444',
     color: '#fff',
     fontSize: 16,
     fontWeight: 800,
