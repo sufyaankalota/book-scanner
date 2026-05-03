@@ -5,3 +5,7 @@ dist
 *.local
 .vercel
 .env*.local
+
+.env.runtime
+backfill.log
+deploy.log
