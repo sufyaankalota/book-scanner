@@ -65,6 +65,8 @@ export default function Setup() {
   const [editSupervisors, setEditSupervisors] = useState('');
   const [editExceptionColor, setEditExceptionColor] = useState(DEFAULT_EXCEPTION_COLOR);
   const [editExceptionNumber, setEditExceptionNumber] = useState('');
+  const [editPoColors, setEditPoColors] = useState({});
+  const [editPoNumbers, setEditPoNumbers] = useState({});
 
   // PIN
   const [pinValue, setPinValue] = useState('');
@@ -642,13 +644,23 @@ export default function Setup() {
       const sup = Number(editSupervisors) || 0;
       const excColor = editExceptionColor || DEFAULT_EXCEPTION_COLOR;
       const excNumber = editExceptionNumber !== '' ? Number(editExceptionNumber) : null;
+      // Sanitize PO colors/numbers — strip empty number values
+      const cleanPoNumbers = {};
+      for (const [po, n] of Object.entries(editPoNumbers || {})) {
+        if (n !== '' && n != null) cleanPoNumbers[po] = Number(n);
+      }
       await updateDoc(doc(db, 'jobs', activeJob.id), {
         'meta.dailyTarget': target, 'meta.workingHours': hours, 'meta.pods': newPods,
         'meta.floaters': flo, 'meta.runners': run, 'meta.supervisors': sup,
         exceptionColor: excColor, exceptionNumber: excNumber,
+        ...(activeJob.meta.mode === 'multi' ? { poColors: editPoColors, poNumbers: cleanPoNumbers } : {}),
       });
       logAudit('job_edited', { jobId: activeJob.id });
-      setActiveJob({ ...activeJob, meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run, supervisors: sup }, exceptionColor: excColor, exceptionNumber: excNumber });
+      setActiveJob({ ...activeJob,
+        meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run, supervisors: sup },
+        exceptionColor: excColor, exceptionNumber: excNumber,
+        ...(activeJob.meta.mode === 'multi' ? { poColors: editPoColors, poNumbers: cleanPoNumbers } : {}),
+      });
       setEditMode(false);
       toast('Job updated', 'success');
     } catch (err) { toast('Failed to save: ' + err.message, 'error'); }
@@ -846,7 +858,11 @@ export default function Setup() {
               )}
               <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <Link to="/dashboard" style={s.linkBtn}>Go to Dashboard</Link>
-                <button onClick={() => setEditMode(true)} style={s.editBtn}>✏️ Edit Job</button>
+                <button onClick={() => {
+                  setEditPoColors({ ...(activeJob.poColors || {}) });
+                  setEditPoNumbers({ ...(activeJob.poNumbers || {}) });
+                  setEditMode(true);
+                }} style={s.editBtn}>✏️ Edit Job</button>
                 {activeJob?.manifestMeta?.chunked && (
                   <button onClick={handleBackfillActiveJob} disabled={!!pairingStatus}
                     title="Pair ISBN-10/13 siblings + backfill titles in this job's manifest. Safe to run multiple times."
@@ -893,6 +909,29 @@ export default function Setup() {
                     <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: editExceptionColor, border: '1px solid #555', flexShrink: 0 }} />
                   </div>
                 </>
+              )}
+              {activeJob.meta.mode === 'multi' && Object.keys(activeJob.poColors || {}).length > 0 && (
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #333' }}>
+                  <label style={{ ...s.label, marginBottom: 8, fontSize: 15 }}>PO Colors &amp; Numbers</label>
+                  <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px' }}>Changes apply to all future scans immediately.</p>
+                  {Object.keys(activeJob.poColors).map((po) => (
+                    <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                      <span style={{ ...s.text, minWidth: 120, fontSize: 14 }}>{po}</span>
+                      <input type="number" min={1} value={editPoNumbers[po] ?? ''}
+                        onChange={(e) => setEditPoNumbers({ ...editPoNumbers, [po]: e.target.value === '' ? '' : Math.max(1, Number(e.target.value) | 0) })}
+                        title="Gaylord / bin number"
+                        style={{ ...s.input, width: 70, textAlign: 'center', flex: 'none' }} />
+                      <select value={editPoColors[po] || DEFAULT_COLORS[0].hex}
+                        onChange={(e) => setEditPoColors({ ...editPoColors, [po]: e.target.value })} style={{ ...s.input, flex: 1 }}>
+                        {DEFAULT_COLORS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
+                        {editPoColors[po] && !DEFAULT_COLORS.some((c) => c.hex === editPoColors[po]) && (
+                          <option key={editPoColors[po]} value={editPoColors[po]}>Custom ({editPoColors[po]})</option>
+                        )}
+                      </select>
+                      <div style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: editPoColors[po] || DEFAULT_COLORS[0].hex, border: '1px solid #555', flexShrink: 0 }} />
+                    </div>
+                  ))}
+                </div>
               )}
               <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
                 <button onClick={handleEditSave} style={s.primaryBtn}>Save Changes</button>
