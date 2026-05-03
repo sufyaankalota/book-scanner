@@ -26,9 +26,12 @@ import { logAudit } from '../utils/audit';
 import { copyManifestChunks } from '../utils/manifestStore';
 import { useToast } from '../components/Toast';
 import TodayLeaderboard from '../components/TodayLeaderboard';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Dashboard() {
   const { show: toast } = useToast();
+  const { currentUser } = useAuth();
+  const isOwner = currentUser?.role === 'admin';
   const [job, setJob] = useState(null);
   const [podData, setPodData] = useState({});
   const [presenceRaw, setPresenceRaw] = useState({});
@@ -830,19 +833,19 @@ export default function Dashboard() {
       <div style={st.summaryRow}>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: '#22C55E' }}>{totalRegular.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Regular @ $0.40</div>
+          <div style={st.summaryLabel}>Regular{isOwner ? ' @ $0.40' : ''}</div>
         </div>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalManual > 0 ? '#3B82F6' : '#888' }}>{totalManual.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Manual @ $0.60</div>
+          <div style={st.summaryLabel}>Manual{isOwner ? ' @ $0.60' : ''}</div>
         </div>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalAiMatch > 0 ? '#93C5FD' : '#888' }}>{totalAiMatch.toLocaleString()}</div>
-          <div style={st.summaryLabel}>AI Camera @ $0.60</div>
+          <div style={st.summaryLabel}>AI Camera{isOwner ? ' @ $0.60' : ''}</div>
         </div>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalAutoExceptions > 0 ? '#F97316' : '#888' }}>{totalAutoExceptions.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Logged Exc @ $0.60</div>
+          <div style={st.summaryLabel}>Logged Exc{isOwner ? ' @ $0.60' : ''}</div>
         </div>
         <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
           <div style={{ ...st.summaryValue, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
@@ -862,13 +865,13 @@ export default function Dashboard() {
             <div style={st.summaryLabel}>Scans/Labor Hr</div>
           </div>
         )}
-        {laborMetrics && (
+        {laborMetrics && isOwner && (
           <div style={st.summaryItem}>
             <div style={{ ...st.summaryValue, color: '#34D399' }}>${laborMetrics.totalCost.toFixed(0)}</div>
             <div style={st.summaryLabel}>Labor Cost</div>
           </div>
         )}
-        {laborMetrics && laborMetrics.costPerScan > 0 && (
+        {laborMetrics && isOwner && laborMetrics.costPerScan > 0 && (
           <div style={st.summaryItem}>
             <div style={{ ...st.summaryValue, color: '#34D399' }}>${laborMetrics.costPerScan.toFixed(3)}</div>
             <div style={st.summaryLabel}>$ / Scan</div>
@@ -1090,7 +1093,7 @@ export default function Dashboard() {
           ['hourly', '📊 Hourly'],
           ['excTrend', '📈 Exception Trend'],
           ['shifts', '⏱ Shifts'],
-          ['labor', '💵 Labor Cost'],
+          ...(isOwner ? [['labor', '💵 Labor Cost']] : []),
           ['bols', `🚛 BOLs (${bols.length})`],
         ].map(([key, label]) => (
           <button key={key} onClick={() => setShowPanel(showPanel === key ? '' : key)}
@@ -1220,7 +1223,7 @@ export default function Dashboard() {
       )}
 
       {/* Shifts panel */}
-      {showPanel === 'labor' && (
+      {showPanel === 'labor' && isOwner && (
         <div style={st.panel}>
           {laborMetrics ? (
             <div style={{ padding: 16 }}>
