@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { db } from '../firebase';
+import { db, functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 import {
   collection, doc, getDocs, getDoc, addDoc, setDoc, deleteDoc, updateDoc,
   query, where, onSnapshot, serverTimestamp, Timestamp, runTransaction,
@@ -12,8 +13,8 @@ import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
 import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
-import { lookupIsbn, clearChunkCache, loadTitleIndex, clearTitleIndexCache } from '../utils/manifestStore';
-import { findMatches, classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
+import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
+import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
 
@@ -65,12 +66,10 @@ export default function Pod() {
   const [manifestCache, setManifestCache] = useState({});
   // Title index for AI cover-photo → ISBN fuzzy match. Loaded lazily once
   // per job. Stays empty if the manifest doesn't include titles.
-  const [titleIndex, setTitleIndex] = useState(null);
-  const [titleIndexStatus, setTitleIndexStatus] = useState('idle'); // idle|loading|ready|empty|error
+  // Title-index for AI cover match lives server-side (matchManifestTitle).
   const [aiMatchCandidates, setAiMatchCandidates] = useState(null); // { capturedTitle, photo, candidates: [...] } when ambiguous
   const [exceptionPrefill, setExceptionPrefill] = useState(null); // { title, photo } when AI couldn't match
 
-  const [scanInput, setScanInput] = useState('');
   const [localCount, setLocalCount] = useState(0);
   const [firestoreCount, setFirestoreCount] = useState(0);
   const [exceptionCount, setExceptionCount] = useState(0);
@@ -119,7 +118,11 @@ export default function Pod() {
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
   const pairInputRef = useRef(null);
-  const barcodeTimeoutRef = useRef(null);
+  // Barcode scanner buffer — a ref (not state) so chars accumulate synchronously.
+  // React 18 batches state updates across keydown events that arrive in the same
+  // microtask burst (which is exactly how barcode scanners type). Using state
+  // caused the Enter handler to read an empty/partial buffer on the first scan.
+  const scanBufferRef = useRef('');
   const scanStartTimeRef = useRef(null);
   const dayRef = useRef(new Date().getDate());
   const shiftDocRef = useRef(null);
@@ -293,12 +296,16 @@ export default function Pod() {
   }, [isOnline]);
 
   // ─── Barcode input timeout ───
+  // Reset the scanner buffer if no Enter arrives within BARCODE_TIMEOUT_MS
+  // (covers half-typed scans / abandoned input).
   useEffect(() => {
-    if (!scanInput) return;
-    clearTimeout(barcodeTimeoutRef.current);
-    barcodeTimeoutRef.current = setTimeout(() => setScanInput(''), BARCODE_TIMEOUT_MS);
-    return () => clearTimeout(barcodeTimeoutRef.current);
-  }, [scanInput]);
+    const id = setInterval(() => {
+      if (scanBufferRef.current && Date.now() - (scanBufferRef.lastTs || 0) > BARCODE_TIMEOUT_MS) {
+        scanBufferRef.current = '';
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // ─── Keep input focused ───
   const refocusInput = useCallback(() => {
@@ -364,37 +371,19 @@ export default function Pod() {
           if (picked.meta.mode === 'multi' && !picked.manifestMeta?.chunked) {
             getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
               const cache = {};
-              const idx = [];
               ms.forEach((d) => {
                 const data = d.data();
                 cache[d.id] = data.poName;
-                if (data.title) idx.push({ isbn: d.id, po: data.poName, title: data.title });
               });
               setManifestCache(cache);
-              setTitleIndex(idx);
-              setTitleIndexStatus(idx.length ? 'ready' : 'empty');
             }).catch((err) => {
               console.error('Failed to load manifest:', err);
-              setTitleIndexStatus('error');
               flash('#EF4444', 'Manifest load failed — retry by reloading the page', 4000);
             });
           } else if (picked.manifestMeta?.chunked) {
             clearChunkCache();
-            // Pre-load title index in the background so AI camera flow is instant.
-            // Skipped for extreme manifests (>10M items) to avoid heavy reads.
-            const meta = picked.manifestMeta;
-            const tooBig = (meta.totalIsbns || 0) > 10000000;
-            if (meta.hasTitles === false || tooBig) {
-              setTitleIndex([]);
-              setTitleIndexStatus('empty');
-            } else {
-              setTitleIndexStatus('loading');
-              const manifestPath = picked.manifestSource || `jobs/${picked.id}`;
-              clearTitleIndexCache(manifestPath);
-              loadTitleIndex(manifestPath, meta.numChunks)
-                .then((idx) => { setTitleIndex(idx); setTitleIndexStatus(idx.length ? 'ready' : 'empty'); })
-                .catch((err) => { console.error('Title index load failed:', err); setTitleIndexStatus('error'); });
-            }
+            // Title-index for AI cover→ISBN match lives server-side
+            // (matchManifestTitle Cloud Function). No client preload needed.
           }
         } else setJob(null);
       } else setJob(null);
@@ -616,7 +605,7 @@ export default function Pod() {
     setShowExceptionModal(true);
   };
 
-  const handleAiCoverResult = (data) => {
+  const handleAiCoverResult = async (data) => {
     if (!data) return;
     const capturedTitle = (data.title || '').trim();
     const capturedAuthor = (data.author || '').trim();
@@ -627,47 +616,46 @@ export default function Pod() {
       openExceptionForCapture('', photo);
       return;
     }
-    if (!titleIndex || !titleIndex.length) {
-      // No manifest titles available → send straight to exception with prefilled title
-      flash('#EF4444', 'No title manifest loaded — logging exception', 2500);
+    if (!job?.id) {
+      flash('#EF4444', 'No active job — logging exception', 2500);
       openExceptionForCapture(capturedTitle || coverText, photo);
       return;
     }
-    // Try multiple search strings — pick the one that produces the best match.
-    // This handles cases where AI mis-classifies title vs author, or only catches
-    // part of the cover text. Each variant is searched independently and we take
-    // the highest-scoring result across all of them.
-    const searchVariants = [
-      [capturedTitle, capturedAuthor].filter(Boolean).join(' '),
-      coverText,
-      capturedTitle,
-      capturedAuthor,
-    ].filter((s, i, arr) => s && arr.indexOf(s) === i); // dedupe + drop empties
 
-    let best = null;
-    let bestVariant = '';
-    for (const variant of searchVariants) {
-      const ms = findMatches(variant, titleIndex, { topK: 3, minScore: MATCH_AMBIGUOUS - 0.05 });
-      if (ms.length && (!best || ms[0].score > best[0].score)) {
-        best = ms;
-        bestVariant = variant;
-      }
+    // Server-side match — keeps the manifest index off the browser.
+    let candidates = [];
+    try {
+      const call = httpsCallable(functions, 'matchManifestTitle');
+      const res = await call({
+        jobId: job.id,
+        title: capturedTitle,
+        author: capturedAuthor,
+        coverText,
+        topK: 3,
+        minScore: MATCH_AMBIGUOUS - 0.05,
+      });
+      candidates = res.data?.candidates || [];
+    } catch (err) {
+      console.error('matchManifestTitle failed:', err);
+      const prefill = coverText || capturedTitle || capturedAuthor || '';
+      flash('#EF4444', 'Title match service unavailable — logging exception', 2500);
+      openExceptionForCapture(prefill, photo);
+      return;
     }
 
-    if (!best || best[0].score < MATCH_AMBIGUOUS) {
-      // No reasonable match → exception with title prefilled (favor longest variant for clarity)
+    if (!candidates.length || candidates[0].score < MATCH_AMBIGUOUS) {
       const prefill = coverText || capturedTitle || capturedAuthor || '';
       openExceptionForCapture(prefill, photo);
       return;
     }
-    const top = best[0];
+
+    const top = candidates[0];
+    const bestVariant = top.variant || capturedTitle || coverText || capturedAuthor || '';
     if (classify(top.score) === 'confident') {
-      // Auto-accept and book it as an AI-matched (manual-billed) scan
       handleScan(top.isbn, { isManual: true, source: 'ai-match', capturedTitle: bestVariant, matchScore: top.score });
       return;
     }
-    // Ambiguous — ask the operator to pick
-    setAiMatchCandidates({ capturedTitle: bestVariant, photo, candidates: best });
+    setAiMatchCandidates({ capturedTitle: bestVariant, photo, candidates });
   };
 
   // ─── Process scan (after validation/confirmation) ───
@@ -798,10 +786,12 @@ export default function Pod() {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const val = scanInput.trim(); setScanInput('');
+      const val = (scanBufferRef.current || '').trim();
+      scanBufferRef.current = '';
       if (val) handleScan(val);
     } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-      setScanInput((prev) => prev + e.key);
+      scanBufferRef.current = (scanBufferRef.current || '') + e.key;
+      scanBufferRef.lastTs = Date.now();
     }
   };
 

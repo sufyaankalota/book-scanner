@@ -334,3 +334,48 @@ exports.extractFromImage = onCall({
 
   return { ...result, costUsd: Number(cost.toFixed(6)), model: 'gpt-4o' };
 });
+
+// ─── Server-side fuzzy title→ISBN match ───
+// Loads the chunked manifest in-memory once per job, builds a token-inverted
+// index, and serves top-K candidate ISBNs. Designed for very large manifests
+// (≥9M titles) where shipping the full index to the browser is impractical.
+const matcher = require('./manifestMatch');
+
+exports.matchManifestTitle = onCall({
+  region: 'us-east1',
+  timeoutSeconds: 120, // first call may build the index (up to ~90s for 9M rows)
+  memory: '4GiB',
+  cpu: 2,
+  maxInstances: 4,
+  minInstances: 1, // keep one instance warm so the index stays cached
+  invoker: 'public',
+  cors: true,
+}, async (request) => {
+  const { jobId, title, author, coverText, topK, minScore } = request.data || {};
+  if (!jobId) throw new HttpsError('invalid-argument', 'jobId is required');
+  if (!title && !author && !coverText) throw new HttpsError('invalid-argument', 'at least one of title/author/coverText is required');
+  try {
+    const candidates = await matcher.findCandidates(jobId, { title, author, coverText }, {
+      topK: Math.min(Math.max(Number(topK) || 5, 1), 10),
+      minScore: typeof minScore === 'number' ? minScore : 0.5,
+      log: console.log,
+    });
+    return { candidates, indexStats: matcher.getStats()[jobId] || null };
+  } catch (err) {
+    console.error('matchManifestTitle failed:', err);
+    throw new HttpsError('internal', err.message || 'match failed');
+  }
+});
+
+// Admin-callable to invalidate the in-memory cache (e.g. after a manifest reupload).
+exports.invalidateManifestIndex = onCall({
+  region: 'us-east1',
+  memory: '256MiB',
+  invoker: 'public',
+  cors: true,
+}, async (request) => {
+  const { jobId } = request.data || {};
+  matcher.invalidate(jobId);
+  return { ok: true, stats: matcher.getStats() };
+});
+
