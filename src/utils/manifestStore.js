@@ -168,6 +168,122 @@ export function clearTitleIndexCache(parentPath) {
 }
 
 /**
+ * In-place backfill of ISBN-10/13 siblings across already-stored chunks.
+ *
+ * Walks every chunk under parentPath, and for each entry with a title (or
+ * even an entry with only a PO + missing sibling), writes the alternate
+ * ISBN form into the appropriate sibling chunk. Used to retro-apply the
+ * sibling-pairing fix to manifests uploaded before that change shipped.
+ *
+ * Strategy:
+ *   1. Read all chunks (parallel pages of 8).
+ *   2. Build a flat in-memory map { isbn -> { p, t } } and decide additions.
+ *   3. Group additions by destination chunk index (hash on isbn).
+ *   4. Write modified chunks back in batches.
+ *
+ * Safe to run multiple times — existing entries are never overwritten.
+ *
+ * @returns { read, added, chunksTouched, hadTitlesBefore, hasTitlesAfter }
+ */
+export async function backfillManifestChunks(parentPath, numChunks, onProgress) {
+  if (!numChunks) throw new Error('backfillManifestChunks requires numChunks');
+  // Lazy import to avoid pulling isbn helper into hot scan path
+  const { isbnAlternates } = await import('./isbn');
+
+  // 1. Read all chunks
+  const chunkData = new Map(); // idx -> { id, isbns }
+  let hadTitlesBefore = false;
+  const PAR = 8;
+  for (let start = 0; start < numChunks; start += PAR) {
+    const end = Math.min(start + PAR, numChunks);
+    const reads = [];
+    for (let i = start; i < end; i++) {
+      reads.push(getDoc(doc(db, parentPath, 'manifest-chunks', `c${String(i).padStart(5, '0')}`)));
+    }
+    const snaps = await Promise.all(reads);
+    snaps.forEach((snap, k) => {
+      const idx = start + k;
+      if (snap.exists()) {
+        const isbns = snap.data().isbns || {};
+        chunkData.set(idx, { id: snap.id, isbns });
+        if (!hadTitlesBefore) {
+          for (const v of Object.values(isbns)) {
+            if (v && typeof v === 'object' && v.t) { hadTitlesBefore = true; break; }
+          }
+        }
+      }
+    });
+    if (onProgress) onProgress({ phase: 'reading', done: end, total: numChunks });
+  }
+
+  // 2. Decide additions. Keyed by destination chunk idx.
+  const additions = new Map(); // destIdx -> { siblingIsbn -> { p, t? } }
+  let read = 0;
+  let added = 0;
+  for (const { isbns } of chunkData.values()) {
+    for (const [isbn, raw] of Object.entries(isbns)) {
+      read++;
+      const po = typeof raw === 'string' ? raw : raw?.p;
+      const title = typeof raw === 'string' ? null : (raw?.t || null);
+      if (!po) continue;
+      const { isbn13, isbn10 } = isbnAlternates(isbn);
+      const sibling = isbn === isbn13 ? isbn10 : isbn13;
+      if (!sibling || sibling === isbn) continue;
+      // Where would the sibling live?
+      const sibIdx = hashIsbn(sibling, numChunks);
+      const sibChunk = chunkData.get(sibIdx);
+      const existingInChunk = sibChunk?.isbns?.[sibling];
+      const existingInAdditions = additions.get(sibIdx)?.[sibling];
+      const existing = existingInAdditions ?? existingInChunk;
+      if (existing == null) {
+        // Sibling missing entirely — synthesize
+        if (!additions.has(sibIdx)) additions.set(sibIdx, {});
+        additions.get(sibIdx)[sibling] = title ? { p: po, t: title } : po;
+        added++;
+      } else if (title) {
+        // Sibling exists; backfill title only if it lacks one
+        const existingTitle = typeof existing === 'string' ? null : existing.t;
+        const existingPo = typeof existing === 'string' ? existing : existing.p;
+        if (!existingTitle && existingPo) {
+          if (!additions.has(sibIdx)) additions.set(sibIdx, {});
+          additions.get(sibIdx)[sibling] = { p: existingPo, t: title };
+          added++;
+        }
+      }
+    }
+  }
+
+  // 3. Write back. Merge additions into the existing chunk's isbns map.
+  const dirtyIdxs = [...additions.keys()];
+  let written = 0;
+  for (let i = 0; i < dirtyIdxs.length; i += WRITE_BATCH) {
+    const batch = writeBatch(db);
+    const slice = dirtyIdxs.slice(i, i + WRITE_BATCH);
+    for (const idx of slice) {
+      const existing = chunkData.get(idx)?.isbns || {};
+      const merged = { ...existing, ...additions.get(idx) };
+      const chunkId = chunkData.get(idx)?.id || `c${String(idx).padStart(5, '0')}`;
+      batch.set(doc(db, parentPath, 'manifest-chunks', chunkId), { isbns: merged });
+    }
+    await batch.commit();
+    written += slice.length;
+    if (onProgress) onProgress({ phase: 'writing', done: written, total: dirtyIdxs.length });
+  }
+
+  // Invalidate caches so callers see the new data
+  clearChunkCache();
+  clearTitleIndexCache(parentPath);
+
+  return {
+    read,
+    added,
+    chunksTouched: dirtyIdxs.length,
+    hadTitlesBefore,
+    hasTitlesAfter: hadTitlesBefore || added > 0,
+  };
+}
+
+/**
  * Copy manifest chunks from source to dest in pages (avoids loading all into memory).
  * If numChunks is provided, copies by known IDs (cheapest). Otherwise falls back to paginated query.
  */

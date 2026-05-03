@@ -8,7 +8,7 @@ import {
 import { parseManifestFile } from '../utils/manifest';
 import { logAudit } from '../utils/audit';
 import { hashPassword } from '../utils/crypto';
-import { writeManifestChunks, copyManifestChunks, deleteManifestChunks, readChunkPreview, lookupIsbn } from '../utils/manifestStore';
+import { writeManifestChunks, copyManifestChunks, deleteManifestChunks, readChunkPreview, lookupIsbn, backfillManifestChunks } from '../utils/manifestStore';
 import BulkIsbnLookup from '../components/BulkIsbnLookup';
 import { useToast } from '../components/Toast';
 
@@ -180,10 +180,7 @@ export default function Setup() {
   }, []);
 
   // Delete a customer PO upload (manifest chunks + parent doc).
-  // Safe even if the upload is already attached to a job — the job keeps its
-  // own copy of the manifest chunks (copied at attach time).
-  const handleDeleteCustomerUpload = async (up) => {
-    const label = (up.poNames || []).join(', ') || up.id;
+  const handleDeleteCustomerUpload = async (up) => {  const label = (up.poNames || []).join(', ') || up.id;
     if (!window.confirm(`Delete uploaded PO "${label}" (${(up.isbnCount || 0).toLocaleString()} ISBNs) from the library?\n\nJobs already using this upload will keep their own copy.`)) return;
     try {
       if (up.manifestMeta?.chunked) {
@@ -205,6 +202,54 @@ export default function Setup() {
       console.error('[delete-po-upload] failed:', err);
       toast('Delete failed: ' + (err?.message || err), 'error');
     }
+  };
+
+  // In-place ISBN-10/13 sibling pairing for an existing manifest. Used to
+  // retro-apply the pairing fix to manifests uploaded before that change
+  // shipped (so the AI fuzzy-match index covers every book without forcing
+  // the customer to re-upload a multi-GB CSV).
+  const [pairingStatus, setPairingStatus] = useState(null); // {label, phase, done, total} | null
+  const handleBackfillPath = async (parentPath, numChunks, label, onDone) => {
+    if (!numChunks) { toast('Manifest is not chunked — re-upload to apply pairing.', 'error'); return; }
+    if (!window.confirm(`Pair ISBN-10/13 siblings and backfill titles in "${label}"?\n\nThis reads + rewrites the manifest chunks already in Firestore. Safe to run multiple times.`)) return;
+    setPairingStatus({ label, phase: 'reading', done: 0, total: numChunks });
+    try {
+      const result = await backfillManifestChunks(parentPath, numChunks, (p) => setPairingStatus({ label, ...p }));
+      logAudit('manifest_backfilled', { parentPath, ...result });
+      toast(`Paired "${label}": +${result.added.toLocaleString()} sibling entries across ${result.chunksTouched} chunks (read ${result.read.toLocaleString()})`, 'success', 6000);
+      if (onDone) await onDone(result);
+    } catch (err) {
+      console.error('[backfill] failed:', err);
+      toast('Pairing failed: ' + (err?.message || err), 'error');
+    } finally {
+      setPairingStatus(null);
+    }
+  };
+
+  const handleBackfillCustomerUpload = (up) =>
+    handleBackfillPath(`po-uploads/${up.id}`, up.manifestMeta?.numChunks, (up.poNames || []).join(', ') || up.id,
+      async (result) => {
+        // Mark the upload as having titles so the UI badge reflects it
+        if (result.hasTitlesAfter) {
+          try {
+            await updateDoc(doc(db, 'po-uploads', up.id), { 'manifestMeta.hasTitles': true });
+            setCustomerPOUploads((prev) => prev.map((u) => u.id === up.id
+              ? { ...u, manifestMeta: { ...(u.manifestMeta || {}), hasTitles: true } } : u));
+          } catch {}
+        }
+      });
+
+  const handleBackfillActiveJob = () => {
+    if (!activeJob) return;
+    handleBackfillPath(`jobs/${activeJob.id}`, activeJob.manifestMeta?.numChunks, activeJob.meta?.name || activeJob.id,
+      async (result) => {
+        if (result.hasTitlesAfter) {
+          try {
+            await updateDoc(doc(db, 'jobs', activeJob.id), { 'manifestMeta.hasTitles': true });
+            setActiveJob((prev) => prev ? { ...prev, manifestMeta: { ...(prev.manifestMeta || {}), hasTitles: true } } : prev);
+          } catch {}
+        }
+      });
   };
 
   const handleFileUpload = async (e) => {
@@ -756,6 +801,13 @@ export default function Setup() {
               <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <Link to="/dashboard" style={s.linkBtn}>Go to Dashboard</Link>
                 <button onClick={() => setEditMode(true)} style={s.editBtn}>✏️ Edit Job</button>
+                {activeJob?.manifestMeta?.chunked && (
+                  <button onClick={handleBackfillActiveJob} disabled={!!pairingStatus}
+                    title="Pair ISBN-10/13 siblings + backfill titles in this job's manifest. Safe to run multiple times."
+                    style={{ ...s.editBtn, borderColor: '#EAB308', color: '#EAB308', backgroundColor: 'transparent', opacity: pairingStatus ? 0.5 : 1, cursor: pairingStatus ? 'wait' : 'pointer' }}>
+                    🔗 {pairingStatus ? `Pairing… (${pairingStatus.phase} ${pairingStatus.done}/${pairingStatus.total})` : 'Pair ISBN-10/13 + Add Titles'}
+                  </button>
+                )}
                 <button onClick={handleCloseJob} style={s.dangerBtn}>Close Job</button>
                 <button onClick={handleDeleteJob} style={{ ...s.dangerBtn, backgroundColor: '#450a0a', borderColor: '#7f1d1d' }}>🗑 Delete Job</button>
               </div>
@@ -1041,6 +1093,12 @@ export default function Setup() {
                                 {qSelectedUploadId === up.id ? '✓ Selected' : 'Use This'}
                               </button>
                             )}
+                            {up.manifestMeta?.chunked && (
+                              <button onClick={() => handleBackfillCustomerUpload(up)} disabled={!!pairingStatus} title="Pair ISBN-10/13 siblings + backfill titles in place (no re-upload needed)"
+                                style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EAB308', backgroundColor: 'transparent', color: '#EAB308', fontSize: 11, fontWeight: 600, cursor: pairingStatus ? 'wait' : 'pointer', opacity: pairingStatus ? 0.5 : 1 }}>
+                                🔗 Pair ISBNs
+                              </button>
+                            )}
                             <button onClick={() => handleDeleteCustomerUpload(up)} title="Delete this PO upload from the library"
                               style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#F87171', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                               🗑 Delete
@@ -1194,6 +1252,12 @@ export default function Setup() {
                             color: selectedUploadId === up.id ? '#fff' : '#3B82F6',
                             fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                           {selectedUploadId === up.id ? '✓ Selected' : 'Use This'}
+                        </button>
+                      )}
+                      {up.manifestMeta?.chunked && (
+                        <button onClick={() => handleBackfillCustomerUpload(up)} disabled={!!pairingStatus} title="Pair ISBN-10/13 siblings + backfill titles in place (no re-upload needed)"
+                          style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EAB308', backgroundColor: 'transparent', color: '#EAB308', fontSize: 11, fontWeight: 600, cursor: pairingStatus ? 'wait' : 'pointer', opacity: pairingStatus ? 0.5 : 1 }}>
+                          🔗 Pair ISBNs
                         </button>
                       )}
                       <button onClick={() => handleDeleteCustomerUpload(up)} title="Delete this PO upload from the library"
