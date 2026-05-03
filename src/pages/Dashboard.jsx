@@ -313,6 +313,7 @@ export default function Dashboard() {
   // Add customer PO upload to active job
   const addPOToJob = async (upload) => {
     if (!job) return toast('No active job', 'error');
+    if (job.manifestSource) return toast('This job is linked to a customer upload. Close it and start a new job to use a different upload.', 'error');
     if (!confirm(`Add ${(upload.poNames || []).join(', ')} (${(upload.isbnCount || 0).toLocaleString()} ISBNs) to the current job?`)) return;
     setAddingPO(upload.id);
     setAddPOProgress({ written: 0, total: 0 });

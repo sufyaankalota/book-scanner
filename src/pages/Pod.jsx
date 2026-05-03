@@ -389,8 +389,9 @@ export default function Pod() {
               setTitleIndexStatus('empty');
             } else {
               setTitleIndexStatus('loading');
-              clearTitleIndexCache(`jobs/${picked.id}`);
-              loadTitleIndex(`jobs/${picked.id}`, meta.numChunks)
+              const manifestPath = picked.manifestSource || `jobs/${picked.id}`;
+              clearTitleIndexCache(manifestPath);
+              loadTitleIndex(manifestPath, meta.numChunks)
                 .then((idx) => { setTitleIndex(idx); setTitleIndexStatus(idx.length ? 'ready' : 'empty'); })
                 .catch((err) => { console.error('Title index load failed:', err); setTitleIndexStatus('error'); });
             }
@@ -738,7 +739,8 @@ export default function Pod() {
     // Multi-PO
     let poName;
     if (job.manifestMeta?.chunked) {
-      poName = await lookupIsbn(`jobs/${job.id}`, isbn, job.manifestMeta.numChunks);
+      const manifestPath = job.manifestSource || `jobs/${job.id}`;
+      poName = await lookupIsbn(manifestPath, isbn, job.manifestMeta.numChunks);
     } else {
       poName = manifestCache[isbn];
     }

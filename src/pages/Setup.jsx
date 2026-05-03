@@ -191,6 +191,10 @@ export default function Setup() {
 
   // Delete a customer PO upload (manifest chunks + parent doc).
   const handleDeleteCustomerUpload = async (up) => {  const label = (up.poNames || []).join(', ') || up.id;
+    if (up.status === 'added' || up.status === 'queued') {
+      toast(`Cannot delete: this upload is in use by ${up.status === 'added' ? 'an active job' : 'a queued job'}. Close the job first.`, 'error');
+      return;
+    }
     if (!window.confirm(`Delete uploaded PO "${label}" (${(up.isbnCount || 0).toLocaleString()} ISBNs) from the library?\n\nJobs already using this upload will keep their own copy.`)) return;
     try {
       if (up.manifestMeta?.chunked) {
@@ -368,14 +372,15 @@ export default function Setup() {
           });
           await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: jobManifestMeta });
         } else if (selectedUploadId) {
-          // Chunked customer upload — copy chunks directly
+          // Chunked customer upload — point job at upload's chunks (no copy)
           const upload = customerPOUploads.find((u) => u.id === selectedUploadId);
           if (upload?.manifestMeta?.chunked) {
-            await copyManifestChunks(`po-uploads/${selectedUploadId}`, `jobs/${jobId}`, (written, total) => {
-              setActivateProgress({ written, total, label: 'Copying manifest' });
-            }, upload.manifestMeta.numChunks);
             jobManifestMeta = upload.manifestMeta;
-            await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: jobManifestMeta });
+            await updateDoc(doc(db, 'jobs', jobId), {
+              manifestMeta: jobManifestMeta,
+              manifestSource: `po-uploads/${selectedUploadId}`,
+              sourceUploadId: selectedUploadId,
+            });
           }
         }
         if (selectedUploadId) {
@@ -463,10 +468,11 @@ export default function Setup() {
         } else if (qSelectedUploadId) {
           const upload = customerPOUploads.find((u) => u.id === qSelectedUploadId);
           if (upload?.manifestMeta?.chunked) {
-            await copyManifestChunks(`po-uploads/${qSelectedUploadId}`, `jobs/${jobId}`, (written, total) => {
-              setQueueProgress({ written, total, label: 'Copying manifest' });
-            }, upload.manifestMeta.numChunks);
-            await updateDoc(doc(db, 'jobs', jobId), { manifestMeta: upload.manifestMeta });
+            await updateDoc(doc(db, 'jobs', jobId), {
+              manifestMeta: upload.manifestMeta,
+              manifestSource: `po-uploads/${qSelectedUploadId}`,
+              sourceUploadId: qSelectedUploadId,
+            });
           }
         }
         if (qSelectedUploadId) {
@@ -492,10 +498,10 @@ export default function Setup() {
   const handleRemoveFromQueue = async (jobId) => {
     if (!window.confirm('Remove this job from the queue? The job data will be deleted.')) return;
     try {
-      // Delete manifest chunks (if chunked)
+      // Delete manifest chunks (if chunked) — skip for pointer-jobs (chunks live under po-uploads/)
       const jobSnap = await getDoc(doc(db, 'jobs', jobId));
       const jobData = jobSnap.exists() ? jobSnap.data() : {};
-      if (jobData.manifestMeta?.chunked) {
+      if (jobData.manifestMeta?.chunked && !jobData.manifestSource) {
         await deleteManifestChunks(`jobs/${jobId}`, jobData.manifestMeta.numChunks);
       }
       // Delete legacy manifest docs
@@ -506,6 +512,10 @@ export default function Setup() {
         await batch.commit();
       }
       await deleteDoc(doc(db, 'jobs', jobId));
+      // If this job pointed at a customer upload, free it up for re-use
+      if (jobData.sourceUploadId) {
+        try { await updateDoc(doc(db, 'po-uploads', jobData.sourceUploadId), { status: 'pending', jobId: null }); } catch {}
+      }
       logAudit('job_removed_from_queue', { jobId });
       setQueuedJobs((prev) => prev.filter((j) => j.id !== jobId));
     } catch (err) { toast('Failed to remove: ' + err.message, 'error'); }
@@ -597,8 +607,8 @@ export default function Setup() {
       // Delete BOLs
       const bolSnap = await getDocs(query(collection(db, 'bols'), where('jobId', '==', activeJob.id)));
       for (const d of bolSnap.docs) { batch.delete(d.ref); count++; if (count % BATCH === 0) { await batch.commit(); batch = writeBatch(db); } }
-      // Delete manifest chunks (if chunked)
-      if (activeJob.manifestMeta?.chunked) {
+      // Delete manifest chunks (if chunked) — skip for pointer-jobs (chunks live under po-uploads/)
+      if (activeJob.manifestMeta?.chunked && !activeJob.manifestSource) {
         await deleteManifestChunks(`jobs/${activeJob.id}`, activeJob.manifestMeta.numChunks);
       }
       // Delete legacy manifest subcollection
@@ -607,6 +617,10 @@ export default function Setup() {
       // Final batch + delete job doc
       batch.delete(doc(db, 'jobs', activeJob.id));
       await batch.commit();
+      // If this job pointed at a customer upload, free it up for re-use
+      if (activeJob.sourceUploadId) {
+        try { await updateDoc(doc(db, 'po-uploads', activeJob.sourceUploadId), { status: 'pending', jobId: null }); } catch {}
+      }
       logAudit('job_deleted', { jobId: activeJob.id, jobName: name, deletedRecords: count });
       setActiveJob(null); setEditMode(false);
       toast(`Job "${name}" and ${count} related records deleted.`, 'success', 4000);
@@ -1503,7 +1517,7 @@ export default function Setup() {
                     await deleteSnap(s);
                   });
                   await safeStep('manifest-chunks', async () => {
-                    if (pj.manifestMeta?.chunked) await deleteManifestChunks(`jobs/${pj.id}`, pj.manifestMeta.numChunks);
+                    if (pj.manifestMeta?.chunked && !pj.manifestSource) await deleteManifestChunks(`jobs/${pj.id}`, pj.manifestMeta.numChunks);
                   });
                   await safeStep('legacy-manifest', async () => {
                     const mfSnap = await getDocs(collection(db, 'jobs', pj.id, 'manifest'));
@@ -1511,6 +1525,10 @@ export default function Setup() {
                   });
                   // Always delete the job doc last, even if a sub-step failed
                   await deleteDoc(doc(db, 'jobs', pj.id));
+                  // Free linked customer upload if any
+                  if (pj.sourceUploadId) {
+                    try { await updateDoc(doc(db, 'po-uploads', pj.sourceUploadId), { status: 'pending', jobId: null }); } catch {}
+                  }
                   logAudit('job_deleted', { jobId: pj.id, jobName: pj.meta.name, deletedRecords: totalDeleted });
                   setPastJobs((prev) => prev.filter((j) => j.id !== pj.id));
                   toast(`Deleted "${pj.meta.name}" (${totalDeleted} records)`, 'success');

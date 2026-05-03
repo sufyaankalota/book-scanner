@@ -37,10 +37,11 @@ export default function BulkIsbnLookup({ activeJob }) {
     const out = [];
     if (activeJob.manifestMeta?.chunked) {
       // Chunked: hashed per-chunk lookup with caching
+      const manifestPath = activeJob.manifestSource || `jobs/${activeJob.id}`;
       for (let i = 0; i < isbns.length; i++) {
         const isbn = isbns[i];
         try {
-          const po = await lookupIsbn(`jobs/${activeJob.id}`, isbn, activeJob.manifestMeta.numChunks);
+          const po = await lookupIsbn(manifestPath, isbn, activeJob.manifestMeta.numChunks);
           out.push({ isbn, po: po || null });
         } catch {
           out.push({ isbn, po: null, error: true });
