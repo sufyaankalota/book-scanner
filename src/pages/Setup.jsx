@@ -179,6 +179,34 @@ export default function Setup() {
     }).catch(() => {});
   }, []);
 
+  // Delete a customer PO upload (manifest chunks + parent doc).
+  // Safe even if the upload is already attached to a job — the job keeps its
+  // own copy of the manifest chunks (copied at attach time).
+  const handleDeleteCustomerUpload = async (up) => {
+    const label = (up.poNames || []).join(', ') || up.id;
+    if (!window.confirm(`Delete uploaded PO "${label}" (${(up.isbnCount || 0).toLocaleString()} ISBNs) from the library?\n\nJobs already using this upload will keep their own copy.`)) return;
+    try {
+      if (up.manifestMeta?.chunked) {
+        await deleteManifestChunks(`po-uploads/${up.id}`, up.manifestMeta.numChunks);
+      } else {
+        // Legacy: delete sub-collection
+        const snap = await getDocs(collection(db, 'po-uploads', up.id, 'manifest'));
+        let batch = writeBatch(db); let c = 0;
+        for (const d of snap.docs) { batch.delete(d.ref); c++; if (c % 400 === 0) { await batch.commit(); batch = writeBatch(db); } }
+        if (c % 400 !== 0) await batch.commit();
+      }
+      await deleteDoc(doc(db, 'po-uploads', up.id));
+      setCustomerPOUploads((prev) => prev.filter((u) => u.id !== up.id));
+      if (selectedUploadId === up.id) setSelectedUploadId(null);
+      if (qSelectedUploadId === up.id) setQSelectedUploadId(null);
+      logAudit('po_upload_deleted', { uploadId: up.id, poNames: up.poNames, isbnCount: up.isbnCount });
+      toast(`Deleted PO upload "${label}"`, 'success');
+    } catch (err) {
+      console.error('[delete-po-upload] failed:', err);
+      toast('Delete failed: ' + (err?.message || err), 'error');
+    }
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return;
     setFileError(''); setSelectedUploadId(null); setParsing(true); setParseProgress(0);
@@ -991,22 +1019,33 @@ export default function Setup() {
                       </div>
                     </div>
                   )}
-                  {customerPOUploads.filter((u) => u.status === 'pending').length > 0 && (
+                  {customerPOUploads.length > 0 && (
                     <div style={{ marginTop: 12, padding: 12, backgroundColor: '#1a1a2e', borderRadius: 8, border: '1px solid #3B82F6' }}>
-                      <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>📦 Customer-Uploaded POs Available</p>
-                      {customerPOUploads.filter((u) => u.status === 'pending').map((up) => (
-                        <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #333' }}>
-                          <div>
+                      <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>📦 Customer-Uploaded POs</p>
+                      {customerPOUploads.map((up) => (
+                        <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #333' }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
                             <span style={{ color: '#ccc', fontSize: 13 }}>{(up.poNames || []).join(', ')}</span>
                             <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>({(up.isbnCount || 0).toLocaleString()} ISBNs)</span>
+                            {up.status && up.status !== 'pending' && (
+                              <span style={{ color: '#666', fontSize: 11, marginLeft: 8, padding: '1px 6px', backgroundColor: '#222', borderRadius: 3 }}>{up.status}</span>
+                            )}
                           </div>
-                          <button onClick={() => useCustomerUploadForQueue(up)}
-                            style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6',
-                              backgroundColor: qSelectedUploadId === up.id ? '#1E40AF' : 'transparent',
-                              color: qSelectedUploadId === up.id ? '#fff' : '#3B82F6',
-                              fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                            {qSelectedUploadId === up.id ? '✓ Selected' : 'Use This'}
-                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {up.status === 'pending' && (
+                              <button onClick={() => useCustomerUploadForQueue(up)}
+                                style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6',
+                                  backgroundColor: qSelectedUploadId === up.id ? '#1E40AF' : 'transparent',
+                                  color: qSelectedUploadId === up.id ? '#fff' : '#3B82F6',
+                                  fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                                {qSelectedUploadId === up.id ? '✓ Selected' : 'Use This'}
+                              </button>
+                            )}
+                            <button onClick={() => handleDeleteCustomerUpload(up)} title="Delete this PO upload from the library"
+                              style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#F87171', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                              🗑 Delete
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1130,27 +1169,38 @@ export default function Setup() {
             )}
 
             {/* Customer-uploaded POs */}
-            {customerPOUploads.filter((u) => u.status === 'pending').length > 0 && (
+            {customerPOUploads.length > 0 && (
               <div style={{ marginTop: 12, padding: 12, backgroundColor: '#1a1a2e', borderRadius: 8, border: '1px solid #3B82F6' }}>
                 <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>
-                  📦 Customer-Uploaded POs Available
+                  📦 Customer-Uploaded POs
                 </p>
-                {customerPOUploads.filter((u) => u.status === 'pending').map((up) => (
-                  <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #333' }}>
-                    <div>
+                {customerPOUploads.map((up) => (
+                  <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #333' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <span style={{ color: '#ccc', fontSize: 13 }}>{(up.poNames || []).join(', ')}</span>
                       <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>({(up.isbnCount || 0).toLocaleString()} ISBNs)</span>
                       <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 11, marginLeft: 8 }}>
                         {up.uploadedAt?.toDate?.()?.toLocaleDateString() || ''}
                       </span>
+                      {up.status && up.status !== 'pending' && (
+                        <span style={{ color: '#666', fontSize: 11, marginLeft: 8, padding: '1px 6px', backgroundColor: '#222', borderRadius: 3 }}>{up.status}</span>
+                      )}
                     </div>
-                    <button onClick={() => useCustomerUpload(up)}
-                      style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6',
-                        backgroundColor: selectedUploadId === up.id ? '#1E40AF' : 'transparent',
-                        color: selectedUploadId === up.id ? '#fff' : '#3B82F6',
-                        fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                      {selectedUploadId === up.id ? '✓ Selected' : 'Use This'}
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {up.status === 'pending' && (
+                        <button onClick={() => useCustomerUpload(up)}
+                          style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6',
+                            backgroundColor: selectedUploadId === up.id ? '#1E40AF' : 'transparent',
+                            color: selectedUploadId === up.id ? '#fff' : '#3B82F6',
+                            fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                          {selectedUploadId === up.id ? '✓ Selected' : 'Use This'}
+                        </button>
+                      )}
+                      <button onClick={() => handleDeleteCustomerUpload(up)} title="Delete this PO upload from the library"
+                        style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#F87171', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                        🗑 Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
