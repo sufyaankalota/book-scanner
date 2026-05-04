@@ -516,10 +516,15 @@ export default function Pod() {
     );
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => d.data());
-      const standardCount = docs.filter((d) => d.type === 'standard').length;
+      // Match dashboard's bucketing exactly:
+      //   regular  = type='standard' AND no source
+      //   manual   = source='manual'
+      //   aiMatch  = source='ai-match'
+      //   autoExc  = type='exception' AND no manual/ai-match source
+      const regularCount = docs.filter((d) => d.type === 'standard' && !d.source).length;
       const manualCount = docs.filter((d) => d.source === 'manual').length;
-      const autoExcCount = docs.filter((d) => d.type === 'exception' && d.source !== 'manual').length;
-      setFirestoreCount(standardCount);
+      const autoExcCount = docs.filter((d) => d.type === 'exception' && d.source !== 'manual' && d.source !== 'ai-match').length;
+      setFirestoreCount(regularCount);
       setManualEntryCount(manualCount);
       // Count auto-exceptions (not-in-manifest, excluding manual entries)
       setAutoExceptionCount(autoExcCount);
@@ -741,8 +746,9 @@ export default function Pod() {
       return;
     }
 
-    // Optimistic update (only for real scans)
-    setLocalCount((c) => c + 1);
+    // Optimistic update — only count toward "Total Scans" if this is a regular scan.
+    // Manual entries and AI-matches have their own counters (Manual stat).
+    if (!source) setLocalCount((c) => c + 1);
 
     // Milestone check
     const newTotal = totalScans + 1;
@@ -764,7 +770,7 @@ export default function Pod() {
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
-        setLocalCount((c) => Math.max(0, c - 1));
+        if (!source) setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
         playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
@@ -793,7 +799,7 @@ export default function Pod() {
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
-        setLocalCount((c) => Math.max(0, c - 1));
+        if (!source) setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
         playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
@@ -811,7 +817,7 @@ export default function Pod() {
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
-        setLocalCount((c) => Math.max(0, c - 1));
+        // exceptions don't increment localCount, no need to decrement
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
         playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });

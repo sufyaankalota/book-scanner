@@ -604,9 +604,11 @@ export default function Dashboard() {
   const totalManual = Object.values(podData).reduce((sum, p) => sum + (p.manualCount || 0), 0);
   const totalAiMatch = Object.values(podData).reduce((sum, p) => sum + (p.aiMatchCount || 0), 0);
   const totalAutoExceptions = Object.values(podData).reduce((sum, p) => sum + p.exceptionCount, 0);
-  const totalProcessed = totalRegular + totalManual + totalAiMatch + totalAutoExceptions;
+  const totalManualExceptions = allExceptions.length;
+  // Match what the pod cards show (auto + manual exceptions per pod)
+  const totalExceptions = totalAutoExceptions + totalManualExceptions;
+  const totalProcessed = totalRegular + totalManual + totalAiMatch + totalExceptions;
   const totalScans = totalRegular; // legacy alias
-  const totalExceptions = totalAutoExceptions + allExceptions.length;
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
   const dailyTarget = job?.meta?.dailyTarget || 22000;
   const remaining = Math.max(0, dailyTarget - totalProcessed);
@@ -841,7 +843,7 @@ export default function Dashboard() {
           <div style={st.summaryLabel}>AI Camera{isOwner ? ' @ $0.60' : ''}</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalAutoExceptions > 0 ? '#EF4444' : '#888' }}>{totalAutoExceptions.toLocaleString()}</div>
+          <div style={{ ...st.summaryValue, color: totalExceptions > 0 ? '#EF4444' : '#888' }}>{totalExceptions.toLocaleString()}</div>
           <div style={st.summaryLabel}>Logged Exc{isOwner ? ' @ $0.60' : ''}</div>
         </div>
         <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>

@@ -346,10 +346,10 @@ const matcher = require('./manifestMatch');
 
 exports.matchManifestTitle = onCall({
   region: 'us-east1',
-  timeoutSeconds: 120, // first call may build the index (up to ~90s for 9M rows)
-  memory: '4GiB',
-  cpu: 2,
-  // Each instance holds ~3GB index in memory; 8 instances = headroom for
+  timeoutSeconds: 540, // 9M-row index build can take 4–5 min
+  memory: '8GiB',
+  cpu: 4,
+  // Each instance holds ~5GB index in memory; 8 instances = headroom for
   // 10-pod bursts without re-paying the 60–90s build cost. Concurrency 40
   // lets one warm instance serve ~40 simultaneous matches.
   maxInstances: 8,

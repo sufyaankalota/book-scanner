@@ -45,22 +45,38 @@ async function buildIndex(jobId, opts = {}) {
   if (!job) throw new Error(`job ${jobId} not found`);
   const numChunks = job?.manifestMeta?.numChunks || 0;
   if (!numChunks) throw new Error(`job ${jobId} has no chunked manifest`);
+  // Manifest may live under jobs/{jobId} OR be referenced via manifestSource
+  // (e.g. po-uploads/{uploadId}). Always honor manifestSource if present.
+  const manifestBase = job.manifestSource || `jobs/${jobId}`;
 
-  log(`buildIndex(${jobId}): reading ${numChunks} chunks`);
+  log(`buildIndex(${jobId}): reading ${numChunks} chunks from ${manifestBase}`);
   const t0 = Date.now();
 
-  // Read chunks in parallel batches
+  // Memory-efficient build:
+  //  - PO strings interned (only ~tens of distinct values across millions of rows).
+  //  - Tokens converted to numeric IDs during the read pass to avoid holding
+  //    millions of growing JS arrays in memory simultaneously.
+  //  - Two-pass posting build: first count occurrences, then allocate a
+  //    Uint32Array per token of the exact size needed and fill via cursors.
+  //  - `norms[]` is NOT retained: similarity() re-normalizes both sides.
   const PAR = 32;
   const isbns = [];
-  const pos = [];
   const titles = [];
-  const norms = [];
+  const poStrings = []; // interned PO list
+  const poIndex = new Map(); // PO string -> integer id
+  const poIds = []; // rowIdx -> integer id into poStrings (one byte each via array)
+
+  // Token id assignment + per-row token-id lists (transient; freed after pass 2)
+  const tokenIds = new Map(); // token -> integer id
+  const tokenCounts = []; // tokenId -> total occurrences
+  const rowTokens = []; // rowIdx -> Uint32Array of unique tokenIds for that row
+
   for (let start = 0; start < numChunks; start += PAR) {
     const end = Math.min(start + PAR, numChunks);
     const reads = [];
     for (let i = start; i < end; i++) {
       const id = `c${String(i).padStart(5, '0')}`;
-      reads.push(db.doc(`jobs/${jobId}/manifest-chunks/${id}`).get());
+      reads.push(db.doc(`${manifestBase}/manifest-chunks/${id}`).get());
     }
     const snaps = await Promise.all(reads);
     for (const snap of snaps) {
@@ -68,44 +84,82 @@ async function buildIndex(jobId, opts = {}) {
       const obj = snap.data().isbns || {};
       for (const isbn in obj) {
         const raw = obj[isbn];
-        const po = (typeof raw === 'string') ? raw : (raw && raw.p) || '';
+        const poStr = (typeof raw === 'string') ? raw : (raw && raw.p) || '';
         const title = (typeof raw === 'object' && raw && raw.t) ? raw.t : '';
-        if (!po || !title) continue;
+        if (!poStr || !title) continue;
         const norm = normalizeTitle(title);
         if (!norm) continue;
+
+        // Tokenize and assign IDs (deduped per row)
+        const parts = norm.split(' ');
+        const seen = new Set();
+        const ids = [];
+        for (let k = 0; k < parts.length; k++) {
+          const p = parts[k];
+          if (!p || p.length < 2 || STOPWORDS.has(p) || seen.has(p)) continue;
+          seen.add(p);
+          let id = tokenIds.get(p);
+          if (id === undefined) {
+            id = tokenCounts.length;
+            tokenIds.set(p, id);
+            tokenCounts.push(0);
+          }
+          tokenCounts[id]++;
+          ids.push(id);
+        }
+        if (!ids.length) continue;
+
+        // Intern PO
+        let pid = poIndex.get(poStr);
+        if (pid === undefined) {
+          pid = poStrings.length;
+          poIndex.set(poStr, pid);
+          poStrings.push(poStr);
+        }
+
         isbns.push(isbn);
-        pos.push(po);
         titles.push(title);
-        norms.push(norm);
+        poIds.push(pid);
+        rowTokens.push(Uint32Array.from(ids));
       }
     }
-    if ((end / PAR) % 8 === 0) log(`  chunks ${end}/${numChunks}  rows=${isbns.length}`);
-  }
-
-  log(`  loaded ${isbns.length} titled rows in ${Math.round((Date.now() - t0) / 1000)}s — building token index…`);
-
-  // Build inverted token index. Use plain arrays then convert to Uint32Array
-  // at the end to halve memory.
-  const tmp = new Map(); // token → number[]
-  for (let i = 0; i < norms.length; i++) {
-    const seen = new Set();
-    const parts = norms[i].split(' ');
-    for (const p of parts) {
-      if (!p || STOPWORDS.has(p) || p.length < 2) continue;
-      if (seen.has(p)) continue;
-      seen.add(p);
-      let arr = tmp.get(p);
-      if (!arr) { arr = []; tmp.set(p, arr); }
-      arr.push(i);
+    if ((end / PAR) % 8 === 0) {
+      log(`  chunks ${end}/${numChunks}  rows=${isbns.length}  tokens=${tokenCounts.length}`);
     }
   }
+
+  log(`  loaded ${isbns.length} titled rows, ${tokenCounts.length} unique tokens, ${poStrings.length} POs in ${Math.round((Date.now() - t0) / 1000)}s — allocating postings…`);
+
+  // Pass 2: allocate per-token Uint32Array of exact size, fill via cursors
+  const numTokens = tokenCounts.length;
+  const postings = new Array(numTokens);
+  for (let i = 0; i < numTokens; i++) postings[i] = new Uint32Array(tokenCounts[i]);
+  const cursors = new Uint32Array(numTokens);
+  for (let r = 0; r < rowTokens.length; r++) {
+    const rt = rowTokens[r];
+    for (let k = 0; k < rt.length; k++) {
+      const tid = rt[k];
+      postings[tid][cursors[tid]++] = r;
+    }
+  }
+  // Drop transient per-row token lists so V8 can GC ~360MB
+  rowTokens.length = 0;
+
   const tokenIdx = new Map();
-  for (const [tok, arr] of tmp) tokenIdx.set(tok, Uint32Array.from(arr));
+  for (const [tok, id] of tokenIds) tokenIdx.set(tok, postings[id]);
 
   log(`  built tokenIdx with ${tokenIdx.size} unique tokens in ${Math.round((Date.now() - t0) / 1000)}s total`);
 
   evictIfNeeded();
-  const ix = { isbns, pos, titles, norms, tokenIdx, loadedAt: Date.now(), totalRows: isbns.length };
+  const ix = {
+    isbns,
+    titles,
+    poStrings,
+    poIds,
+    tokenIdx,
+    loadedAt: Date.now(),
+    totalRows: isbns.length,
+  };
   indexes.set(jobId, ix);
   return ix;
 }
@@ -170,7 +224,7 @@ function searchOne(ix, query, { topK = 5, minScore = 0.5, maxCandidates = 20000 
     if (!prev || s.score > prev.score) {
       seen.set(key, {
         isbn: canonicalIsbn13(isbn) || isbn,
-        po: ix.pos[s.r],
+        po: ix.poStrings[ix.poIds[s.r]],
         title: ix.titles[s.r],
         score: s.score,
       });
