@@ -379,3 +379,55 @@ exports.invalidateManifestIndex = onCall({
   return { ok: true, stats: matcher.getStats() };
 });
 
+// ─── Programmatic exception export (with photo URLs) ───
+// Lazy-migrates inline base64 photos to Cloud Storage and returns a flat JSON
+// list. Callable for in-app use; HTTP endpoint for customer integrations.
+const { getExceptionsWithPhotoUrls } = require('./exceptionsExport');
+
+exports.exportExceptions = onCall({
+  region: 'us-east1',
+  timeoutSeconds: 540,
+  memory: '512MiB',
+  invoker: 'public',
+  cors: true,
+}, async (request) => {
+  const { jobId, since, until, limit } = request.data || {};
+  if (!jobId) throw new HttpsError('invalid-argument', 'jobId is required');
+  try {
+    return await getExceptionsWithPhotoUrls(jobId, { since, until, limit });
+  } catch (err) {
+    console.error('exportExceptions failed:', err);
+    throw new HttpsError('internal', err.message || 'export failed');
+  }
+});
+
+// HTTP variant for customer-side scripts/curl. Auth via API key stored at
+// Firestore config/api.exceptionExportKey (rotate by updating the doc).
+exports.exportExceptionsHttp = onRequest({
+  region: 'us-east1',
+  timeoutSeconds: 540,
+  memory: '512MiB',
+  cors: true,
+  invoker: 'public',
+}, async (req, res) => {
+  try {
+    const provided = req.query.key || req.get('x-api-key') || '';
+    const cfgSnap = await db.doc('config/api').get();
+    const expected = cfgSnap.exists ? cfgSnap.data().exceptionExportKey : null;
+    if (!expected || provided !== expected) {
+      return res.status(401).json({ error: 'unauthorized — pass ?key=… or X-API-Key header' });
+    }
+    const { jobId, since, until, limit } = req.query;
+    if (!jobId) return res.status(400).json({ error: 'jobId is required' });
+    const out = await getExceptionsWithPhotoUrls(String(jobId), {
+      since: since ? Number(since) : undefined,
+      until: until ? Number(until) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+    res.json(out);
+  } catch (err) {
+    console.error('exportExceptionsHttp failed:', err);
+    res.status(500).json({ error: err.message || 'export failed' });
+  }
+});
+

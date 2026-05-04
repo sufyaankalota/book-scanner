@@ -623,6 +623,9 @@ export default function Pod() {
     }
 
     // Server-side match — keeps the manifest index off the browser.
+    // Always present candidates to the operator — titles in our manifest are
+    // rarely an exact match for AI-read covers (case, punctuation, edition
+    // suffixes), so showing options is more reliable than auto-accept.
     let candidates = [];
     try {
       const call = httpsCallable(functions, 'matchManifestTitle');
@@ -631,8 +634,8 @@ export default function Pod() {
         title: capturedTitle,
         author: capturedAuthor,
         coverText,
-        topK: 3,
-        minScore: MATCH_AMBIGUOUS - 0.05,
+        topK: 5,
+        minScore: 0.35, // permissive — let the operator pick from real options
       });
       candidates = res.data?.candidates || [];
     } catch (err) {
@@ -643,16 +646,10 @@ export default function Pod() {
       return;
     }
 
-    if (!candidates.length || candidates[0].score < MATCH_AMBIGUOUS) {
-      const prefill = coverText || capturedTitle || capturedAuthor || '';
-      openExceptionForCapture(prefill, photo);
-      return;
-    }
-
-    const top = candidates[0];
-    const bestVariant = top.variant || capturedTitle || coverText || capturedAuthor || '';
-    if (classify(top.score) === 'confident') {
-      handleScan(top.isbn, { isManual: true, source: 'ai-match', capturedTitle: bestVariant, matchScore: top.score });
+    const bestVariant = candidates[0]?.variant || capturedTitle || coverText || capturedAuthor || '';
+    if (!candidates.length) {
+      flash('#EAB308', 'No likely matches — log exception or type ISBN', 2200);
+      setAiMatchCandidates({ capturedTitle: bestVariant, photo, candidates: [] });
       return;
     }
     setAiMatchCandidates({ capturedTitle: bestVariant, photo, candidates });
@@ -1486,43 +1483,57 @@ export default function Pod() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 16 }}
           onClick={() => setAiMatchCandidates(null)}>
           <div onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#0f0f0f', border: '2px solid #EAB308', borderRadius: 14, padding: 22, maxWidth: 560, width: '100%' }}>
-            <h2 style={{ color: '#EAB308', margin: '0 0 6px', fontSize: 20, fontWeight: 800 }}>Confirm match</h2>
+            style={{ backgroundColor: '#0f0f0f', border: '2px solid #EAB308', borderRadius: 14, padding: 22, maxWidth: 560, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 style={{ color: '#EAB308', margin: '0 0 6px', fontSize: 20, fontWeight: 800 }}>
+              {aiMatchCandidates.candidates.length ? 'Pick the matching title' : 'No likely matches'}
+            </h2>
             <p style={{ color: '#bbb', margin: '0 0 14px', fontSize: 14 }}>
               AI read the cover as: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle}"</strong>
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {aiMatchCandidates.candidates.map((c) => (
-                <button key={c.isbn}
-                  onClick={() => {
-                    const sel = aiMatchCandidates;
-                    setAiMatchCandidates(null);
-                    handleScan(c.isbn, { isManual: true, source: 'ai-match', capturedTitle: sel.capturedTitle, matchScore: c.score });
-                  }}
-                  style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
-                    <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po} · {c.isbn}</div>
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : '#EAB308' }}>
-                    {Math.round(c.score * 100)}%
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            {aiMatchCandidates.candidates.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {aiMatchCandidates.candidates.map((c) => (
+                  <button key={c.isbn}
+                    onClick={() => {
+                      const sel = aiMatchCandidates;
+                      setAiMatchCandidates(null);
+                      handleScan(c.isbn, { isManual: true, source: 'ai-match', capturedTitle: sel.capturedTitle, matchScore: c.score });
+                    }}
+                    style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
+                      <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po} · {c.isbn}</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : c.score >= MATCH_AMBIGUOUS ? '#EAB308' : '#888' }}>
+                      {Math.round(c.score * 100)}%
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
               <button onClick={() => {
-                const sel = aiMatchCandidates;
                 setAiMatchCandidates(null);
-                openExceptionForCapture(sel.capturedTitle, sel.photo);
+                setShowManualEntry(true);
+                setTimeout(() => manualInputRef.current?.focus(), 100);
               }}
-                style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}>
-                None of these — log exception
+                style={{ padding: '12px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#93c5fd', fontWeight: 700, cursor: 'pointer' }}>
+                Type ISBN manually
               </button>
-              <button onClick={() => setAiMatchCandidates(null)}
-                style={{ padding: '12px 18px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#2a2a2a', color: '#ccc', fontWeight: 700, cursor: 'pointer' }}>
-                Cancel
-              </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => {
+                  const sel = aiMatchCandidates;
+                  setAiMatchCandidates(null);
+                  openExceptionForCapture(sel.capturedTitle, sel.photo);
+                }}
+                  style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}>
+                  {aiMatchCandidates.candidates.length ? 'None of these — log exception' : 'Log exception'}
+                </button>
+                <button onClick={() => setAiMatchCandidates(null)}
+                  style={{ padding: '12px 18px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#2a2a2a', color: '#ccc', fontWeight: 700, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
