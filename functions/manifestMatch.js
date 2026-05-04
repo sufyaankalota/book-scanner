@@ -130,13 +130,18 @@ async function buildIndex(jobId, opts = {}) {
 
   log(`  loaded ${isbns.length} titled rows, ${tokenCounts.length} unique tokens, ${poStrings.length} POs in ${Math.round((Date.now() - t0) / 1000)}s — allocating postings…`);
 
-  // Pass 2: allocate per-token Uint32Array of exact size, fill via cursors
+  // Pass 2: allocate per-token Uint32Array of exact size, fill via cursors.
+  // Also build per-row token-count array (for Jaccard prefilter) and norms cache.
   const numTokens = tokenCounts.length;
   const postings = new Array(numTokens);
   for (let i = 0; i < numTokens; i++) postings[i] = new Uint32Array(tokenCounts[i]);
   const cursors = new Uint32Array(numTokens);
+  const rowTokenCount = new Uint16Array(rowTokens.length); // for Jaccard
+  const norms = new Array(rowTokens.length);
   for (let r = 0; r < rowTokens.length; r++) {
     const rt = rowTokens[r];
+    rowTokenCount[r] = rt.length;
+    norms[r] = normalizeTitle(titles[r]);
     for (let k = 0; k < rt.length; k++) {
       const tid = rt[k];
       postings[tid][cursors[tid]++] = r;
@@ -154,6 +159,8 @@ async function buildIndex(jobId, opts = {}) {
   const ix = {
     isbns,
     titles,
+    norms,
+    rowTokenCount,
     poStrings,
     poIds,
     tokenIdx,
@@ -174,14 +181,19 @@ async function getIndex(jobId, opts) {
 }
 
 // ─── Search ───
-function searchOne(ix, query, { topK = 5, minScore = 0.5, maxCandidates = 20000 } = {}) {
+// Two-stage:
+//   1. Inverted-index scan tallies query-token hits per row.
+//   2. Cheap Jaccard score using cached rowTokenCount picks the top-N candidates.
+//   3. Expensive similarity() runs only on those N (default 200).
+function searchOne(ix, query, { topK = 5, minScore = 0.5, prefilterN = 200, maxCandidates = 50000 } = {}) {
   const q = String(query || '').trim();
   if (!q) return [];
   const qTokens = makeTokens(q).filter((t) => t.length >= 2);
   if (!qTokens.length) return [];
+  const qTokenSetSize = qTokens.length;
 
-  // Collect candidate row indexes from inverted index (any-token match)
-  const candidateCounts = new Map(); // rowIdx → number of query-token hits
+  // Stage 1: tally hits per row from postings
+  const candidateCounts = new Map();
   for (const tok of qTokens) {
     const arr = ix.tokenIdx.get(tok);
     if (!arr) continue;
@@ -192,25 +204,35 @@ function searchOne(ix, query, { topK = 5, minScore = 0.5, maxCandidates = 20000 
   }
   if (!candidateCounts.size) return [];
 
-  // If too many candidates, keep only those that match ≥2 query tokens
-  // (or fall back to highest-token-overlap subset).
-  let candidates;
-  if (candidateCounts.size > maxCandidates && qTokens.length >= 2) {
-    candidates = [];
-    for (const [r, c] of candidateCounts) if (c >= 2) candidates.push(r);
-    if (candidates.length > maxCandidates) {
-      // Sort by overlap desc and slice
-      candidates.sort((a, b) => candidateCounts.get(b) - candidateCounts.get(a));
-      candidates = candidates.slice(0, maxCandidates);
-    }
+  // Stage 2: Jaccard prefilter. score = hits / (qTokens + rowTokens - hits)
+  // Pick top prefilterN candidates by Jaccard before doing expensive sim().
+  const rtc = ix.rowTokenCount;
+  let bestRows;
+  if (candidateCounts.size <= prefilterN) {
+    bestRows = Array.from(candidateCounts.keys());
   } else {
-    candidates = Array.from(candidateCounts.keys());
+    // If candidate set is huge, first cap by raw hit count to keep Jaccard pass cheap
+    let entries;
+    if (candidateCounts.size > maxCandidates) {
+      const all = Array.from(candidateCounts.entries());
+      all.sort((a, b) => b[1] - a[1]); // sort by hits desc
+      entries = all.slice(0, maxCandidates);
+    } else {
+      entries = Array.from(candidateCounts.entries());
+    }
+    // Compute Jaccard for each, pick top prefilterN
+    const scored = entries.map(([r, c]) => {
+      const denom = qTokenSetSize + rtc[r] - c;
+      return [r, denom > 0 ? c / denom : 0];
+    });
+    scored.sort((a, b) => b[1] - a[1]);
+    bestRows = scored.slice(0, prefilterN).map((e) => e[0]);
   }
 
-  // Score with full similarity()
+  // Stage 3: full similarity on the prefiltered set, using cached norms
   const scored = [];
-  for (const r of candidates) {
-    const score = similarity(q, ix.titles[r]);
+  for (const r of bestRows) {
+    const score = similarity(q, ix.norms[r] || ix.titles[r]);
     if (score >= minScore) scored.push({ r, score });
   }
   scored.sort((a, b) => b.score - a.score);

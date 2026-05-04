@@ -232,6 +232,88 @@ function isbn10To13(s) {
   return core + check;
 }
 
+const TITLE_PROMPT = `You are reading a photograph of a real book cover for a warehouse sorting system. Read EVERY piece of visible text on the cover. Even if the image is blurry, angled, glossy, stylized, foreign-language, or partially obscured, return your BEST GUESS — never refuse and never return null for title if ANY text is readable. Preserve exact spelling, capitalization, accents, and non-Latin characters; do NOT translate or transliterate. The 'title' field must be the largest/most prominent title text you can read (your best guess); use the empty string "" only if the photo has literally no readable text. The 'coverText' field must include every other piece of text visible (subtitle, series name, publisher, taglines, edition, etc.) concatenated with spaces. Respond ONLY with strict JSON: {"title":"<best-guess title>","author":"<author name or null>","coverText":"<all other visible text>","confidence":<0-1>}.`;
+const ISBN_PROMPT = `Find the ISBN (10 or 13 digit number) on this book photo. ISBNs are usually labeled "ISBN" and may appear on the copyright page, back cover, or under a barcode. 13-digit ISBNs start with 978 or 979. Strip hyphens. Watch for 0/O, 1/I/l, 5/S, 8/B confusions. Respond ONLY with strict JSON: {"isbn":"<digits-only-or-null>","confidence":<0-1>}.`;
+
+// Shared OpenAI vision helper. Returns { result, usage, cost, model }.
+async function callVision({ imageBase64, mode }) {
+  const dataUrl = imageBase64.startsWith('data:')
+    ? imageBase64
+    : `data:image/jpeg;base64,${imageBase64}`;
+  const body = {
+    model: 'gpt-4o',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: mode === 'isbn' ? ISBN_PROMPT : TITLE_PROMPT },
+        { type: 'image_url', image_url: { url: dataUrl, detail: mode === 'title' ? 'high' : 'low' } },
+      ],
+    }],
+    response_format: { type: 'json_object' },
+    max_tokens: 400,
+    temperature: 0,
+  };
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY.value()}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new HttpsError('internal', `OpenAI ${resp.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0 };
+  const raw = data.choices?.[0]?.message?.content || '{}';
+  let parsed = {};
+  try { parsed = JSON.parse(raw); } catch {}
+  const cost = (usage.prompt_tokens || 0) * PRICE_INPUT_PER_TOKEN
+             + (usage.completion_tokens || 0) * PRICE_OUTPUT_PER_TOKEN;
+
+  let result;
+  if (mode === 'isbn') {
+    const candidate = parsed.isbn ? String(parsed.isbn).replace(/[\s-]/g, '') : null;
+    let isbn = null;
+    if (candidate && (validIsbn13(candidate) || validIsbn10(candidate))) {
+      isbn = validIsbn13(candidate) ? candidate : isbn10To13(candidate);
+    } else {
+      isbn = extractIsbn13(JSON.stringify(parsed));
+    }
+    result = { isbn, confidence: Number(parsed.confidence) || 0 };
+  } else {
+    let title = parsed.title ? String(parsed.title).trim() : '';
+    const author = parsed.author ? String(parsed.author).trim() : null;
+    const coverText = parsed.coverText ? String(parsed.coverText).trim() : null;
+    if (!title && coverText) title = coverText.split(/\s{2,}|\n/)[0].slice(0, 120);
+    result = {
+      title: title || null,
+      author,
+      coverText,
+      confidence: Number(parsed.confidence) || 0,
+    };
+  }
+  return { result, usage, cost, model: 'gpt-4o' };
+}
+
+async function logAiUsage({ mode, podId, jobId, usage, cost, success }) {
+  try {
+    await db.collection('ai-usage').add({
+      mode,
+      podId: podId || null,
+      jobId: jobId || null,
+      model: 'gpt-4o',
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      costUsd: Number(cost.toFixed(6)),
+      success: !!success,
+      timestamp: Timestamp.now(),
+    });
+  } catch (e) { console.warn('ai-usage log failed:', e.message); }
+}
+
 exports.extractFromImage = onCall({
   region: 'us-east1',
   secrets: [OPENAI_API_KEY],
@@ -248,102 +330,12 @@ exports.extractFromImage = onCall({
   const { imageBase64, mode, podId, jobId } = request.data || {};
   if (!imageBase64 || !mode) throw new HttpsError('invalid-argument', 'imageBase64 and mode are required');
   if (!['isbn', 'title'].includes(mode)) throw new HttpsError('invalid-argument', 'mode must be isbn or title');
-  // Reject excessively large images (>4MB base64 ~= 3MB raw)
   if (imageBase64.length > 4_500_000) throw new HttpsError('invalid-argument', 'image too large (max ~3MB)');
 
-  const dataUrl = imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
-
-  const prompt = mode === 'isbn'
-    ? `Find the ISBN (10 or 13 digit number) on this book photo. ISBNs are usually labeled "ISBN" and may appear on the copyright page, back cover, or under a barcode. 13-digit ISBNs start with 978 or 979. Strip hyphens. Watch for 0/O, 1/I/l, 5/S, 8/B confusions. Respond ONLY with strict JSON: {"isbn":"<digits-only-or-null>","confidence":<0-1>}.`
-    : `You are reading a photograph of a real book cover for a warehouse sorting system. Read EVERY piece of visible text on the cover. Even if the image is blurry, angled, glossy, stylized, foreign-language, or partially obscured, return your BEST GUESS — never refuse and never return null for title if ANY text is readable. Preserve exact spelling, capitalization, accents, and non-Latin characters; do NOT translate or transliterate. The 'title' field must be the largest/most prominent title text you can read (your best guess); use the empty string "" only if the photo has literally no readable text. The 'coverText' field must include every other piece of text visible (subtitle, series name, publisher, taglines, edition, etc.) concatenated with spaces. Respond ONLY with strict JSON: {"title":"<best-guess title>","author":"<author name or null>","coverText":"<all other visible text>","confidence":<0-1>}.`;
-
-  const body = {
-    model: 'gpt-4o',
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'text', text: prompt },
-        // ISBN mode keeps low (small numeric target). Title mode uses 'high'
-        // detail (~765 tokens) — without this the model only sees a ~512x512
-        // thumbnail and frequently returns null on real warehouse covers
-        // (angled, stylized, small subtitles). Cost diff ~$0.0017/scan, trivial.
-        { type: 'image_url', image_url: { url: dataUrl, detail: mode === 'title' ? 'high' : 'low' } },
-      ],
-    }],
-    response_format: { type: 'json_object' },
-    max_tokens: 400,
-    temperature: 0,
-  };
-
-  let result, usage;
-  try {
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY.value()}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new HttpsError('internal', `OpenAI ${resp.status}: ${errText.slice(0, 200)}`);
-    }
-    const data = await resp.json();
-    usage = data.usage || { prompt_tokens: 0, completion_tokens: 0 };
-    const raw = data.choices?.[0]?.message?.content || '{}';
-    try { result = JSON.parse(raw); } catch { result = {}; }
-  } catch (err) {
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError('internal', `OpenAI request failed: ${err.message}`);
-  }
-
-  const cost = (usage.prompt_tokens || 0) * PRICE_INPUT_PER_TOKEN
-             + (usage.completion_tokens || 0) * PRICE_OUTPUT_PER_TOKEN;
-
-  // Post-process by mode
-  if (mode === 'isbn') {
-    // Validate the model's ISBN against checksum; also try regex on raw output
-    const candidate = result.isbn ? String(result.isbn).replace(/[\s-]/g, '') : null;
-    let isbn = null;
-    if (candidate && (validIsbn13(candidate) || validIsbn10(candidate))) {
-      isbn = validIsbn13(candidate) ? candidate : isbn10To13(candidate);
-    } else {
-      // Fallback: scan raw text for any valid ISBN
-      isbn = extractIsbn13(JSON.stringify(result));
-    }
-    result = { isbn, confidence: Number(result.confidence) || 0 };
-  } else {
-    let title = result.title ? String(result.title).trim() : '';
-    const author = result.author ? String(result.author).trim() : null;
-    const coverText = result.coverText ? String(result.coverText).trim() : null;
-    // If model omitted title but produced cover text, promote first line of
-    // cover text so the matcher still has something to work with.
-    if (!title && coverText) title = coverText.split(/\s{2,}|\n/)[0].slice(0, 120);
-    result = {
-      title: title || null,
-      author,
-      coverText,
-      confidence: Number(result.confidence) || 0,
-    };
-  }
-
-  // Log usage for cost reporting
-  try {
-    await db.collection('ai-usage').add({
-      mode,
-      podId: podId || null,
-      jobId: jobId || null,
-      model: 'gpt-4o',
-      promptTokens: usage.prompt_tokens || 0,
-      completionTokens: usage.completion_tokens || 0,
-      costUsd: Number(cost.toFixed(6)),
-      success: !!(mode === 'isbn' ? result.isbn : result.title),
-      timestamp: Timestamp.now(),
-    });
-  } catch (e) { console.warn('ai-usage log failed:', e.message); }
-
-  return { ...result, costUsd: Number(cost.toFixed(6)), model: 'gpt-4o' };
+  const { result, usage, cost, model } = await callVision({ imageBase64, mode });
+  await logAiUsage({ mode, podId, jobId, usage, cost,
+    success: mode === 'isbn' ? !!result.isbn : !!result.title });
+  return { ...result, costUsd: Number(cost.toFixed(6)), model };
 });
 
 // ─── Server-side fuzzy title→ISBN match ───
@@ -361,7 +353,10 @@ exports.matchManifestTitle = onCall({
   // 10-pod bursts without re-paying the 60–90s build cost. Concurrency 40
   // lets one warm instance serve ~40 simultaneous matches.
   maxInstances: 8,
-  minInstances: 1, // keep one instance warm so the index stays cached
+  // extractAndMatch now serves the warm path; matchManifestTitle stays as a
+  // legacy/fallback endpoint and may cold-start (clients can also cold-warm
+  // it explicitly if needed).
+  minInstances: 0,
   concurrency: 40,
   invoker: 'public',
   cors: true,
@@ -392,6 +387,77 @@ exports.invalidateManifestIndex = onCall({
   const { jobId } = request.data || {};
   matcher.invalidate(jobId);
   return { ok: true, stats: matcher.getStats() };
+});
+
+// ─── Combined: Vision + Match in one round-trip ───
+// Co-located with the warm matcher instance so the title→ISBN search runs
+// in-process without an extra cross-service call. This typically saves
+// 0.5–1.5s vs the legacy two-step (extractFromImage → matchManifestTitle).
+//
+// Vision is fired first; the moment OpenAI returns we kick off the match
+// (which is in-memory). Total wall-clock = max(vision, vision+match) ≈ vision.
+exports.extractAndMatch = onCall({
+  region: 'us-east1',
+  secrets: [OPENAI_API_KEY],
+  timeoutSeconds: 540,
+  memory: '8GiB', // shares the matcher footprint
+  cpu: 4,
+  maxInstances: 8,
+  minInstances: 1,
+  concurrency: 40,
+  invoker: 'public',
+  cors: true,
+}, async (request) => {
+  const { imageBase64, jobId, podId, topK, minScore } = request.data || {};
+  if (!imageBase64) throw new HttpsError('invalid-argument', 'imageBase64 is required');
+  if (!jobId) throw new HttpsError('invalid-argument', 'jobId is required');
+  if (imageBase64.length > 4_500_000) throw new HttpsError('invalid-argument', 'image too large (max ~3MB)');
+
+  // Pre-warm the index in parallel with the OpenAI call so by the time
+  // Vision returns the title, the index is ready in-memory.
+  const indexPromise = matcher.getIndex(jobId, { log: console.log }).catch((e) => {
+    console.error('extractAndMatch: index load failed:', e);
+    return null;
+  });
+
+  let visionResp;
+  try {
+    visionResp = await callVision({ imageBase64, mode: 'title' });
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError('internal', `OpenAI request failed: ${err.message}`);
+  }
+  const { result: extracted, usage, cost, model } = visionResp;
+
+  // Fire match if we have anything queryable
+  let candidates = [];
+  if (extracted.title || extracted.coverText || extracted.author) {
+    await indexPromise; // ensure index ready (almost always already is)
+    try {
+      candidates = await matcher.findCandidates(jobId, {
+        title: extracted.title,
+        author: extracted.author,
+        coverText: extracted.coverText,
+      }, {
+        topK: Math.min(Math.max(Number(topK) || 5, 1), 10),
+        minScore: typeof minScore === 'number' ? minScore : 0.5,
+        log: console.log,
+      });
+    } catch (e) {
+      console.error('extractAndMatch: match failed:', e);
+    }
+  }
+
+  await logAiUsage({
+    mode: 'title', podId, jobId, usage, cost,
+    success: !!extracted.title || candidates.length > 0,
+  });
+
+  return {
+    extracted: { ...extracted, costUsd: Number(cost.toFixed(6)), model },
+    candidates,
+    indexStats: matcher.getStats()[jobId] || null,
+  };
 });
 
 // ─── Programmatic exception export (with photo URLs) ───

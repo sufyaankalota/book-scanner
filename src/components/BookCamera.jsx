@@ -267,15 +267,22 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
     // actually read subtitles, stylized type, and angled covers. The 768/low
     // combo was causing high null rates on real warehouse covers.
     const TARGET = mode === 'isbn' ? 1800 : 1280;
-    const QUALITY = mode === 'isbn' ? 0.92 : 0.88;
+    const QUALITY = mode === 'isbn' ? 0.92 : 0.85;
     const scale = Math.min(TARGET / Math.max(cw, ch), 1);
     canvas.width = Math.round(cw * scale);
     canvas.height = Math.round(ch * scale);
     canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', QUALITY);
+    // WebP is ~30-40% smaller than JPEG at equivalent quality. Falls back
+    // automatically if the browser can't encode it.
+    const supportsWebP = (() => {
+      try { return canvas.toDataURL('image/webp', 0.5).startsWith('data:image/webp'); } catch { return false; }
+    })();
+    const mime = supportsWebP ? 'image/webp' : 'image/jpeg';
+    const dataUrl = canvas.toDataURL(mime, QUALITY);
     const base64 = dataUrl.split(',')[1];
 
-    // Also keep a small thumbnail for storage when needed (title mode)
+    // Also keep a small thumbnail for storage when needed (title mode).
+    // Thumbnail stays JPEG for maximum compatibility with downstream consumers.
     let thumb = null;
     if (mode === 'title') {
       const tCanvas = document.createElement('canvas');
@@ -289,27 +296,40 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
 
     setPhase('sending');
     const t0 = performance.now();
-    console.log('[BookCamera] sending image to extractFromImage', { mode, podId, jobId, base64Length: base64.length });
+    // Use the combined endpoint when we have a job (saves 1 round-trip + runs
+    // matcher in-process on the warm 8GiB instance).
+    const useCombined = mode === 'title' && !!jobId;
+    const fnName = useCombined ? 'extractAndMatch' : 'extractFromImage';
+    console.log(`[BookCamera] sending image to ${fnName}`, { mode, podId, jobId, base64Length: base64.length, mime });
     try {
-      const call = httpsCallable(functions, 'extractFromImage');
-      const resp = await call({ imageBase64: base64, mode, podId, jobId });
-      const data = resp.data || {};
+      const call = httpsCallable(functions, fnName);
+      const payload = useCombined
+        ? { imageBase64: base64, jobId, podId, topK: 5, minScore: 0.35 }
+        : { imageBase64: base64, mode, podId, jobId };
+      const resp = await call(payload);
       const ms = Math.round(performance.now() - t0);
-      console.log('[BookCamera] extractFromImage response', { ms, data });
-      const ok = mode === 'isbn' ? !!data.isbn : !!data.title;
+      const data = resp.data || {};
+      console.log(`[BookCamera] ${fnName} response`, { ms, data });
+
+      // Combined response shape: { extracted: {...}, candidates: [...] }
+      // Legacy response shape:   { isbn?, title?, ... }
+      const extracted = useCombined ? (data.extracted || {}) : data;
+      const candidates = useCombined ? (data.candidates || []) : null;
+
+      const ok = mode === 'isbn' ? !!extracted.isbn : (!!extracted.title || (candidates && candidates.length));
       if (!ok) {
-        // Persist a clear no-result message and pause auto-capture so the user can read it
         setStatusMsg(mode === 'isbn'
-          ? `No ISBN detected (⋅${ms}ms). Adjust the page — click “Try Again” below.`
-          : `Couldn’t read the title (⋅${ms}ms). Adjust the cover — click “Try Again” below.`);
+          ? `No ISBN detected (⋅${ms}ms). Adjust the page — click "Try Again" below.`
+          : `Couldn't read the title (⋅${ms}ms). Adjust the cover — click "Try Again" below.`);
         setPhase('failed');
         return;
       }
       setPhase('done');
-      onResult({ ...data, image: thumb });
+      // Pass candidates through so caller can skip its own match call
+      onResult({ ...extracted, image: thumb, candidates });
     } catch (err) {
       const ms = Math.round(performance.now() - t0);
-      console.error('[BookCamera] extractFromImage error', err);
+      console.error(`[BookCamera] ${fnName} error`, err);
       const detail = err?.details ? JSON.stringify(err.details) : '';
       setStatusMsg(`AI request failed (${ms}ms): ${err.code || ''} ${err.message || 'unknown'} ${detail}`.trim());
       setPhase('failed');

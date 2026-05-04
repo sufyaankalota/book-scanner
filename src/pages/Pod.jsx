@@ -703,24 +703,28 @@ export default function Pod() {
     // Always present candidates to the operator — titles in our manifest are
     // rarely an exact match for AI-read covers (case, punctuation, edition
     // suffixes), so showing options is more reliable than auto-accept.
-    let candidates = [];
-    try {
-      const call = httpsCallable(functions, 'matchManifestTitle');
-      const res = await call({
-        jobId: job.id,
-        title: capturedTitle,
-        author: capturedAuthor,
-        coverText,
-        topK: 5,
-        minScore: 0.35, // permissive — let the operator pick from real options
-      });
-      candidates = res.data?.candidates || [];
-    } catch (err) {
-      console.error('matchManifestTitle failed:', err);
-      const prefill = coverText || capturedTitle || capturedAuthor || '';
-      flash('#EF4444', 'Title match service unavailable — logging exception', 2500);
-      openExceptionForCapture(prefill, photo);
-      return;
+    // If the combined extractAndMatch endpoint already returned candidates,
+    // skip the separate match call (saves ~0.5–1.5s round-trip).
+    let candidates = Array.isArray(data.candidates) ? data.candidates : null;
+    if (!candidates) {
+      try {
+        const call = httpsCallable(functions, 'matchManifestTitle');
+        const res = await call({
+          jobId: job.id,
+          title: capturedTitle,
+          author: capturedAuthor,
+          coverText,
+          topK: 5,
+          minScore: 0.35, // permissive — let the operator pick from real options
+        });
+        candidates = res.data?.candidates || [];
+      } catch (err) {
+        console.error('matchManifestTitle failed:', err);
+        const prefill = coverText || capturedTitle || capturedAuthor || '';
+        flash('#EF4444', 'Title match service unavailable — logging exception', 2500);
+        openExceptionForCapture(prefill, photo);
+        return;
+      }
     }
 
     const bestVariant = candidates[0]?.variant || capturedTitle || coverText || capturedAuthor || '';
