@@ -438,3 +438,8 @@ exports.exportExceptionsHttp = onRequest({
   }
 });
 
+// ─── Aggregate counter triggers (long-running jobs) ───
+const aggregates = require('./aggregates');
+exports.onScanWrite = aggregates.onScanWrite;
+exports.onExceptionWrite = aggregates.onExceptionWrite;
+

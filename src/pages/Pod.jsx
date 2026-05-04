@@ -127,7 +127,6 @@ export default function Pod() {
   const dayRef = useRef(new Date().getDate());
   const shiftDocRef = useRef(null);
   const breakIntervalRef = useRef(null);
-  const jobIsbnCountsRef = useRef({}); // { isbn: count } for dedup across entire job
   const [pendingOffline, setPendingOffline] = useState(0);
 
   // Voice callout for PO color (Multi-PO mode). Off by default; persists per device.
@@ -268,20 +267,33 @@ export default function Pod() {
     return () => clearInterval(interval);
   }, [isScanning, lastScanTime]); // eslint-disable-line
 
-  // ─── Job-wide ISBN dedup counts ───
-  useEffect(() => {
-    if (!job) return;
-    const q = query(collection(db, 'scans'), where('jobId', '==', job.id), where('type', '==', 'standard'));
-    const unsub = onSnapshot(q, (snap) => {
-      const counts = {};
-      snap.docs.forEach((d) => {
-        const isbn = d.data().isbn;
-        counts[isbn] = (counts[isbn] || 0) + 1;
-      });
-      jobIsbnCountsRef.current = counts;
-    });
-    return unsub;
+  // ─── Job-wide ISBN dedup ───
+  // Long-running jobs (millions of scans) cannot afford a full collection
+  // listener. Instead we check the per-ISBN marker doc maintained server-side
+  // by the onScanWrite trigger, and cache hits in a session Set so we never
+  // pay twice for the same ISBN per pod boot.
+  const seenIsbnRef = useRef(new Set()); // ISBNs we've already confirmed present this session
+  const checkedIsbnRef = useRef(new Set()); // ISBNs we've already queried (hit or miss)
+  const checkIsbnSeen = useCallback(async (isbn) => {
+    if (!job?.id || !isbn) return false;
+    if (seenIsbnRef.current.has(isbn)) return true;
+    if (checkedIsbnRef.current.has(isbn)) return false;
+    checkedIsbnRef.current.add(isbn);
+    try {
+      const snap = await getDoc(doc(db, 'jobs', job.id, 'scanned-isbns', isbn));
+      if (snap.exists()) {
+        seenIsbnRef.current.add(isbn);
+        return true;
+      }
+    } catch { /* offline → treat as unseen, server will eventually catch via trigger */ }
+    return false;
   }, [job]);
+
+  // Reset cache when job changes
+  useEffect(() => {
+    seenIsbnRef.current = new Set();
+    checkedIsbnRef.current = new Set();
+  }, [job?.id]);
 
   // ─── Offline pending count (Firestore cache indicator) ───
   useEffect(() => {
@@ -556,7 +568,7 @@ export default function Pod() {
 
   // ─── Scan handler ───
   // opts: { isManual?: bool, source?: 'manual'|'ai-match', capturedTitle?: string, matchScore?: number }
-  const handleScan = (raw, opts = false) => {
+  const handleScan = async (raw, opts = false) => {
     // Back-compat: callers may pass `true` to mean { isManual: true }
     const o = typeof opts === 'boolean' ? { isManual: opts } : (opts || {});
     const isManual = !!o.isManual;
@@ -570,15 +582,19 @@ export default function Pod() {
       return;
     }
 
-    // Job-wide dedup: warn if ISBN already scanned (expected qty = 1 per manifest entry)
-    const existingCount = jobIsbnCountsRef.current[isbn] || 0;
-    if (existingCount > 0 && job?.meta?.mode === 'multi') {
-      playDuplicateBeep();
-      setDuplicateConfirm({ isbn, opts: o, overScan: true, count: existingCount });
-      return;
+    // Job-wide dedup: check per-ISBN marker doc maintained server-side.
+    // For long jobs we can't hold every scan in browser memory.
+    if (job?.meta?.mode === 'multi') {
+      const seen = await checkIsbnSeen(isbn);
+      if (seen) {
+        playDuplicateBeep();
+        setDuplicateConfirm({ isbn, opts: o, overScan: true });
+        return;
+      }
     }
 
     lastScannedRef.current = { isbn, time: Date.now() };
+    seenIsbnRef.current.add(isbn); // optimistic — next scan of same isbn will warn locally
     processScan(isbn, o);
   };
 

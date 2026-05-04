@@ -68,7 +68,6 @@ export default function Dashboard() {
     d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7);
     return d.toISOString().slice(0, 10);
   });
-  const [allJobScans, setAllJobScans] = useState([]);
   const [poAlertsDismissed, setPOAlertsDismissed] = useState(new Set());
   const poAlertsNotifiedRef = useRef(new Set());
 
@@ -236,12 +235,13 @@ export default function Dashboard() {
     return unsub;
   }, [job]);
 
-  // All job scans (full job progress)
+  // All-job aggregate totals (maintained server-side by onScanWrite trigger).
+  // For long-running jobs we cannot subscribe to the full scans collection.
+  const [jobAggregate, setJobAggregate] = useState(null);
   useEffect(() => {
-    if (!job) return;
-    const q = query(collection(db, 'scans'), where('jobId', '==', job.id));
-    const unsub = onSnapshot(q, (snap) => {
-      setAllJobScans(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    if (!job) { setJobAggregate(null); return; }
+    const unsub = onSnapshot(doc(db, 'jobs', job.id, 'aggregates', 'totals'), (snap) => {
+      setJobAggregate(snap.exists() ? snap.data() : null);
     });
     return unsub;
   }, [job]);
@@ -460,17 +460,14 @@ export default function Dashboard() {
     return { total, found, pct: Math.round((found / total) * 100), byPO };
   }, [manifestData, allScans, job]);
 
-  // Total job progress
+  // Total job progress (from server-maintained aggregate counter)
   const jobProgress = useMemo(() => {
-    const standard = allJobScans.filter((s) => s.type === 'standard');
-    const exceptionScans = allJobScans.filter((s) => s.type === 'exception');
-    const totalScanned = standard.length;
-    const totalExceptions = exceptionScans.length;
+    const totalScanned = jobAggregate?.totalScanned || 0;
+    const totalExceptions = jobAggregate?.totalExceptions || 0;
+    const aggByPO = jobAggregate?.byPO || {};
     const byPO = {};
-    for (const s of standard) {
-      const po = s.poName || 'Unassigned';
-      if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
-      byPO[po].scanned++;
+    for (const [po, scanned] of Object.entries(aggByPO)) {
+      byPO[po] = { scanned: Number(scanned) || 0, expected: 0 };
     }
     // Use chunked metadata or legacy per-doc manifest for expected counts
     const poCounts = job?.manifestMeta?.chunked ? job.manifestMeta.poCounts : null;
@@ -494,7 +491,7 @@ export default function Dashboard() {
     }
     const pct = totalExpected ? Math.round((totalScanned / totalExpected) * 100) : null;
     return { totalScanned, totalExceptions, totalExpected, pct, byPO };
-  }, [allJobScans, manifestData, job]);
+  }, [jobAggregate, manifestData, job]);
 
   // Labor efficiency
   const laborMetrics = useMemo(() => {
@@ -954,7 +951,7 @@ export default function Dashboard() {
       )}
 
       {/* Job Progress */}
-      {allJobScans.length > 0 && (
+      {jobProgress.totalScanned > 0 && (
         <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <h3 style={{ color: '#ccc', fontSize: 14, margin: 0 }}>📊 Total Job Progress</h3>

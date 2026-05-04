@@ -17,6 +17,18 @@ service cloud.firestore {
       match /manifest-chunks/{chunkId} {
         allow read, write: if true;
       }
+
+      // Server-maintained aggregate counters (onScanWrite trigger)
+      match /aggregates/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // Server-maintained per-ISBN dedup markers (onScanWrite trigger)
+      match /scanned-isbns/{isbn} {
+        allow read: if true;
+        allow write: if false;
+      }
     }
 
     // Scans — pods write, dashboard/portal read
