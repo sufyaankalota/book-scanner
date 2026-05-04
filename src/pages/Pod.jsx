@@ -417,6 +417,12 @@ export default function Pod() {
           setShowExceptionModal(true);
           return;
         }
+        if (e.key === '4') {
+          e.preventDefault();
+          setShowTitleSearch(true);
+          setTitleSearchQuery('');
+          return;
+        }
       }
       if (e.key === 'Escape' && !showExceptionModal && !showSwitchOperator && !showSettings) {
         e.preventDefault(); setShowExceptionModal(true); return;
@@ -1561,11 +1567,6 @@ export default function Pod() {
               style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid #3B82F6', backgroundColor: 'transparent', color: '#93C5FD', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               📷 Use Camera (match cover → ISBN)
             </button>
-            <button
-              onClick={() => { setShowTitleSearch(true); setTitleSearchQuery(''); }}
-              style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid #8B5CF6', backgroundColor: 'transparent', color: '#C4B5FD', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              ⌨️ Type Title (match → ISBN)
-            </button>
           </div>
         </div>
       )}
@@ -1736,6 +1737,13 @@ export default function Pod() {
           <span style={{ fontSize: 12, fontWeight: 500, color: '#93c5fd' }}>Auto-matches to ISBN · falls back to exception if not found</span>
           <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
         </button>
+        <button onClick={() => { setShowTitleSearch(true); setTitleSearchQuery(''); }}
+          title="Press Ctrl+4 — type the title, matches to manifest, picks ISBN"
+          style={{ ...styles.secondaryBtn, margin: 0, borderColor: '#8B5CF6', backgroundColor: '#3b0764', color: '#ede9fe', fontSize: 16, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontWeight: 800 }}>
+          <span>⌨️ Type Book Title (AI)</span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: '#c4b5fd' }}>Fuzzy-matches your typed title to manifest · pick ISBN</span>
+          <kbd style={kbdHintStyle}>Ctrl + 4</kbd>
+        </button>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
             title="Press Ctrl+2"
@@ -1806,6 +1814,7 @@ export default function Pod() {
                 ['Ctrl + 1', 'Camera Entry (AI ISBN scan)'],
                 ['Ctrl + 2', 'Type ISBN manually'],
                 ['Ctrl + 3', 'Log exception'],
+                ['Ctrl + 4', 'Type Book Title (AI match)'],
                 ['Esc', 'Log exception (alternate)'],
                 ['?', 'Toggle this help overlay'],
                 ['Enter', 'Submit / Advance'],
