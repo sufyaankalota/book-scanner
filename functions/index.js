@@ -237,8 +237,11 @@ exports.extractFromImage = onCall({
   secrets: [OPENAI_API_KEY],
   timeoutSeconds: 30,
   memory: '512MiB',
-  maxInstances: 20,
+  // Sized for 10 pods × ~500 scans/hr where AI-cover is operator-initiated
+  // (~5–10% of scans). Concurrency 20 gives ~800 in-flight per scaled-out pool.
+  maxInstances: 40,
   minInstances: 1, // keep 1 warm to eliminate ~1–2s cold start on every request
+  concurrency: 20,
   invoker: 'public',
   cors: true,
 }, async (request) => {
@@ -346,8 +349,12 @@ exports.matchManifestTitle = onCall({
   timeoutSeconds: 120, // first call may build the index (up to ~90s for 9M rows)
   memory: '4GiB',
   cpu: 2,
-  maxInstances: 4,
+  // Each instance holds ~3GB index in memory; 8 instances = headroom for
+  // 10-pod bursts without re-paying the 60–90s build cost. Concurrency 40
+  // lets one warm instance serve ~40 simultaneous matches.
+  maxInstances: 8,
   minInstances: 1, // keep one instance warm so the index stays cached
+  concurrency: 40,
   invoker: 'public',
   cors: true,
 }, async (request) => {
