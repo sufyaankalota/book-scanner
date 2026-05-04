@@ -24,13 +24,47 @@ const COLOR_NAMES = {
   '#EC4899': 'PINK', '#14B8A6': 'TEAL', '#92400E': 'BROWN',
   '#CA8A04': 'GOLD', '#0a0a0a': 'BLACK', '#f5f5f5': 'WHITE',
 };
+// Approximate name lookup so any close black/white/grey still gets a word
+// (and TTS never blurts out a hex code).
+function nearestColorName(hex) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return null;
+  let s = m[1];
+  if (s.length === 3) s = s.split('').map((c) => c + c).join('');
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  // Greyscale: pick the closest neutral by luminance
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max - min <= 20) {
+    if (max <= 40) return 'BLACK';
+    if (max >= 215) return 'WHITE';
+    return 'GREY';
+  }
+  return null;
+}
 function getColorName(hex) {
   if (!hex) return '';
   const k = String(hex).toLowerCase();
   for (const [key, name] of Object.entries(COLOR_NAMES)) {
     if (key.toLowerCase() === k) return name;
   }
-  return hex;
+  const near = nearestColorName(hex);
+  if (near) return near;
+  // Don't fall back to hex — TTS would read it digit by digit.
+  return 'COLOR';
+}
+// Pick contrasting text color for a given flash background.
+function isLightColor(hex) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return false;
+  let s = m[1];
+  if (s.length === 3) s = s.split('').map((c) => c + c).join('');
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  // Perceptual luminance — anything brighter than mid-grey gets dark text
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 160;
 }
 
 const PHASE_OPERATOR = 'operator';
@@ -1111,7 +1145,9 @@ export default function Pod() {
       )}
 
       {flashText && (
-        <div style={styles.flashOverlay}><span style={styles.flashText}>{flashText}</span></div>
+        <div style={styles.flashOverlay}>
+          <span style={{ ...styles.flashText, color: isLightColor(flashColor) ? '#0a0a0a' : '#fff', textShadow: isLightColor(flashColor) ? '2px 2px 12px rgba(255,255,255,0.6)' : '2px 2px 12px rgba(0,0,0,0.8)' }}>{flashText}</span>
+        </div>
       )}
 
       {/* Break timer overlay */}
