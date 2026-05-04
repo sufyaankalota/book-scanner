@@ -14,6 +14,7 @@ const { getStorage } = require('firebase-admin/storage');
 
 // 10-year signed URL — exception photos are part of the customer audit trail.
 const SIGNED_URL_EXPIRES = '03-01-2036';
+const EXCEPTIONS_BUCKET = process.env.EXCEPTIONS_BUCKET || 'book-scanner-277a3-exceptions';
 
 function parseDataUrl(dataUrl) {
   if (!dataUrl || typeof dataUrl !== 'string') return null;
@@ -27,7 +28,7 @@ async function migratePhotoToStorage(exceptionId, jobId, photoDataUrl) {
   if (!parsed) return null;
   const ext = (parsed.contentType.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
   const path = `exceptions/${jobId}/${exceptionId}.${ext}`;
-  const bucket = getStorage().bucket();
+  const bucket = getStorage().bucket(EXCEPTIONS_BUCKET);
   const file = bucket.file(path);
   await file.save(parsed.buffer, {
     contentType: parsed.contentType,
