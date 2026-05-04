@@ -115,6 +115,9 @@ export default function Pod() {
   // per job. Stays empty if the manifest doesn't include titles.
   // Title-index for AI cover match lives server-side (matchManifestTitle).
   const [aiMatchCandidates, setAiMatchCandidates] = useState(null); // { capturedTitle, photo, candidates: [...] } when ambiguous
+  const [showTitleSearch, setShowTitleSearch] = useState(false);
+  const [titleSearchQuery, setTitleSearchQuery] = useState('');
+  const [titleSearchBusy, setTitleSearchBusy] = useState(false);
   const [exceptionPrefill, setExceptionPrefill] = useState(null); // { title, photo } when AI couldn't match
 
   const [localCount, setLocalCount] = useState(0);
@@ -396,7 +399,7 @@ export default function Pod() {
       // Quick-action shortcuts. Use Ctrl+digit (Chromebook-kiosk-safe — F1/F2/F3
       // are reserved by ChromeOS, and scanners never emit Ctrl modifiers so they
       // won't collide with barcode scans).
-      const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm;
+      const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm && !showTitleSearch;
       if (noModal && e.ctrlKey && !e.altKey && !e.metaKey) {
         if (e.key === '1') {
           e.preventDefault();
@@ -425,7 +428,7 @@ export default function Pod() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, refocusInput]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, showTitleSearch, refocusInput]);
 
   // ─── Load active job ───
   useEffect(() => {
@@ -682,6 +685,44 @@ export default function Pod() {
     setShowExceptionModal(true);
   };
 
+  // Run a manifest title match and open the candidate picker.
+  // Used by both the AI camera flow and the manual "Search by Title" flow.
+  const runTitleMatch = async ({ title, author, coverText, photo, displayTitle, preCandidates }) => {
+    if (!job?.id) {
+      flash('#EF4444', 'No active job — logging exception', 2500);
+      openExceptionForCapture(displayTitle || title || coverText || '', photo);
+      return;
+    }
+    let candidates = Array.isArray(preCandidates) ? preCandidates : null;
+    if (!candidates) {
+      try {
+        const call = httpsCallable(functions, 'matchManifestTitle');
+        const res = await call({
+          jobId: job.id,
+          title: title || '',
+          author: author || '',
+          coverText: coverText || '',
+          topK: 5,
+          minScore: 0.35,
+        });
+        candidates = res.data?.candidates || [];
+      } catch (err) {
+        console.error('matchManifestTitle failed:', err);
+        const prefill = coverText || title || author || displayTitle || '';
+        flash('#EF4444', 'Title match service unavailable — logging exception', 2500);
+        openExceptionForCapture(prefill, photo);
+        return;
+      }
+    }
+    const shown = displayTitle || candidates[0]?.variant || title || coverText || author || '';
+    if (!candidates.length) {
+      flash('#EAB308', 'No likely matches — log exception or type ISBN', 2200);
+      setAiMatchCandidates({ capturedTitle: shown, photo, candidates: [] });
+      return;
+    }
+    setAiMatchCandidates({ capturedTitle: shown, photo, candidates });
+  };
+
   const handleAiCoverResult = async (data) => {
     if (!data) return;
     const capturedTitle = (data.title || '').trim();
@@ -693,47 +734,24 @@ export default function Pod() {
       openExceptionForCapture('', photo);
       return;
     }
-    if (!job?.id) {
-      flash('#EF4444', 'No active job — logging exception', 2500);
-      openExceptionForCapture(capturedTitle || coverText, photo);
-      return;
-    }
+    await runTitleMatch({
+      title: capturedTitle,
+      author: capturedAuthor,
+      coverText,
+      photo,
+      displayTitle: capturedTitle || coverText || capturedAuthor,
+      preCandidates: Array.isArray(data.candidates) ? data.candidates : null,
+    });
+  };
 
-    // Server-side match — keeps the manifest index off the browser.
-    // Always present candidates to the operator — titles in our manifest are
-    // rarely an exact match for AI-read covers (case, punctuation, edition
-    // suffixes), so showing options is more reliable than auto-accept.
-    // If the combined extractAndMatch endpoint already returned candidates,
-    // skip the separate match call (saves ~0.5–1.5s round-trip).
-    let candidates = Array.isArray(data.candidates) ? data.candidates : null;
-    if (!candidates) {
-      try {
-        const call = httpsCallable(functions, 'matchManifestTitle');
-        const res = await call({
-          jobId: job.id,
-          title: capturedTitle,
-          author: capturedAuthor,
-          coverText,
-          topK: 5,
-          minScore: 0.35, // permissive — let the operator pick from real options
-        });
-        candidates = res.data?.candidates || [];
-      } catch (err) {
-        console.error('matchManifestTitle failed:', err);
-        const prefill = coverText || capturedTitle || capturedAuthor || '';
-        flash('#EF4444', 'Title match service unavailable — logging exception', 2500);
-        openExceptionForCapture(prefill, photo);
-        return;
-      }
-    }
-
-    const bestVariant = candidates[0]?.variant || capturedTitle || coverText || capturedAuthor || '';
-    if (!candidates.length) {
-      flash('#EAB308', 'No likely matches — log exception or type ISBN', 2200);
-      setAiMatchCandidates({ capturedTitle: bestVariant, photo, candidates: [] });
-      return;
-    }
-    setAiMatchCandidates({ capturedTitle: bestVariant, photo, candidates });
+  const handleTypedTitleSearch = async (typed) => {
+    const query = (typed || '').trim();
+    if (!query) return;
+    await runTitleMatch({
+      title: query,
+      photo: null,
+      displayTitle: query,
+    });
   };
 
   // ─── Process scan (after validation/confirmation) ───
@@ -1543,6 +1561,11 @@ export default function Pod() {
               style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid #3B82F6', backgroundColor: 'transparent', color: '#93C5FD', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               📷 Use Camera (match cover → ISBN)
             </button>
+            <button
+              onClick={() => { setShowTitleSearch(true); setTitleSearchQuery(''); }}
+              style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid #8B5CF6', backgroundColor: 'transparent', color: '#C4B5FD', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              ⌨️ Type Title (match → ISBN)
+            </button>
           </div>
         </div>
       )}
@@ -1560,6 +1583,79 @@ export default function Pod() {
           }}
           onClose={() => { setShowIsbnCamera(false); setTimeout(refocusInput, 100); }}
         />
+      )}
+
+      {/* Type-a-title search — manual fuzzy match against the manifest */}
+      {showTitleSearch && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 16 }}
+          onClick={() => { if (!titleSearchBusy) { setShowTitleSearch(false); setTimeout(refocusInput, 100); } }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ backgroundColor: '#0f0f0f', border: '2px solid #8B5CF6', borderRadius: 14, padding: 22, width: '100%', maxWidth: 600, fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h2 style={{ color: '#fff', margin: 0, fontSize: 20, fontWeight: 800 }}>⌨️ Search by Title</h2>
+              <button onClick={() => { setShowTitleSearch(false); setTimeout(refocusInput, 100); }}
+                disabled={titleSearchBusy}
+                style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: titleSearchBusy ? 'not-allowed' : 'pointer' }}>✕</button>
+            </div>
+            <p style={{ color: '#aaa', fontSize: 14, margin: '0 0 12px', lineHeight: 1.5 }}>
+              Type the book's title (and optionally author). We'll find the closest matches in the manifest and let you pick.
+            </p>
+            <input
+              type="text"
+              value={titleSearchQuery}
+              onChange={(e) => setTitleSearchQuery(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === 'Enter' && titleSearchQuery.trim() && !titleSearchBusy) {
+                  e.preventDefault();
+                  const q = titleSearchQuery.trim();
+                  setTitleSearchBusy(true);
+                  try {
+                    await handleTypedTitleSearch(q);
+                    setShowTitleSearch(false);
+                    setTitleSearchQuery('');
+                    setTimeout(refocusInput, 200);
+                  } finally {
+                    setTitleSearchBusy(false);
+                  }
+                }
+                if (e.key === 'Escape' && !titleSearchBusy) {
+                  e.preventDefault();
+                  setShowTitleSearch(false);
+                  setTimeout(refocusInput, 100);
+                }
+              }}
+              placeholder="e.g. The Great Gatsby Fitzgerald"
+              autoFocus
+              disabled={titleSearchBusy}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: 8, border: '2px solid #8B5CF6', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 17, fontWeight: 600, outline: 'none', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                onClick={async () => {
+                  if (!titleSearchQuery.trim() || titleSearchBusy) return;
+                  const q = titleSearchQuery.trim();
+                  setTitleSearchBusy(true);
+                  try {
+                    await handleTypedTitleSearch(q);
+                    setShowTitleSearch(false);
+                    setTitleSearchQuery('');
+                    setTimeout(refocusInput, 200);
+                  } finally {
+                    setTitleSearchBusy(false);
+                  }
+                }}
+                disabled={!titleSearchQuery.trim() || titleSearchBusy}
+                style={{ flex: 1, padding: '14px 18px', borderRadius: 8, border: 'none', backgroundColor: titleSearchQuery.trim() && !titleSearchBusy ? '#8B5CF6' : '#333', color: '#fff', fontSize: 16, fontWeight: 800, cursor: titleSearchQuery.trim() && !titleSearchBusy ? 'pointer' : 'not-allowed' }}>
+                {titleSearchBusy ? 'Searching…' : '🔍 Search Manifest'}
+              </button>
+              <button onClick={() => { setShowTitleSearch(false); setTimeout(refocusInput, 100); }}
+                disabled={titleSearchBusy}
+                style={{ padding: '14px 18px', borderRadius: 8, border: '1px solid #444', backgroundColor: 'transparent', color: '#aaa', fontSize: 15, fontWeight: 700, cursor: titleSearchBusy ? 'not-allowed' : 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Ambiguous AI match — let the operator pick or reject */}
