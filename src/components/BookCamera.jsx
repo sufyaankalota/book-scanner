@@ -262,13 +262,12 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
     if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
     const canvas = canvasRef.current;
 
-    // ISBN text on copyright pages is tiny, so keep more resolution for ISBN mode.
-    // Title covers are large and readable, 1024 is plenty.
-    // Smaller image keeps upload fast; with detail:'low' on the server side
-    // the model only sees ~85 tokens regardless of resolution, so 768 is plenty
-    // for cover-title legibility. ISBN mode keeps higher res (rarely used now).
-    const TARGET = mode === 'isbn' ? 1800 : 768;
-    const QUALITY = mode === 'isbn' ? 0.92 : 0.82;
+    // ISBN text on copyright pages is tiny — keep high resolution.
+    // Title mode now uses 1280px + server detail:'high' so the model can
+    // actually read subtitles, stylized type, and angled covers. The 768/low
+    // combo was causing high null rates on real warehouse covers.
+    const TARGET = mode === 'isbn' ? 1800 : 1280;
+    const QUALITY = mode === 'isbn' ? 0.92 : 0.88;
     const scale = Math.min(TARGET / Math.max(cw, ch), 1);
     canvas.width = Math.round(cw * scale);
     canvas.height = Math.round(ch * scale);

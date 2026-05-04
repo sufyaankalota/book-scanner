@@ -255,7 +255,7 @@ exports.extractFromImage = onCall({
 
   const prompt = mode === 'isbn'
     ? `Find the ISBN (10 or 13 digit number) on this book photo. ISBNs are usually labeled "ISBN" and may appear on the copyright page, back cover, or under a barcode. 13-digit ISBNs start with 978 or 979. Strip hyphens. Watch for 0/O, 1/I/l, 5/S, 8/B confusions. Respond ONLY with strict JSON: {"isbn":"<digits-only-or-null>","confidence":<0-1>}.`
-    : `Read the book cover. Identify the main title and author, AND list every other prominent piece of text visible on the cover. Preserve exact spelling, capitalization, accents, and non-Latin characters — do NOT translate or transliterate. Respond ONLY with strict JSON: {"title":"<main title>","author":"<author name or null>","coverText":"<all visible prominent text concatenated with spaces>","confidence":<0-1>}.`;
+    : `You are reading a photograph of a real book cover for a warehouse sorting system. Read EVERY piece of visible text on the cover. Even if the image is blurry, angled, glossy, stylized, foreign-language, or partially obscured, return your BEST GUESS — never refuse and never return null for title if ANY text is readable. Preserve exact spelling, capitalization, accents, and non-Latin characters; do NOT translate or transliterate. The 'title' field must be the largest/most prominent title text you can read (your best guess); use the empty string "" only if the photo has literally no readable text. The 'coverText' field must include every other piece of text visible (subtitle, series name, publisher, taglines, edition, etc.) concatenated with spaces. Respond ONLY with strict JSON: {"title":"<best-guess title>","author":"<author name or null>","coverText":"<all other visible text>","confidence":<0-1>}.`;
 
   const body = {
     model: 'gpt-4o',
@@ -263,13 +263,15 @@ exports.extractFromImage = onCall({
       role: 'user',
       content: [
         { type: 'text', text: prompt },
-        // detail:'low' uses ~85 tokens vs ~765 for 'high' — ~5× faster + cheaper.
-        // Combined with the 768px client-side downscale, plenty of resolution for cover titles.
-        { type: 'image_url', image_url: { url: dataUrl, detail: 'low' } },
+        // ISBN mode keeps low (small numeric target). Title mode uses 'high'
+        // detail (~765 tokens) — without this the model only sees a ~512x512
+        // thumbnail and frequently returns null on real warehouse covers
+        // (angled, stylized, small subtitles). Cost diff ~$0.0017/scan, trivial.
+        { type: 'image_url', image_url: { url: dataUrl, detail: mode === 'title' ? 'high' : 'low' } },
       ],
     }],
     response_format: { type: 'json_object' },
-    max_tokens: 200,
+    max_tokens: 400,
     temperature: 0,
   };
 
@@ -312,10 +314,16 @@ exports.extractFromImage = onCall({
     }
     result = { isbn, confidence: Number(result.confidence) || 0 };
   } else {
+    let title = result.title ? String(result.title).trim() : '';
+    const author = result.author ? String(result.author).trim() : null;
+    const coverText = result.coverText ? String(result.coverText).trim() : null;
+    // If model omitted title but produced cover text, promote first line of
+    // cover text so the matcher still has something to work with.
+    if (!title && coverText) title = coverText.split(/\s{2,}|\n/)[0].slice(0, 120);
     result = {
-      title: result.title ? String(result.title).trim() : null,
-      author: result.author ? String(result.author).trim() : null,
-      coverText: result.coverText ? String(result.coverText).trim() : null,
+      title: title || null,
+      author,
+      coverText,
       confidence: Number(result.confidence) || 0,
     };
   }
