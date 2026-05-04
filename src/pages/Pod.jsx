@@ -86,7 +86,20 @@ export default function Pod() {
   const navigate = useNavigate();
 
   const savedState = (() => {
-    try { const s = sessionStorage.getItem(`pod_${podId}_state`); return s ? JSON.parse(s) : {}; } catch { return {}; }
+    try {
+      // Pod shift state persists across page reloads AND laptop restarts
+      // (localStorage, not sessionStorage). Auto-discards if it's from a
+      // previous calendar day so a stale shift never carries over.
+      const raw = localStorage.getItem(`pod_${podId}_state`);
+      if (!raw) return {};
+      const s = JSON.parse(raw);
+      const today = new Date().toDateString();
+      if (s.shiftDate && s.shiftDate !== today) {
+        localStorage.removeItem(`pod_${podId}_state`);
+        return {};
+      }
+      return s;
+    } catch { return {}; }
   })();
 
   const [phase, setPhase] = useState(savedState.phase || PHASE_OPERATOR);
@@ -143,7 +156,7 @@ export default function Pod() {
   const [bestStreak, setBestStreak] = useState(0); // loaded per-operator below
   const [lastBarcodeType, setLastBarcodeType] = useState('');
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [breakMinutesUsed, setBreakMinutesUsed] = useState(0);
+  const [breakMinutesUsed, setBreakMinutesUsed] = useState(savedState.breakMinutesUsed || 0);
   const [operatorHistory, setOperatorHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('operator-history') || '[]'); } catch { return []; }
   });
@@ -157,7 +170,7 @@ export default function Pod() {
   // microtask burst (which is exactly how barcode scanners type). Using state
   // caused the Enter handler to read an empty/partial buffer on the first scan.
   const scanBufferRef = useRef('');
-  const scanStartTimeRef = useRef(null);
+  const scanStartTimeRef = useRef(savedState.scanStartAt || null);
   const dayRef = useRef(new Date().getDate());
   const shiftDocRef = useRef(null);
   const breakIntervalRef = useRef(null);
@@ -235,14 +248,23 @@ export default function Pod() {
   }, [fontSize]);
 
   // ─── Persist state ───
+  // Stored in localStorage (not sessionStorage) so progress survives laptop
+  // restarts and re-logins. Cleared only on explicit End Shift, or auto-
+  // discarded on next-day load (see savedState loader above).
   useEffect(() => {
     if (phase !== PHASE_OPERATOR) {
-      sessionStorage.setItem(`pod_${podId}_state`, JSON.stringify({
-        phase: phase === PHASE_SCANNING ? PHASE_READY : phase,
-        operatorName, scannerPaired,
-      }));
+      try {
+        localStorage.setItem(`pod_${podId}_state`, JSON.stringify({
+          phase: phase === PHASE_SCANNING ? PHASE_READY : phase,
+          operatorName,
+          scannerPaired,
+          breakMinutesUsed,
+          scanStartAt: scanStartTimeRef.current || null,
+          shiftDate: new Date().toDateString(),
+        }));
+      } catch {}
     }
-  }, [phase, operatorName, scannerPaired, podId]);
+  }, [phase, operatorName, scannerPaired, breakMinutesUsed, podId]);
 
   // ─── Online/offline ───
   useEffect(() => {
@@ -906,7 +928,7 @@ export default function Pod() {
     setScannerPaired(false); setLocalCount(0);
     setRecentScans([]); scanStartTimeRef.current = null;
     setScanStreak(0); setBreakMinutesUsed(0);
-    sessionStorage.removeItem(`pod_${podId}_state`);
+    localStorage.removeItem(`pod_${podId}_state`);
     // On kiosk devices, go back to pod selector
     if (fromPods) navigate('/pods');
   };
