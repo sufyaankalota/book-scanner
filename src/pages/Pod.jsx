@@ -702,18 +702,20 @@ export default function Pod() {
     let candidates = Array.isArray(preCandidates) ? preCandidates : null;
     if (!candidates) {
       try {
-        const call = httpsCallable(functions, 'matchManifestTitle');
+        // Use extractAndMatch (warm, minInstances=1) in text-only mode instead of
+        // matchManifestTitle (min=0) to avoid 60–90s cold starts on typed search.
+        const call = httpsCallable(functions, 'extractAndMatch');
         const res = await call({
           jobId: job.id,
           title: title || '',
           author: author || '',
-          coverText: coverText || '',
+          // no imageBase64 → server skips Vision and matches text directly
           topK: 5,
           minScore: 0.35,
         });
         candidates = res.data?.candidates || [];
       } catch (err) {
-        console.error('matchManifestTitle failed:', err);
+        console.error('extractAndMatch (text-only) failed:', err);
         const prefill = coverText || title || author || displayTitle || '';
         flash('#EF4444', 'Title match service unavailable — logging exception', 2500);
         openExceptionForCapture(prefill, photo);

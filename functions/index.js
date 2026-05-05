@@ -408,10 +408,13 @@ exports.extractAndMatch = onCall({
   invoker: 'public',
   cors: true,
 }, async (request) => {
-  const { imageBase64, jobId, podId, topK, minScore } = request.data || {};
-  if (!imageBase64) throw new HttpsError('invalid-argument', 'imageBase64 is required');
+  const { imageBase64, jobId, podId, topK, minScore, title: typedTitle, author: typedAuthor } = request.data || {};
   if (!jobId) throw new HttpsError('invalid-argument', 'jobId is required');
-  if (imageBase64.length > 4_500_000) throw new HttpsError('invalid-argument', 'image too large (max ~3MB)');
+  const textOnly = !imageBase64;
+  if (textOnly && !typedTitle && !typedAuthor) {
+    throw new HttpsError('invalid-argument', 'imageBase64 or title/author is required');
+  }
+  if (imageBase64 && imageBase64.length > 4_500_000) throw new HttpsError('invalid-argument', 'image too large (max ~3MB)');
 
   // Pre-warm the index in parallel with the OpenAI call so by the time
   // Vision returns the title, the index is ready in-memory.
@@ -420,14 +423,21 @@ exports.extractAndMatch = onCall({
     return null;
   });
 
-  let visionResp;
-  try {
-    visionResp = await callVision({ imageBase64, mode: 'title' });
-  } catch (err) {
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError('internal', `OpenAI request failed: ${err.message}`);
+  let extracted = { title: typedTitle || '', author: typedAuthor || '', coverText: '' };
+  let usage = null, cost = 0, model = null;
+  if (!textOnly) {
+    let visionResp;
+    try {
+      visionResp = await callVision({ imageBase64, mode: 'title' });
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError('internal', `OpenAI request failed: ${err.message}`);
+    }
+    extracted = visionResp.result;
+    usage = visionResp.usage;
+    cost = visionResp.cost;
+    model = visionResp.model;
   }
-  const { result: extracted, usage, cost, model } = visionResp;
 
   // Fire match if we have anything queryable
   let candidates = [];
@@ -448,13 +458,15 @@ exports.extractAndMatch = onCall({
     }
   }
 
-  await logAiUsage({
-    mode: 'title', podId, jobId, usage, cost,
-    success: !!extracted.title || candidates.length > 0,
-  });
+  if (!textOnly) {
+    await logAiUsage({
+      mode: 'title', podId, jobId, usage, cost,
+      success: !!extracted.title || candidates.length > 0,
+    });
+  }
 
   return {
-    extracted: { ...extracted, costUsd: Number(cost.toFixed(6)), model },
+    extracted: { ...extracted, costUsd: Number((cost || 0).toFixed(6)), model: model || (textOnly ? 'text-only' : null) },
     candidates,
     indexStats: matcher.getStats()[jobId] || null,
   };
