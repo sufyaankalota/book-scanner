@@ -11,3 +11,5 @@ backfill.log
 deploy.log
 
 scripts/.firebase-config.json
+
+deploy_*.log
