@@ -430,7 +430,7 @@ export default function Pod() {
       if (e.key === '?' && !showExceptionModal && !showSwitchOperator) {
         e.preventDefault(); setShowShortcuts((p) => !p); return;
       }
-      if (!showExceptionModal && !showSwitchOperator && !showSettings) refocusInput();
+      if (!showExceptionModal && !showSwitchOperator && !showSettings && !showTitleSearch && !showManualEntry) refocusInput();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
