@@ -638,6 +638,29 @@ export default function Setup() {
     if (newPods.length === 0) errs.editPods = 'Need at least one pod';
     setFieldError(errs);
     if (Object.keys(errs).length) return;
+
+    // Safeguard: refuse to silently lose pods. Re-fetch the live pod list and
+    // require explicit confirmation before removing any. This protects against
+    // stale local state (Setup loads activeJob once on mount; another tab/user
+    // could have added pods since).
+    try {
+      const liveSnap = await getDoc(doc(db, 'jobs', activeJob.id));
+      const livePods = liveSnap.exists() ? (liveSnap.data().meta?.pods || []) : [];
+      const removed = livePods.filter((p) => !newPods.includes(p));
+      if (removed.length > 0) {
+        const ok = window.confirm(
+          `⚠️ This will REMOVE ${removed.length} pod${removed.length === 1 ? '' : 's'} from the job:\n\n` +
+          `  ${removed.join(', ')}\n\n` +
+          `Current live pod list: ${livePods.join(', ')}\n` +
+          `New pod list: ${newPods.join(', ')}\n\n` +
+          `Continue?`
+        );
+        if (!ok) return;
+      }
+    } catch (err) {
+      console.warn('pod-safety check failed (continuing):', err);
+    }
+
     try {
       const flo = Number(editFloaters) || 0;
       const run = Number(editRunners) || 0;
@@ -655,7 +678,13 @@ export default function Setup() {
         exceptionColor: excColor, exceptionNumber: excNumber,
         ...(activeJob.meta.mode === 'multi' ? { poColors: editPoColors, poNumbers: cleanPoNumbers } : {}),
       });
-      logAudit('job_edited', { jobId: activeJob.id });
+      logAudit('job_edited', {
+        jobId: activeJob.id,
+        previousPods: activeJob.meta?.pods || [],
+        newPods,
+        dailyTarget: target,
+        workingHours: hours,
+      });
       setActiveJob({ ...activeJob,
         meta: { ...activeJob.meta, dailyTarget: target, workingHours: hours, pods: newPods, floaters: flo, runners: run, supervisors: sup },
         exceptionColor: excColor, exceptionNumber: excNumber,
