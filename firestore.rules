@@ -126,6 +126,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Daily Crew & Pay — owner-entered headcount + payroll per job per date
+    match /dailyPay/{payId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['jobId', 'date']);
+      allow delete: if true;
+    }
+
     // AI usage telemetry — written by Cloud Function, read by Dashboard for cost reporting
     match /ai-usage/{usageId} {
       allow read: if true;

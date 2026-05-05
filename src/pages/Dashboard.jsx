@@ -49,7 +49,20 @@ export default function Dashboard() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(Notification?.permission === 'granted');
   const [podNotes, setPodNotes] = useState({});
   const [messageInputs, setMessageInputs] = useState({});
-  const [showPanel, setShowPanel] = useState(''); // '' | 'exceptions' | 'shifts' | 'leaderboard' | 'hourly' | 'manifest' | 'bols'
+  const [showPanel, setShowPanel] = useState(''); // '' | 'exceptions' | 'shifts' | 'leaderboard' | 'hourly' | 'manifest' | 'bols' | 'crew'
+  // Daily Crew & Pay (owner-only) — manually-entered attendance + per-day payroll
+  const todayKey = () => {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [crewDateKey, setCrewDateKey] = useState(() => todayKey());
+  const [crewEmployees, setCrewEmployees] = useState([]); // [{ name, hours, rate }]
+  const [crewDefaultRate, setCrewDefaultRate] = useState(15);
+  const [crewNotes, setCrewNotes] = useState('');
+  const [crewLoading, setCrewLoading] = useState(false);
+  const [crewSaving, setCrewSaving] = useState(false);
+  const [crewSavedAt, setCrewSavedAt] = useState(null);
+  const [crewDirty, setCrewDirty] = useState(false);
   const [manifestData, setManifestData] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedExceptions, setSelectedExceptions] = useState(new Set());
@@ -70,6 +83,87 @@ export default function Dashboard() {
   });
   const [poAlertsDismissed, setPOAlertsDismissed] = useState(new Set());
   const poAlertsNotifiedRef = useRef(new Set());
+
+  // Daily Crew & Pay loader \u2014 fires when owner opens the panel or changes date/job
+  useEffect(() => {
+    if (!isOwner || showPanel !== 'crew' || !job?.id) return;
+    let cancelled = false;
+    setCrewLoading(true);
+    setCrewDirty(false);
+    getDoc(doc(db, 'dailyPay', `${job.id}_${crewDateKey}`)).then((snap) => {
+      if (cancelled) return;
+      if (snap.exists()) {
+        const data = snap.data();
+        setCrewEmployees(Array.isArray(data.employees) ? data.employees : []);
+        setCrewDefaultRate(typeof data.defaultRate === 'number' ? data.defaultRate : 15);
+        setCrewNotes(data.notes || '');
+        setCrewSavedAt(data.updatedAt?.toDate?.() || data.createdAt?.toDate?.() || null);
+      } else {
+        setCrewEmployees([]);
+        setCrewNotes('');
+        setCrewSavedAt(null);
+      }
+      setCrewLoading(false);
+    }).catch(() => { if (!cancelled) setCrewLoading(false); });
+    return () => { cancelled = true; };
+  }, [isOwner, showPanel, crewDateKey, job?.id]);
+
+  const crewTotalPay = useMemo(() => crewEmployees.reduce((sum, e) => {
+    const h = parseFloat(e.hours) || 0;
+    const r = parseFloat(e.rate) || 0;
+    return sum + (h * r);
+  }, 0), [crewEmployees]);
+
+  const updateCrewEmployee = (idx, patch) => {
+    setCrewDirty(true);
+    setCrewEmployees((prev) => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
+  };
+  const addCrewEmployee = () => {
+    setCrewDirty(true);
+    setCrewEmployees((prev) => [...prev, { name: '', hours: '', rate: crewDefaultRate }]);
+  };
+  const removeCrewEmployee = (idx) => {
+    setCrewDirty(true);
+    setCrewEmployees((prev) => prev.filter((_, i) => i !== idx));
+  };
+  const applyDefaultRateToAll = () => {
+    setCrewDirty(true);
+    setCrewEmployees((prev) => prev.map((e) => ({ ...e, rate: crewDefaultRate })));
+  };
+  const saveCrewDay = async () => {
+    if (!isOwner || !job?.id) return;
+    setCrewSaving(true);
+    try {
+      const cleaned = crewEmployees
+        .map((e) => ({
+          name: (e.name || '').trim(),
+          hours: parseFloat(e.hours) || 0,
+          rate: parseFloat(e.rate) || 0,
+        }))
+        .filter((e) => e.name);
+      const total = cleaned.reduce((s, e) => s + e.hours * e.rate, 0);
+      await setDoc(doc(db, 'dailyPay', `${job.id}_${crewDateKey}`), {
+        jobId: job.id,
+        date: crewDateKey,
+        employees: cleaned,
+        defaultRate: parseFloat(crewDefaultRate) || 0,
+        headcount: cleaned.length,
+        totalPay: Math.round(total * 100) / 100,
+        notes: crewNotes,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser?.email || currentUser?.name || 'unknown',
+      }, { merge: true });
+      logAudit('dailyPay.save', { jobId: job.id, date: crewDateKey, headcount: cleaned.length, totalPay: total });
+      setCrewSavedAt(new Date());
+      setCrewDirty(false);
+      toast(`Saved \u2014 ${cleaned.length} employee${cleaned.length === 1 ? '' : 's'}, $${total.toFixed(2)}`, 'success');
+    } catch (err) {
+      console.error('saveCrewDay error', err);
+      toast('Save failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+      setCrewSaving(false);
+    }
+  };
 
   // Load active job
   useEffect(() => {
@@ -1093,6 +1187,7 @@ export default function Dashboard() {
           ['excTrend', '📈 Exception Trend'],
           ['shifts', '⏱ Shifts'],
           ...(isOwner ? [['labor', '💵 Labor Cost']] : []),
+          ...(isOwner ? [['crew', '👥 Daily Crew & Pay']] : []),
           ['bols', `🚛 BOLs (${bols.length})`],
         ].map(([key, label]) => (
           <button key={key} onClick={() => setShowPanel(showPanel === key ? '' : key)}
@@ -1323,6 +1418,123 @@ export default function Dashboard() {
               );
             })}
           {shifts.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No shifts recorded</p>}
+        </div>
+      )}
+
+      {/* Daily Crew & Pay panel \u2014 owner-only manual attendance + payroll */}
+      {showPanel === 'crew' && isOwner && (
+        <div style={st.panel}>
+          <div style={{ padding: 16 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 16 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Date</span>
+                <input type="date" value={crewDateKey}
+                  max={todayKey()}
+                  onChange={(e) => setCrewDateKey(e.target.value || todayKey())}
+                  style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #333', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 14, fontFamily: 'monospace' }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Default Rate ($/hr)</span>
+                <input type="number" min="0" step="0.25" value={crewDefaultRate}
+                  onChange={(e) => { setCrewDefaultRate(e.target.value); setCrewDirty(true); }}
+                  style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #333', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 14, fontFamily: 'monospace', width: 110 }} />
+              </label>
+              <button onClick={applyDefaultRateToAll}
+                disabled={crewEmployees.length === 0}
+                style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #555', backgroundColor: 'transparent', color: '#aaa', fontSize: 12, fontWeight: 600, cursor: crewEmployees.length === 0 ? 'not-allowed' : 'pointer', alignSelf: 'flex-end' }}>
+                Apply rate to all
+              </button>
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <div style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Daily Total</div>
+                <div style={{ color: '#34D399', fontSize: 24, fontWeight: 800, fontFamily: 'monospace' }}>${crewTotalPay.toFixed(2)}</div>
+                <div style={{ color: '#666', fontSize: 11 }}>{crewEmployees.filter((e) => (e.name || '').trim()).length} employee{crewEmployees.filter((e) => (e.name || '').trim()).length === 1 ? '' : 's'}</div>
+              </div>
+            </div>
+
+            {crewLoading ? (
+              <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>Loading\u2026</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', color: '#ddd', fontSize: 14 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #333', color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left' }}>
+                    <th style={{ padding: '8px 8px', width: '40%' }}>Employee Name</th>
+                    <th style={{ padding: '8px 8px', textAlign: 'right' }}>Hours</th>
+                    <th style={{ padding: '8px 8px', textAlign: 'right' }}>Rate</th>
+                    <th style={{ padding: '8px 8px', textAlign: 'right' }}>Pay</th>
+                    <th style={{ padding: '8px 8px', width: 40 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {crewEmployees.map((emp, idx) => {
+                    const h = parseFloat(emp.hours) || 0;
+                    const r = parseFloat(emp.rate) || 0;
+                    const pay = h * r;
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #222' }}>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="text" value={emp.name || ''}
+                            onChange={(e) => updateCrewEmployee(idx, { name: e.target.value })}
+                            placeholder="Name"
+                            style={{ width: '100%', padding: '6px 8px', borderRadius: 4, border: '1px solid #333', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 13 }} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="number" min="0" step="0.25" value={emp.hours ?? ''}
+                            onChange={(e) => updateCrewEmployee(idx, { hours: e.target.value })}
+                            placeholder="0"
+                            style={{ width: '100%', padding: '6px 8px', borderRadius: 4, border: '1px solid #333', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 13, fontFamily: 'monospace', textAlign: 'right' }} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="number" min="0" step="0.25" value={emp.rate ?? ''}
+                            onChange={(e) => updateCrewEmployee(idx, { rate: e.target.value })}
+                            placeholder={String(crewDefaultRate)}
+                            style={{ width: '100%', padding: '6px 8px', borderRadius: 4, border: '1px solid #333', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 13, fontFamily: 'monospace', textAlign: 'right' }} />
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: pay > 0 ? '#34D399' : '#666' }}>${pay.toFixed(2)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                          <button onClick={() => removeCrewEmployee(idx)}
+                            aria-label={`Remove ${emp.name || 'employee'}`}
+                            style={{ background: 'none', border: '1px solid #444', borderRadius: 4, color: '#EF4444', width: 28, height: 28, cursor: 'pointer', fontSize: 14 }}>\u00d7</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {crewEmployees.length === 0 && (
+                    <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#666' }}>No employees recorded for this date \u2014 click \u201c+ Add Employee\u201d to start.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <button onClick={addCrewEmployee}
+                style={{ padding: '10px 16px', borderRadius: 6, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                + Add Employee
+              </button>
+              <button onClick={saveCrewDay}
+                disabled={crewSaving || !crewDirty}
+                style={{ padding: '10px 20px', borderRadius: 6, border: 'none', backgroundColor: crewSaving || !crewDirty ? '#333' : '#22C55E', color: '#fff', fontSize: 13, fontWeight: 800, cursor: crewSaving || !crewDirty ? 'not-allowed' : 'pointer', marginLeft: 'auto' }}>
+                {crewSaving ? 'Saving\u2026' : crewDirty ? '\ud83d\udcbe Save' : '\u2713 Saved'}
+              </button>
+            </div>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 16 }}>
+              <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Notes</span>
+              <textarea value={crewNotes}
+                onChange={(e) => { setCrewNotes(e.target.value); setCrewDirty(true); }}
+                placeholder="Optional \u2014 e.g. early dismissal, no-shows, overtime authorization\u2026"
+                rows={2}
+                style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid #333', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+            </label>
+
+            {crewSavedAt && (
+              <div style={{ color: '#666', fontSize: 11, marginTop: 8 }}>
+                Last saved: {crewSavedAt.toLocaleString()}
+              </div>
+            )}
+            <p style={{ color: '#666', fontSize: 11, marginTop: 12, fontStyle: 'italic' }}>
+              Visible to owners only. Saved per job + date as <code style={{ color: '#888' }}>dailyPay/{job?.id || '\u2026'}_{crewDateKey}</code>.
+            </p>
+          </div>
         </div>
       )}
 
