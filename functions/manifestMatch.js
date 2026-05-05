@@ -153,6 +153,19 @@ async function buildIndex(jobId, opts = {}) {
   const tokenIdx = new Map();
   for (const [tok, id] of tokenIds) tokenIdx.set(tok, postings[id]);
 
+  // Build a 3-char prefix index so partial cover reads (e.g. "gat") can
+  // expand into all index tokens that start with that prefix ("gatsby",
+  // "gateway"). Memory cost: ~1–2 MB for 100k+ tokens. Skipped for tokens
+  // shorter than 3 chars (mostly stopword leftovers).
+  const prefixIdx = new Map(); // 3-char prefix -> array of full token strings
+  for (const tok of tokenIdx.keys()) {
+    if (tok.length < 3) continue;
+    const p = tok.slice(0, 3);
+    let arr = prefixIdx.get(p);
+    if (!arr) { arr = []; prefixIdx.set(p, arr); }
+    arr.push(tok);
+  }
+
   log(`  built tokenIdx with ${tokenIdx.size} unique tokens in ${Math.round((Date.now() - t0) / 1000)}s total`);
 
   evictIfNeeded();
@@ -164,6 +177,7 @@ async function buildIndex(jobId, opts = {}) {
     poStrings,
     poIds,
     tokenIdx,
+    prefixIdx,
     loadedAt: Date.now(),
     totalRows: isbns.length,
   };
@@ -190,11 +204,33 @@ function searchOne(ix, query, { topK = 5, minScore = 0.5, prefilterN = 200, maxC
   if (!q) return [];
   const qTokens = makeTokens(q).filter((t) => t.length >= 2);
   if (!qTokens.length) return [];
-  const qTokenSetSize = qTokens.length;
 
-  // Stage 1: tally hits per row from postings
+  // Expand short tokens (3–5 chars) via the prefix index so partial cover
+  // reads ("gat" → "gatsby", "gateway") still land on candidate rows. Cap
+  // expansion per token to avoid blowing up the candidate set on common
+  // prefixes (e.g. "the" or "pro").
+  const PREFIX_EXPAND_MAX = 25;
+  const expandedTokens = new Set(qTokens);
+  if (ix.prefixIdx) {
+    for (const t of qTokens) {
+      if (t.length < 3 || t.length > 5) continue;
+      const bucket = ix.prefixIdx.get(t.slice(0, 3));
+      if (!bucket) continue;
+      // Prefer tokens that actually start with the full query token (length≥4)
+      // or are exact-prefix matches; cap by alphabetical to keep deterministic.
+      const matches = [];
+      for (const tok of bucket) {
+        if (tok === t || tok.startsWith(t)) matches.push(tok);
+        if (matches.length >= PREFIX_EXPAND_MAX) break;
+      }
+      for (const m of matches) expandedTokens.add(m);
+    }
+  }
+  const qTokenSetSize = qTokens.length; // use original token count for Jaccard denom
+
+  // Stage 1: tally hits per row from postings (over expanded token set)
   const candidateCounts = new Map();
-  for (const tok of qTokens) {
+  for (const tok of expandedTokens) {
     const arr = ix.tokenIdx.get(tok);
     if (!arr) continue;
     for (let k = 0; k < arr.length; k++) {
@@ -208,8 +244,15 @@ function searchOne(ix, query, { topK = 5, minScore = 0.5, prefilterN = 200, maxC
   // Pick top prefilterN candidates by Jaccard before doing expensive sim().
   const rtc = ix.rowTokenCount;
   let bestRows;
+  let jaccardByRow = null;
   if (candidateCounts.size <= prefilterN) {
     bestRows = Array.from(candidateCounts.keys());
+    jaccardByRow = new Map();
+    for (const r of bestRows) {
+      const c = candidateCounts.get(r);
+      const denom = qTokenSetSize + rtc[r] - c;
+      jaccardByRow.set(r, denom > 0 ? c / denom : 0);
+    }
   } else {
     // If candidate set is huge, first cap by raw hit count to keep Jaccard pass cheap
     let entries;
@@ -227,19 +270,36 @@ function searchOne(ix, query, { topK = 5, minScore = 0.5, prefilterN = 200, maxC
     });
     scored.sort((a, b) => b[1] - a[1]);
     bestRows = scored.slice(0, prefilterN).map((e) => e[0]);
+    jaccardByRow = new Map(scored.slice(0, prefilterN));
   }
 
   // Stage 3: full similarity on the prefiltered set, using cached norms
-  const scored = [];
+  const passing = [];
+  const all = []; // every prefiltered row with its sim score (for top-up)
   for (const r of bestRows) {
-    const score = similarity(q, ix.norms[r] || ix.titles[r]);
-    if (score >= minScore) scored.push({ r, score });
+    const sim = similarity(q, ix.norms[r] || ix.titles[r]);
+    all.push({ r, score: sim, jaccard: jaccardByRow.get(r) || 0 });
+    if (sim >= minScore) passing.push({ r, score: sim });
   }
-  scored.sort((a, b) => b.score - a.score);
+  passing.sort((a, b) => b.score - a.score);
+
+  // Top-up: if we have fewer than topK strong matches, fill with the highest
+  // Jaccard rows from the prefilter (using max(sim, jaccard*0.7) as a soft
+  // confidence so the picker can still display them — operator decides).
+  let picked = passing;
+  if (passing.length < topK) {
+    const seenRow = new Set(passing.map((p) => p.r));
+    const fillers = all
+      .filter((x) => !seenRow.has(x.r))
+      .map((x) => ({ r: x.r, score: Math.max(x.score, x.jaccard * 0.7) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK - passing.length);
+    picked = passing.concat(fillers);
+  }
 
   // Dedupe by canonical ISBN-13 — keep highest-scoring representative
   const seen = new Map();
-  for (const s of scored) {
+  for (const s of picked) {
     const isbn = ix.isbns[s.r];
     const key = canonicalIsbn13(isbn) || isbn;
     const prev = seen.get(key);

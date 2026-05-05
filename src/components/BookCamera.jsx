@@ -304,7 +304,7 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
     try {
       const call = httpsCallable(functions, fnName);
       const payload = useCombined
-        ? { imageBase64: base64, jobId, podId, topK: 5, minScore: 0.35 }
+        ? { imageBase64: base64, jobId, podId, topK: 5, minScore: 0.2 }
         : { imageBase64: base64, mode, podId, jobId };
       const resp = await call(payload);
       const ms = Math.round(performance.now() - t0);

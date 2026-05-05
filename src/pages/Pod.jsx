@@ -711,7 +711,7 @@ export default function Pod() {
           author: author || '',
           // no imageBase64 → server skips Vision and matches text directly
           topK: 5,
-          minScore: 0.35,
+          minScore: 0.2,
         });
         candidates = res.data?.candidates || [];
       } catch (err) {
