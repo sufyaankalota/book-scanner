@@ -284,9 +284,19 @@ async function callVision({ imageBase64, mode }) {
     }
     result = { isbn, confidence: Number(parsed.confidence) || 0 };
   } else {
-    let title = parsed.title ? String(parsed.title).trim() : '';
-    const author = parsed.author ? String(parsed.author).trim() : null;
-    const coverText = parsed.coverText ? String(parsed.coverText).trim() : null;
+    // Defensive: occasionally the model returns the literal string "null" /
+    // "None" / "N/A" instead of obeying the strict-empty-string rule. Strip
+    // those so downstream code never displays the word "null".
+    const sanitize = (v) => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      if (/^(null|none|n\/a|undefined|unknown)$/i.test(s)) return null;
+      return s;
+    };
+    let title = sanitize(parsed.title) || '';
+    const author = sanitize(parsed.author);
+    const coverText = sanitize(parsed.coverText);
     if (!title && coverText) title = coverText.split(/\s{2,}|\n/)[0].slice(0, 120);
     result = {
       title: title || null,

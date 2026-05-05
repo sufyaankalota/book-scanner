@@ -399,7 +399,7 @@ export default function Pod() {
       // Quick-action shortcuts. Use Ctrl+digit (Chromebook-kiosk-safe — F1/F2/F3
       // are reserved by ChromeOS, and scanners never emit Ctrl modifiers so they
       // won't collide with barcode scans).
-      const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm && !showTitleSearch;
+      const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm && !showTitleSearch && !aiMatchCandidates;
       if (noModal && e.ctrlKey && !e.altKey && !e.metaKey) {
         if (e.key === '1') {
           e.preventDefault();
@@ -430,11 +430,11 @@ export default function Pod() {
       if (e.key === '?' && !showExceptionModal && !showSwitchOperator) {
         e.preventDefault(); setShowShortcuts((p) => !p); return;
       }
-      if (!showExceptionModal && !showSwitchOperator && !showSettings && !showTitleSearch && !showManualEntry) refocusInput();
+      if (!showExceptionModal && !showSwitchOperator && !showSettings && !showTitleSearch && !showManualEntry && !aiMatchCandidates) refocusInput();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, showTitleSearch, refocusInput]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, showTitleSearch, aiMatchCandidates, refocusInput]);
 
   // ─── Load active job ───
   useEffect(() => {
@@ -761,6 +761,59 @@ export default function Pod() {
       displayTitle: query,
     });
   };
+
+  // ─── AI Match picker keyboard shortcuts ───
+  // 1-9   → pick candidate at that index
+  // m     → switch to manual ISBN entry
+  // e     → log exception (with captured title/photo prefilled)
+  // Esc   → close picker
+  const pickAiCandidate = (idx) => {
+    if (!aiMatchCandidates) return;
+    const c = aiMatchCandidates.candidates[idx];
+    if (!c) return;
+    const sel = aiMatchCandidates;
+    setAiMatchCandidates(null);
+    handleScan(c.isbn, { isManual: true, source: 'ai-match', capturedTitle: sel.capturedTitle, matchScore: c.score });
+  };
+  useEffect(() => {
+    if (!aiMatchCandidates) return;
+    const handler = (e) => {
+      // Ignore if user is typing in any input/textarea
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      if (e.key >= '1' && e.key <= '9') {
+        const idx = Number(e.key) - 1;
+        if (idx < aiMatchCandidates.candidates.length) {
+          e.preventDefault();
+          pickAiCandidate(idx);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAiMatchCandidates(null);
+        return;
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        setAiMatchCandidates(null);
+        setShowManualEntry(true);
+        setTimeout(() => manualInputRef.current?.focus(), 100);
+        return;
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        const sel = aiMatchCandidates;
+        setAiMatchCandidates(null);
+        openExceptionForCapture(sel.capturedTitle, sel.photo);
+        return;
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [aiMatchCandidates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Process scan (after validation/confirmation) ───
   // opts: { isManual?, source?, capturedTitle?, matchScore? }
@@ -1671,21 +1724,18 @@ export default function Pod() {
               {aiMatchCandidates.candidates.length ? 'Pick the matching title' : 'No likely matches'}
             </h2>
             <p style={{ color: '#bbb', margin: '0 0 14px', fontSize: 14 }}>
-              AI read the cover as: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle}"</strong>
+              AI read the cover as: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle || '(no text detected)'}"</strong>
             </p>
             {aiMatchCandidates.candidates.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {aiMatchCandidates.candidates.map((c) => (
+                {aiMatchCandidates.candidates.map((c, idx) => (
                   <button key={c.isbn}
-                    onClick={() => {
-                      const sel = aiMatchCandidates;
-                      setAiMatchCandidates(null);
-                      handleScan(c.isbn, { isManual: true, source: 'ai-match', capturedTitle: sel.capturedTitle, matchScore: c.score });
-                    }}
+                    onClick={() => pickAiCandidate(idx)}
                     style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #555', backgroundColor: '#0a0a0a', color: '#EAB308', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{idx + 1}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
-                      <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po} · {c.isbn}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || `(no title — ${c.isbn})`}</div>
+                      <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po || '—'} · {c.isbn}</div>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : c.score >= MATCH_AMBIGUOUS ? '#EAB308' : '#888' }}>
                       {Math.round(c.score * 100)}%
@@ -1701,7 +1751,7 @@ export default function Pod() {
                 setTimeout(() => manualInputRef.current?.focus(), 100);
               }}
                 style={{ padding: '12px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#93c5fd', fontWeight: 700, cursor: 'pointer' }}>
-                Type ISBN manually
+                Type ISBN manually <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>M</kbd>
               </button>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={() => {
@@ -1710,13 +1760,18 @@ export default function Pod() {
                   openExceptionForCapture(sel.capturedTitle, sel.photo);
                 }}
                   style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}>
-                  {aiMatchCandidates.candidates.length ? 'None of these — log exception' : 'Log exception'}
+                  {aiMatchCandidates.candidates.length ? 'None of these — log exception' : 'Log exception'} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>E</kbd>
                 </button>
                 <button onClick={() => setAiMatchCandidates(null)}
                   style={{ padding: '12px 18px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#2a2a2a', color: '#ccc', fontWeight: 700, cursor: 'pointer' }}>
-                  Cancel
+                  Cancel <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Esc</kbd>
                 </button>
               </div>
+              {aiMatchCandidates.candidates.length > 0 && (
+                <div style={{ color: '#666', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+                  Press <kbd style={kbdHintStyle}>1</kbd>–<kbd style={kbdHintStyle}>{Math.min(9, aiMatchCandidates.candidates.length)}</kbd> to pick a title
+                </div>
+              )}
             </div>
           </div>
         </div>
