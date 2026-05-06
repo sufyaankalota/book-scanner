@@ -276,7 +276,7 @@ export default function Kiosk() {
         <div>
           <h1 style={k.jobName}>{job?.meta?.name || 'No Active Job'}</h1>
           <span style={k.modeLabel}>
-            {job?.meta?.mode === 'multi' ? 'Multi-PO' : 'Single PO'} \u00b7 {activePodCount}/{totalPodCount} pods active
+            {job?.meta?.mode === 'multi' ? 'Multi-PO' : 'Single PO'}{' · '}{activePodCount}/{totalPodCount} pods active
             <span style={{ marginLeft: 18, color: '#22C55E', fontSize: 'clamp(14px, 1.2vw, 20px)', fontWeight: 800, letterSpacing: 2 }}>
               <span className="live-dot"></span>LIVE
             </span>
@@ -345,14 +345,14 @@ export default function Kiosk() {
                   : 'linear-gradient(90deg, #EF4444, #EAB308)',
         }} />
         <div className="progress-shimmer" style={{ ...k.progressShimmer, width: `${pct}%` }} />
-        <span style={k.progressText}>{pct}%  \u2022  {totalScans.toLocaleString()} / {dailyTarget.toLocaleString()}</span>
+        <span style={k.progressText}>{pct}%{'  •  '}{totalScans.toLocaleString()} / {dailyTarget.toLocaleString()}</span>
       </div>
 
       {/* Top Performer + Leaderboard */}
       <div style={k.spotlightRow}>
         {topPerformer && (
           <div className="top-performer-card" style={k.topPerformer}>
-            <div style={k.spotlightLbl}>\ud83c\udfc6 TOP PERFORMER</div>
+            <div style={k.spotlightLbl}>{'🏆 TOP PERFORMER'}</div>
             <div style={k.spotlightName}>{topPerformer.name}</div>
             <div style={k.spotlightCount}>{topPerformer.count.toLocaleString()}</div>
             <div style={k.spotlightSubLbl}>scans today</div>
@@ -360,7 +360,7 @@ export default function Kiosk() {
         )}
 
         <div style={{ ...k.section, flex: 2 }}>
-          <h2 style={k.sectionTitle}>\ud83c\udfc5 Leaderboard</h2>
+          <h2 style={k.sectionTitle}>{'🏅 Leaderboard'}</h2>
           <div style={k.leaderboard}>
             {leaderboard.slice(0, 8).map((l) => (
               <div key={l.name} style={{
