@@ -264,7 +264,8 @@ export default function Dashboard() {
         const minutes = Math.min(15, (now - today.getTime()) / 60000);
         const pace = minutes > 0 && recentStandard.length > 0
           ? Math.round((recentStandard.length / Math.min(15, minutes)) * 60) : 0;
-        const targetPerHour = Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 10));
+        // Per-pod target = 2,200 books / shift (fixed regardless of crew size).
+        const targetPerHour = Math.round(2200 / (job.meta.workingHours || 8));
         pods[podId] = { id: podId,
           regularCount: regularScans.length,
           scanCount: regularScans.length, // legacy alias — PodCard reads scanCount
@@ -945,6 +946,12 @@ export default function Dashboard() {
         <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
           <div style={{ ...st.summaryValue, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
           <div style={st.summaryLabel}>Total Processed / {dailyTarget.toLocaleString()}</div>
+        </div>
+        <div style={st.summaryItem}>
+          <div style={{ ...st.summaryValue, color: dailyTarget > 0 && totalProcessed >= dailyTarget ? '#22C55E' : '#3B82F6' }}>
+            {dailyTarget > 0 ? Math.min(100, Math.round((totalProcessed / dailyTarget) * 100)) : 0}%
+          </div>
+          <div style={st.summaryLabel}>of Target</div>
         </div>
         <div style={st.summaryItem}>
           <div style={st.summaryValue}>{totalPace}</div>
