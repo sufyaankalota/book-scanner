@@ -125,8 +125,13 @@ a {
 /* ── Pod screen responsive density ──
    Tightens spacing for narrow / short viewports (tablets in portrait,
    small laptops, half-screen kiosks, etc.) so all key elements (stats,
-   pace bar, exception button, recent scans) stay above the fold. */
-.pod-screen { container-type: inline-size; }
+   pace bar, exception button, recent scans) stay above the fold.
+
+   NOTE: do NOT use `container-type: inline-size` here — it creates a
+   containing block for `position: fixed` descendants, which causes the
+   flash overlay to be clipped to the pod’s 900px column instead of
+   filling the viewport. */
+.pod-screen { /* container queries intentionally not enabled */ }
 
 /* Short viewports: shrink top/bottom rhythm */
 @media (max-height: 700px) {
@@ -197,4 +202,67 @@ a {
   background-size: 400px 100%;
   animation: shimmer 1.4s infinite linear;
   border-radius: 6px;
+}
+
+/* ── Kiosk screen: fit any TV / monitor without horizontal scroll ── */
+.kiosk-screen {
+  overflow-x: hidden;
+}
+/* On very wide / tall TVs (4K, 65" 1080p) we want the layout to breathe
+   but stay on one screen. The container itself uses min-height:100vh; if
+   any single section overflows on smaller viewports it can scroll. */
+@media (min-aspect-ratio: 16/9) and (min-width: 1600px) {
+  .kiosk-screen { font-size: 18px; }
+}
+/* On a portrait tablet stuck on a wall the spotlight row should stack. */
+@media (max-width: 900px) {
+  .kiosk-screen .kiosk-spotlight-row > * { flex-basis: 100% !important; }
+}
+
+/* ── Generic page responsive: prevent horizontal overflow on any screen ── */
+html, body, #root { max-width: 100%; overflow-x: hidden; }
+
+/* ── Dashboard mobile ── */
+.dashboard-screen { max-width: 1100px; margin: 0 auto; }
+@media (max-width: 768px) {
+  .dashboard-screen { padding-left: 12px !important; padding-right: 12px !important; }
+  .dashboard-screen h1 { font-size: clamp(20px, 5vw, 26px) !important; }
+  /* Header buttons — stretch to full width row, smaller font */
+  .dashboard-screen [data-dashboard-actions] { width: 100%; }
+  .dashboard-screen [data-dashboard-actions] > * {
+    flex: 1 1 calc(50% - 4px) !important;
+    min-width: 0 !important;
+    text-align: center;
+    font-size: 12px !important;
+    padding: 10px 8px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Pod cards stack one-per-row */
+  .dashboard-screen [data-pod-grid] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Summary tiles — 2 columns on mobile */
+  .dashboard-screen [data-summary-row] > * {
+    flex: 1 1 calc(50% - 8px) !important;
+    min-width: 0 !important;
+  }
+  /* Exception/leaderboard rows — ensure they wrap rather than overflow */
+  .dashboard-screen [data-panel] table,
+  .dashboard-screen [data-panel] {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  /* Panel toggles — wrap and scroll */
+  .dashboard-screen [data-panel-toggles] {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dashboard-screen [data-panel-toggles] > * { flex-shrink: 0; }
+}
+@media (max-width: 480px) {
+  .dashboard-screen { padding-left: 8px !important; padding-right: 8px !important; }
+  .dashboard-screen [data-summary-row] > * { flex: 1 1 100% !important; }
 }

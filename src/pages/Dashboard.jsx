@@ -855,7 +855,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div style={st.container}>
+    <div className="dashboard-screen" style={st.container}>
       <Link to="/" style={st.backLink}>← Back to Home</Link>
 
       <div style={st.headerRow}>
@@ -866,7 +866,7 @@ export default function Dashboard() {
             {job.meta.location && ` · ${job.meta.location}`}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div data-dashboard-actions style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button onClick={handleExportToday} disabled={exporting} style={{ ...st.exportBtn, opacity: exporting ? 0.5 : 1 }}>
             {exporting ? '...' : '📊 Today'}
           </button>
@@ -923,7 +923,7 @@ export default function Dashboard() {
       )}
 
       {/* Summary bar — buckets match billing exactly */}
-      <div style={st.summaryRow}>
+      <div data-summary-row style={st.summaryRow}>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: '#22C55E' }}>{totalRegular.toLocaleString()}</div>
           <div style={st.summaryLabel}>Regular{isOwner ? ' @ $0.40' : ''}</div>
@@ -1124,7 +1124,7 @@ export default function Dashboard() {
       )}
 
       {/* Pod grid */}
-      <div style={st.podGrid}>
+      <div data-pod-grid style={st.podGrid}>
         {(job.meta.pods || []).map((podId) => {
           const manualExc = allExceptions.filter((e) => e.podId === podId).length;
           const pod = podData[podId] || { id: podId, scanCount: 0, exceptionCount: 0, pace: 0, targetPerHour: 0, scanners: [] };
@@ -1179,7 +1179,7 @@ export default function Dashboard() {
       )}
 
       {/* Panel toggles */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
+      <div data-panel-toggles style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
         {[
           ['exceptions', `Exceptions (${combinedExceptions.length})`],
           ['leaderboard', '🏆 Leaderboard'],
