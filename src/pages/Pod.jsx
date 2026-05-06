@@ -413,10 +413,10 @@ export default function Pod() {
 
   // ─── Keep input focused ───
   const refocusInput = useCallback(() => {
-    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift && !showManualEntry && !duplicateConfirm) {
+    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift && !showManualEntry && !duplicateConfirm && !showTitleSearch && !aiMatchCandidates && !showIsbnCamera) {
       inputRef.current.focus();
     }
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift, showManualEntry, duplicateConfirm]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift, showManualEntry, duplicateConfirm, showTitleSearch, aiMatchCandidates, showIsbnCamera]);
 
   useEffect(() => {
     if (!isScanning) return;
