@@ -13,3 +13,5 @@ deploy.log
 scripts/.firebase-config.json
 
 deploy_*.log
+
+firebase-debug.log
