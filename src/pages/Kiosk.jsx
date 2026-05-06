@@ -11,11 +11,20 @@ export default function Kiosk() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [allScans, setAllScans] = useState([]);
   const [time, setTime] = useState(new Date());
+  const [factIdx, setFactIdx] = useState(0);
   const containerRef = useRef(null);
+  const milestoneRef = useRef({ 50: false, 75: false, 90: false, 100: false });
+  const audioCtxRef = useRef(null);
 
   // Clock
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Rotate fun facts every 12s
+  useEffect(() => {
+    const t = setInterval(() => setFactIdx((i) => i + 1), 12000);
     return () => clearInterval(t);
   }, []);
 
@@ -150,6 +159,96 @@ export default function Kiosk() {
   const activePodCount = Object.values(presence).filter((p) => p.online).length;
   const totalPodCount = (job?.meta?.pods || []).length;
 
+  // Per-pod rankings (medals) + on-fire flag (top quartile by current pace)
+  const podRanking = useMemo(() => {
+    const entries = Object.entries(podData)
+      .filter(([, v]) => v.count > 0)
+      .sort((a, b) => b[1].count - a[1].count);
+    const rankByPod = {};
+    entries.forEach(([id], i) => { rankByPod[id] = i + 1; });
+    const paces = Object.values(podData).map((p) => p.pace).filter((p) => p > 0).sort((a, b) => b - a);
+    const fireThreshold = paces.length >= 4 ? paces[Math.floor(paces.length / 4)] : (paces[0] || Infinity);
+    return { rankByPod, fireThreshold: Math.max(60, fireThreshold) };
+  }, [podData]);
+
+  // Rotating fun facts — derived from live data
+  const funFacts = useMemo(() => {
+    const facts = [];
+    if (totalPace > 0) {
+      const perSec = (totalPace / 3600).toFixed(1);
+      facts.push(`⚡ ${perSec} books scanned every second!`);
+      const perMin = Math.round(totalPace / 60);
+      if (perMin > 0) facts.push(`📚 ${perMin} books per minute across the floor`);
+    }
+    if (totalScans >= 100) {
+      const stackFt = (totalScans * 0.04).toFixed(1);
+      facts.push(`📏 Stacked, today's books would be ${stackFt} ft tall`);
+    }
+    if (topPerformer) {
+      facts.push(`🔥 ${topPerformer.name} leads with ${topPerformer.count.toLocaleString()} scans`);
+    }
+    if (activePodCount > 0 && totalScans > 0) {
+      const avg = Math.round(totalScans / activePodCount);
+      facts.push(`💪 Each active pod averages ${avg.toLocaleString()} books today`);
+    }
+    if (pct >= 100) {
+      facts.push(`🎉 Target smashed! Every scan now is bonus ammo`);
+    } else if (remaining > 0 && totalPace > 0) {
+      facts.push(`🎯 ${remaining.toLocaleString()} books to go — you got this!`);
+    }
+    facts.push(`🏆 Top 3 operators get bragging rights all day`);
+    facts.push(`✨ Every book scanned is a customer made happy`);
+    return facts;
+  }, [totalPace, totalScans, topPerformer, activePodCount, pct, remaining]);
+
+  const currentFact = funFacts.length > 0 ? funFacts[factIdx % funFacts.length] : '';
+
+  // Milestone sound effects (50/75/90/100%) — Web Audio API, no assets needed
+  useEffect(() => {
+    const playMilestone = (kind) => {
+      try {
+        if (!audioCtxRef.current) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (!Ctx) return;
+          audioCtxRef.current = new Ctx();
+        }
+        const ctx = audioCtxRef.current;
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        // Notes: ascending arpeggio for milestone, fanfare for 100%
+        const notes = kind === 'jackpot'
+          ? [523.25, 659.25, 783.99, 1046.5, 1318.5] // C-E-G-C-E (fanfare)
+          : kind === 'big'
+            ? [523.25, 659.25, 783.99] // C-E-G
+            : [523.25, 659.25]; // C-E
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          const start = ctx.currentTime + i * 0.13;
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.4);
+        });
+      } catch { /* audio is best-effort */ }
+    };
+    const checks = [
+      { thr: 100, kind: 'jackpot' },
+      { thr: 90,  kind: 'big' },
+      { thr: 75,  kind: 'big' },
+      { thr: 50,  kind: 'small' },
+    ];
+    for (const { thr, kind } of checks) {
+      if (pct >= thr && !milestoneRef.current[thr]) {
+        milestoneRef.current[thr] = true;
+        playMilestone(kind);
+      }
+    }
+  }, [pct]);
+
   return (
     <div ref={containerRef} style={k.container}>
       {/* Inline animations + LIVE dot pulse */}
@@ -158,6 +257,7 @@ export default function Kiosk() {
         @keyframes pulse-glow { 0%,100% { box-shadow: 0 0 30px rgba(34,197,94,0.4); } 50% { box-shadow: 0 0 60px rgba(34,197,94,0.7); } }
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
         @keyframes slide-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fact-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
         .live-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #22C55E; margin-right: 10px; vertical-align: middle; animation: pulse-dot 1.4s ease-in-out infinite; }
         .progress-shimmer {
           background: linear-gradient(90deg,
@@ -189,6 +289,13 @@ export default function Kiosk() {
       <div style={{ ...k.motivBanner, color: motivational.color, borderColor: motivational.color }}>
         {motivational.msg}
       </div>
+
+      {/* Rotating fun fact */}
+      {currentFact && (
+        <div key={factIdx} style={k.funFact}>
+          {currentFact}
+        </div>
+      )}
 
       {/* Big numbers */}
       <div style={k.bigRow}>
@@ -288,15 +395,24 @@ export default function Kiosk() {
             const borderClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#333';
             const statusClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : 'var(--text-tertiary, #666)';
             const statusTxt = onBreak ? '\u2615 BREAK' : isPaused ? '\u23f8 PAUSED' : isOnline ? '\u25cf LIVE' : '\u25cb OFF';
+            const rank = podRanking.rankByPod[podId];
+            const medal = rank === 1 ? '\ud83e\udd47' : rank === 2 ? '\ud83e\udd48' : rank === 3 ? '\ud83e\udd49' : null;
+            const onFire = isOnline && !onBreak && !isPaused && pd.pace >= podRanking.fireThreshold && pd.pace > 0;
             return (
               <div key={podId} style={{
                 ...k.podCard,
-                borderColor: borderClr,
-                boxShadow: isOnline && !onBreak && !isPaused ? `0 0 20px ${borderClr}33` : 'none',
+                borderColor: onFire ? '#F59E0B' : borderClr,
+                boxShadow: onFire
+                  ? '0 0 28px rgba(245,158,11,0.55)'
+                  : isOnline && !onBreak && !isPaused ? `0 0 20px ${borderClr}33` : 'none',
               }}>
                 <div style={k.podHeader}>
-                  <span style={k.podName}>{podId}</span>
-                  <span style={{ ...k.podStatus, color: statusClr }}>{statusTxt}</span>
+                  <span style={k.podName}>
+                    {medal && <span style={{ marginRight: 6 }}>{medal}</span>}{podId}
+                  </span>
+                  <span style={{ ...k.podStatus, color: onFire ? '#F59E0B' : statusClr }}>
+                    {onFire ? '\ud83d\udd25 ON FIRE' : statusTxt}
+                  </span>
                 </div>
                 {pr?.operator && isOnline && <div style={k.podOp}>{pr.operator}</div>}
                 <div style={k.podStats}>
@@ -351,12 +467,25 @@ const k = {
     fontWeight: 900,
     letterSpacing: '2px',
     padding: 'clamp(14px, 1.5vw, 24px)',
-    margin: 'clamp(8px, 1vw, 14px) 0 clamp(16px, 1.8vw, 28px)',
+    margin: 'clamp(8px, 1vw, 14px) 0 clamp(8px, 0.8vw, 14px)',
     border: '2px solid',
     borderRadius: 16,
     background: 'rgba(255,255,255,0.02)',
     textShadow: '0 0 30px currentColor',
     transition: 'all 0.6s ease',
+  },
+  funFact: {
+    textAlign: 'center',
+    fontSize: 'clamp(16px, 1.6vw, 26px)',
+    fontWeight: 700,
+    color: '#cbd5e1',
+    letterSpacing: 0.5,
+    padding: 'clamp(8px, 0.8vw, 14px) clamp(14px, 1.4vw, 22px)',
+    margin: '0 0 clamp(16px, 1.8vw, 28px)',
+    background: 'linear-gradient(90deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08))',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    animation: 'fact-in 0.6s ease-out',
   },
   bigRow: { display: 'flex', gap: 'clamp(16px, 1.8vw, 30px)', justifyContent: 'space-around', marginBottom: 'clamp(16px, 1.8vw, 28px)', flexWrap: 'wrap' },
   bigStat: { textAlign: 'center', minWidth: 'clamp(120px, 12vw, 200px)', flex: 1 },
