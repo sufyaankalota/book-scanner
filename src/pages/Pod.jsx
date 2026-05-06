@@ -326,6 +326,39 @@ export default function Pod() {
     return () => clearInterval(interval);
   }, [isScanning, lastScanTime]); // eslint-disable-line
 
+  // ─── Listen for server-side auto-clockout (5:30 PM end-of-day, etc.) ───
+  // The autoClockOutEndOfDay scheduled function flips endTime + autoEnded on
+  // every active shift. When our own shift closes, finalize the UI just like
+  // a manual end-shift so the station doesn't keep showing as active.
+  useEffect(() => {
+    if (!isScanning || !shiftDocRef.current) return;
+    const myShiftId = shiftDocRef.current;
+    const unsub = onSnapshot(doc(db, 'shifts', myShiftId), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.endTime && data.autoEnded && shiftDocRef.current === myShiftId) {
+        const reason = data.autoEndedReason || 'auto_end';
+        logAudit('shift_auto_clockout_received', { operator: operatorName, podId, reason });
+        shiftDocRef.current = null;
+        flash('#EAB308', `Shift auto-ended (${reason}) — clocking out…`, 4000);
+        // Clear local state and bounce to operator screen.
+        try { localStorage.removeItem(`pod_${podId}_state`); } catch {}
+        setShowEndShift(false);
+        setShiftStats(null);
+        setPhase(PHASE_OPERATOR);
+        setOperatorName('');
+        setScannerPaired(false);
+        setLocalCount(0);
+        setRecentScans([]);
+        scanStartTimeRef.current = null;
+        setScanStreak(0);
+        setBreakMinutesUsed(0);
+        if (fromPods) navigate('/pods');
+      }
+    });
+    return unsub;
+  }, [isScanning, podId, operatorName, fromPods]); // eslint-disable-line
+
   // ─── Job-wide ISBN dedup ───
   // Long-running jobs (millions of scans) cannot afford a full collection
   // listener. Instead we check the per-ISBN marker doc maintained server-side

@@ -174,6 +174,67 @@ exports.sendDailyReport = onSchedule({
   await generateAndSendReport();
 });
 
+// ─── Scheduled trigger: auto-clock-out every active shift at 5:30 PM EST ───
+// Runs daily; finds all shifts with endTime==null and closes them with
+// autoEnded=true / autoEndedReason='end_of_day'. Also flips presence to offline
+// so the active-pod count on the dashboard updates without waiting for the
+// 90-second presence-stale check. Pod.jsx listens for the autoEnded flag on
+// its own shift doc and resets the operator UI cleanly.
+async function autoClockOutAllShifts(reason = 'end_of_day') {
+  const snap = await db.collection('shifts').where('endTime', '==', null).get();
+  if (snap.empty) {
+    console.log(`autoClockOut: no active shifts to close`);
+    return { closed: 0 };
+  }
+  const writer = db.bulkWriter();
+  let closed = 0;
+  const podIds = new Set();
+  snap.forEach((d) => {
+    closed++;
+    if (d.data().podId) podIds.add(d.data().podId);
+    writer.update(d.ref, {
+      endTime: Timestamp.now(),
+      autoEnded: true,
+      autoEndedReason: reason,
+      autoEndedAt: Timestamp.now(),
+    });
+  });
+  // Mark each pod offline (best-effort; merge so we don't clobber unrelated fields).
+  for (const podId of podIds) {
+    writer.set(db.doc(`presence/${podId}`), {
+      podId, scanners: [], operator: '', status: 'offline',
+      online: false, onBreak: false, lastSeen: Timestamp.now(),
+    }, { merge: true });
+  }
+  await writer.close();
+  console.log(`autoClockOut: closed ${closed} shifts across ${podIds.size} pods (${reason})`);
+  return { closed, pods: podIds.size, reason };
+}
+
+exports.autoClockOutEndOfDay = onSchedule({
+  schedule: 'every day 17:30',
+  timeZone: 'America/New_York',
+  region: 'us-east1',
+}, async () => {
+  await autoClockOutAllShifts('end_of_day');
+});
+
+// HTTP variant for manual trigger / testing
+exports.autoClockOutNow = onRequest({
+  region: 'us-east1',
+  cors: true,
+  invoker: 'public',
+}, async (req, res) => {
+  try {
+    const reason = String(req.query.reason || 'manual');
+    const result = await autoClockOutAllShifts(reason);
+    res.json(result);
+  } catch (err) {
+    console.error('autoClockOutNow failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── HTTP trigger: manual send (for testing or on-demand) ───
 exports.sendReportNow = onRequest({
   region: 'us-east1',
