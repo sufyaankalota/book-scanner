@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { computeDailyTarget } from '../utils/target';
 
 /**
  * Live "Today" stats: total scans, top 5 operators, hourly pace trend.
@@ -55,8 +56,8 @@ export default function TodayLeaderboard({ job, compact = false }) {
 
   if (!job) return null;
 
-  const target = job?.meta?.dailyTarget || 22000;
-  const pct = Math.round((stats.total / target) * 100);
+  const target = computeDailyTarget(job);
+  const pct = target > 0 ? Math.round((stats.total / target) * 100) : 0;
 
   return (
     <div style={compact ? styles.compactWrap : styles.wrap}>

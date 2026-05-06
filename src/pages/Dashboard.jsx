@@ -27,6 +27,7 @@ import { copyManifestChunks } from '../utils/manifestStore';
 import { useToast } from '../components/Toast';
 import TodayLeaderboard from '../components/TodayLeaderboard';
 import { useAuth } from '../contexts/AuthContext';
+import { computeDailyTarget } from '../utils/target';
 
 export default function Dashboard() {
   const { show: toast } = useToast();
@@ -704,7 +705,8 @@ export default function Dashboard() {
   const totalProcessed = totalRegular + totalManual + totalAiMatch + totalExceptions;
   const totalScans = totalRegular; // legacy alias
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
-  const dailyTarget = job?.meta?.dailyTarget || 22000;
+  // Daily target = 2,200 × pod count (scales with crew size).
+  const dailyTarget = computeDailyTarget(job);
   const remaining = Math.max(0, dailyTarget - totalProcessed);
   const estHoursLeft = totalPace > 0 ? (remaining / totalPace).toFixed(1) : '—';
 
@@ -826,8 +828,8 @@ export default function Dashboard() {
       manualEntries: manualCount,
       aiMatched: aiMatchCount,
       exceptions: exceptionCount,
-      dailyTarget: job.meta.dailyTarget || 22000,
-      pctOfTarget: Math.round(((standardCount + manualCount + aiMatchCount + exceptionCount) / (job.meta.dailyTarget || 22000)) * 100),
+      dailyTarget,
+      pctOfTarget: dailyTarget > 0 ? Math.round(((standardCount + manualCount + aiMatchCount + exceptionCount) / dailyTarget) * 100) : 0,
       poProgress,
       laborHours: parseFloat(laborHours.toFixed(1)),
       scansPerHour: laborHours > 0 ? Math.round(allScans.length / laborHours) : 0,
@@ -862,7 +864,7 @@ export default function Dashboard() {
         <div>
           <h1 style={st.title}>{job.meta.name}</h1>
           <p style={st.subtitle}>
-            {job.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'} · Target: {dailyTarget.toLocaleString()}
+            {job.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'} · Target: {dailyTarget.toLocaleString()} <span style={{ color: 'var(--text-tertiary, #555)' }}>(2,200 × {job.meta.pods?.length || 0} pods)</span>
             {job.meta.location && ` · ${job.meta.location}`}
           </p>
         </div>

@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import TodayLeaderboard from '../components/TodayLeaderboard';
+import { computeDailyTarget } from '../utils/target';
 
 export default function Home() {
   const { currentUser, logout } = useAuth();
@@ -132,7 +133,7 @@ export default function Home() {
           <span style={styles.jobText}>
             Active Job: <strong>{job.meta.name}</strong> ·{' '}
             {job.meta.mode === 'multi' ? 'Multi-PO' : 'Single PO'} ·
-            Target: {job.meta.dailyTarget?.toLocaleString()}
+            Target: {computeDailyTarget(job).toLocaleString()}
           </span>
         </div>
       ) : (

@@ -15,6 +15,7 @@ import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
 import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
+import { PER_POD_DAILY_TARGET } from '../utils/target';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
 
@@ -1058,12 +1059,11 @@ export default function Pod() {
   };
 
   // Pace / target calculations
-  const targetPerHour = job
-    ? Math.round((job.meta.dailyTarget || 22000) / (job.meta.workingHours || 8) / (job.meta.pods?.length || 10))
-    : 550;
+  // Daily per-pod target is fixed at 2,200 books — crew size varies day to day.
+  const dailyPodTarget = PER_POD_DAILY_TARGET;
+  const targetPerHour = Math.round(dailyPodTarget / (job?.meta?.workingHours || 8));
   const paceRatio = targetPerHour > 0 ? pace / targetPerHour : 1;
   const paceColor = paceRatio >= 1 ? '#22C55E' : paceRatio >= 0.8 ? '#EAB308' : '#EF4444';
-  const dailyPodTarget = job ? Math.round((job.meta.dailyTarget || 22000) / (job.meta.pods?.length || 10)) : 0;
   const dailyPct = dailyPodTarget > 0 ? Math.min(100, Math.round((totalScans / dailyPodTarget) * 100)) : 0;
   const goalPct = dailyPodTarget > 0 ? Math.min(100, Math.round((targetPerHour * (job?.meta?.workingHours || 8) / dailyPodTarget) * 100)) : 50;
 

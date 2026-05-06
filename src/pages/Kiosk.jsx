@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import {
   collection, query, where, onSnapshot, Timestamp,
 } from 'firebase/firestore';
+import { computeDailyTarget } from '../utils/target';
 
 export default function Kiosk() {
   const [job, setJob] = useState(null);
@@ -107,8 +108,9 @@ export default function Kiosk() {
 
   const totalScans = Object.values(podData).reduce((sum, p) => sum + p.count, 0);
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
-  const dailyTarget = job?.meta?.dailyTarget || 22000;
-  const pct = Math.min(100, Math.round((totalScans / dailyTarget) * 100));
+  // Daily target = 2,200 × pod count (scales with crew size).
+  const dailyTarget = computeDailyTarget(job);
+  const pct = dailyTarget > 0 ? Math.min(100, Math.round((totalScans / dailyTarget) * 100)) : 0;
   const remaining = Math.max(0, dailyTarget - totalScans);
 
   // Countdown timer
