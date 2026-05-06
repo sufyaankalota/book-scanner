@@ -271,13 +271,13 @@ export default function Kiosk() {
         .top-performer-card { animation: pulse-glow 3s ease-in-out infinite; }
       `}</style>
 
-      {/* Top bar */}
+      {/* Top bar — compact single row */}
       <div style={k.topBar}>
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <h1 style={k.jobName}>{job?.meta?.name || 'No Active Job'}</h1>
           <span style={k.modeLabel}>
             {job?.meta?.mode === 'multi' ? 'Multi-PO' : 'Single PO'}{' · '}{activePodCount}/{totalPodCount} pods active
-            <span style={{ marginLeft: 18, color: '#22C55E', fontSize: 'clamp(14px, 1.2vw, 20px)', fontWeight: 800, letterSpacing: 2 }}>
+            <span style={{ marginLeft: 14, color: '#22C55E', fontWeight: 800, letterSpacing: 2 }}>
               <span className="live-dot"></span>LIVE
             </span>
           </span>
@@ -297,230 +297,209 @@ export default function Kiosk() {
         </div>
       )}
 
-      {/* Big numbers */}
-      <div style={k.bigRow}>
-        <div className="stat-tile" style={k.bigStat}>
-          <div style={{ ...k.bigVal, color: '#fff' }}>{totalScans.toLocaleString()}</div>
-          <div style={k.bigLbl}>SCANNED TODAY</div>
-        </div>
-        <div className="stat-tile" style={{ ...k.bigStat, animationDelay: '0.1s' }}>
-          <div style={{ ...k.bigVal, color: pct >= 100 ? '#A855F7' : pct >= 75 ? '#22C55E' : pct >= 50 ? '#3B82F6' : '#EAB308' }}>{pct}%</div>
-          <div style={k.bigLbl}>OF TARGET</div>
-        </div>
-        <div className="stat-tile" style={{ ...k.bigStat, animationDelay: '0.2s' }}>
-          <div style={{ ...k.bigVal, color: '#22C55E' }}>{totalPace.toLocaleString()}</div>
-          <div style={k.bigLbl}>SCANS / HR</div>
-        </div>
-        <div className="stat-tile" style={{ ...k.bigStat, animationDelay: '0.3s' }}>
-          <div style={k.bigVal}>{remaining.toLocaleString()}</div>
-          <div style={k.bigLbl}>REMAINING</div>
-        </div>
-        <div className="stat-tile" style={{ ...k.bigStat, animationDelay: '0.4s' }}>
-          <div style={{ ...k.bigVal, color: countdownColor }}>{countdownLabel}</div>
-          <div style={k.bigLbl}>TIME LEFT</div>
-        </div>
-        {etaTime && (
-          <div className="stat-tile" style={{ ...k.bigStat, animationDelay: '0.5s' }}>
-            <div style={{ ...k.bigVal, color: countdownColor, fontSize: 'clamp(36px, 5vw, 70px)' }}>
-              {etaTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+      {/* Main 2-column layout: stats+pods on left, spotlight+leaderboard on right */}
+      <div style={k.mainGrid}>
+
+        {/* LEFT column */}
+        <div style={k.leftCol}>
+          {/* Big stats — only 3 now */}
+          <div style={k.bigRow}>
+            <div className="stat-tile" style={k.bigStat}>
+              <div style={{ ...k.bigVal, color: '#fff' }}>{totalScans.toLocaleString()}</div>
+              <div style={k.bigLbl}>SCANNED TODAY</div>
             </div>
-            <div style={k.bigLbl}>ETA DONE</div>
+            <div className="stat-tile" style={{ ...k.bigStat, animationDelay: '0.1s' }}>
+              <div style={{ ...k.bigVal, color: '#22C55E' }}>{totalPace.toLocaleString()}</div>
+              <div style={k.bigLbl}>SCANS / HR</div>
+            </div>
+            <div className="stat-tile" style={{ ...k.bigStat, animationDelay: '0.2s' }}>
+              <div style={{ ...k.bigVal, color: pct >= 100 ? '#A855F7' : pct >= 75 ? '#22C55E' : pct >= 50 ? '#3B82F6' : '#EAB308' }}>{pct}%</div>
+              <div style={k.bigLbl}>OF TARGET</div>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Progress bar — fat, gradient, shimmery */}
-      <div style={k.progressContainer}>
-        <div style={{
-          ...k.progressBar,
-          width: `${pct}%`,
-          background: pct >= 100
-            ? 'linear-gradient(90deg, #A855F7, #EC4899, #F59E0B)'
-            : pct >= 75
-              ? 'linear-gradient(90deg, #22C55E, #84CC16)'
-              : pct >= 50
-                ? 'linear-gradient(90deg, #3B82F6, #22C55E)'
-                : pct >= 25
-                  ? 'linear-gradient(90deg, #EAB308, #3B82F6)'
-                  : 'linear-gradient(90deg, #EF4444, #EAB308)',
-        }} />
-        <div className="progress-shimmer" style={{ ...k.progressShimmer, width: `${pct}%` }} />
-        <span style={k.progressText}>{pct}%{'  •  '}{totalScans.toLocaleString()} / {dailyTarget.toLocaleString()}</span>
-      </div>
-
-      {/* Top Performer + Leaderboard */}
-      <div className="kiosk-spotlight-row" style={k.spotlightRow}>
-        {topPerformer && (
-          <div className="top-performer-card" style={k.topPerformer}>
-            <div style={k.spotlightLbl}>{'🏆 TOP PERFORMER'}</div>
-            <div style={k.spotlightName}>{topPerformer.name}</div>
-            <div style={k.spotlightCount}>{topPerformer.count.toLocaleString()}</div>
-            <div style={k.spotlightSubLbl}>scans today</div>
+          {/* Pods */}
+          <div style={k.section}>
+            <h2 style={k.sectionTitle}>Pod Status</h2>
+            <div style={k.podGrid}>
+              {(job?.meta?.pods || []).map((podId) => {
+                const pd = podData[podId] || { count: 0, pace: 0 };
+                const pr = presence[podId];
+                const isOnline = pr?.online;
+                const isPaused = pr?.status === 'paused';
+                const onBreak = pr?.onBreak === true;
+                const borderClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#333';
+                const statusClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : 'var(--text-tertiary, #666)';
+                const statusTxt = onBreak ? '☕ BREAK' : isPaused ? '⏸ PAUSED' : isOnline ? '● LIVE' : '○ OFF';
+                const rank = podRanking.rankByPod[podId];
+                const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
+                const onFire = isOnline && !onBreak && !isPaused && pd.pace >= podRanking.fireThreshold && pd.pace > 0;
+                return (
+                  <div key={podId} style={{
+                    ...k.podCard,
+                    borderColor: onFire ? '#F59E0B' : borderClr,
+                    boxShadow: onFire
+                      ? '0 0 24px rgba(245,158,11,0.55)'
+                      : isOnline && !onBreak && !isPaused ? `0 0 16px ${borderClr}33` : 'none',
+                  }}>
+                    <div style={k.podHeader}>
+                      <span style={k.podName}>
+                        {medal && <span style={{ marginRight: 4 }}>{medal}</span>}{podId}
+                      </span>
+                      <span style={{ ...k.podStatus, color: onFire ? '#F59E0B' : statusClr }}>
+                        {onFire ? '🔥 ON FIRE' : statusTxt}
+                      </span>
+                    </div>
+                    {pr?.operator && isOnline && <div style={k.podOp}>{pr.operator}</div>}
+                    <div style={k.podStats}>
+                      <span style={k.podPace}>{pd.pace}<span style={k.podPaceUnit}>/hr</span></span>
+                      <span style={k.podCount}>{pd.count.toLocaleString()}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        )}
+        </div>
 
-        <div style={{ ...k.section, flex: 2 }}>
-          <h2 style={k.sectionTitle}>{'🏅 Leaderboard'}</h2>
-          <div style={k.leaderboard}>
-            {leaderboard.slice(0, 8).map((l) => (
-              <div key={l.name} style={{
-                ...k.leaderRow,
-                ...(l.rank <= 3 ? { background: l.rank === 1 ? 'linear-gradient(90deg, rgba(234,179,8,0.12), transparent)' : l.rank === 2 ? 'linear-gradient(90deg, rgba(156,163,175,0.10), transparent)' : 'linear-gradient(90deg, rgba(217,119,6,0.10), transparent)' } : {}),
-              }}>
-                <span style={{
-                  ...k.rank,
-                  color: l.rank === 1 ? '#EAB308' : l.rank === 2 ? '#9CA3AF' : l.rank === 3 ? '#D97706' : 'var(--text-tertiary, #666)',
+        {/* RIGHT column — Top performer + leaderboard */}
+        <div style={k.rightCol}>
+          {topPerformer && (
+            <div className="top-performer-card" style={k.topPerformer}>
+              <div style={k.spotlightLbl}>{'🏆 TOP PERFORMER'}</div>
+              <div style={k.spotlightName}>{topPerformer.name}</div>
+              <div style={k.spotlightCount}>{topPerformer.count.toLocaleString()}</div>
+              <div style={k.spotlightSubLbl}>scans today</div>
+            </div>
+          )}
+
+          <div style={{ ...k.section, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <h2 style={k.sectionTitle}>{'🏅 Leaderboard'}</h2>
+            <div style={{ ...k.leaderboard, flex: 1, overflow: 'auto', minHeight: 0 }}>
+              {leaderboard.slice(0, 10).map((l) => (
+                <div key={l.name} style={{
+                  ...k.leaderRow,
+                  ...(l.rank <= 3 ? { background: l.rank === 1 ? 'linear-gradient(90deg, rgba(234,179,8,0.12), transparent)' : l.rank === 2 ? 'linear-gradient(90deg, rgba(156,163,175,0.10), transparent)' : 'linear-gradient(90deg, rgba(217,119,6,0.10), transparent)' } : {}),
                 }}>
-                  {l.rank <= 3 ? ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'][l.rank - 1] : `#${l.rank}`}
-                </span>
-                <span style={k.leaderName}>{l.name}</span>
-                <span style={k.leaderCount}>{l.count.toLocaleString()}</span>
-              </div>
-            ))}
-            {leaderboard.length === 0 && <p style={{ color: 'var(--text-tertiary, #666)', textAlign: 'center', padding: 30, fontSize: 'clamp(16px, 1.4vw, 22px)' }}>No scans yet \u2014 first one wins gold \ud83e\udd47</p>}
+                  <span style={{
+                    ...k.rank,
+                    color: l.rank === 1 ? '#EAB308' : l.rank === 2 ? '#9CA3AF' : l.rank === 3 ? '#D97706' : 'var(--text-tertiary, #666)',
+                  }}>
+                    {l.rank <= 3 ? ['🥇', '🥈', '🥉'][l.rank - 1] : `#${l.rank}`}
+                  </span>
+                  <span style={k.leaderName}>{l.name}</span>
+                  <span style={k.leaderCount}>{l.count.toLocaleString()}</span>
+                </div>
+              ))}
+              {leaderboard.length === 0 && <p style={{ color: 'var(--text-tertiary, #666)', textAlign: 'center', padding: 20, fontSize: 'clamp(13px, 1vw, 18px)' }}>No scans yet — first one wins gold 🥇</p>}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Pods */}
-      <div style={k.section}>
-        <h2 style={k.sectionTitle}>Pod Status</h2>
-        <div style={k.podGrid}>
-          {(job?.meta?.pods || []).map((podId) => {
-            const pd = podData[podId] || { count: 0, pace: 0 };
-            const pr = presence[podId];
-            const isOnline = pr?.online;
-            const isPaused = pr?.status === 'paused';
-            const onBreak = pr?.onBreak === true;
-            const borderClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : '#333';
-            const statusClr = onBreak ? '#A855F7' : isPaused ? '#EAB308' : isOnline ? '#22C55E' : 'var(--text-tertiary, #666)';
-            const statusTxt = onBreak ? '\u2615 BREAK' : isPaused ? '\u23f8 PAUSED' : isOnline ? '\u25cf LIVE' : '\u25cb OFF';
-            const rank = podRanking.rankByPod[podId];
-            const medal = rank === 1 ? '\ud83e\udd47' : rank === 2 ? '\ud83e\udd48' : rank === 3 ? '\ud83e\udd49' : null;
-            const onFire = isOnline && !onBreak && !isPaused && pd.pace >= podRanking.fireThreshold && pd.pace > 0;
-            return (
-              <div key={podId} style={{
-                ...k.podCard,
-                borderColor: onFire ? '#F59E0B' : borderClr,
-                boxShadow: onFire
-                  ? '0 0 28px rgba(245,158,11,0.55)'
-                  : isOnline && !onBreak && !isPaused ? `0 0 20px ${borderClr}33` : 'none',
-              }}>
-                <div style={k.podHeader}>
-                  <span style={k.podName}>
-                    {medal && <span style={{ marginRight: 6 }}>{medal}</span>}{podId}
-                  </span>
-                  <span style={{ ...k.podStatus, color: onFire ? '#F59E0B' : statusClr }}>
-                    {onFire ? '\ud83d\udd25 ON FIRE' : statusTxt}
-                  </span>
-                </div>
-                {pr?.operator && isOnline && <div style={k.podOp}>{pr.operator}</div>}
-                <div style={k.podStats}>
-                  <span style={k.podCount}>{pd.count.toLocaleString()}</span>
-                  <span style={k.podPace}>{pd.pace}/hr</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Hourly chart \u2014 compact */}
-      <div style={k.section}>
-        <h2 style={k.sectionTitle}>Hourly Breakdown</h2>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 'clamp(80px, 10vh, 140px)', padding: '0 4px' }}>
-          {hourlyData.map((d) => (
-            <div key={d.hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ fontSize: 'clamp(10px, 0.9vw, 14px)', color: '#888', marginBottom: 4, fontWeight: 700, fontFamily: 'monospace', minHeight: 14 }}>{d.count > 0 ? d.count : ''}</div>
-              <div style={{
-                width: '100%', maxWidth: 60,
-                height: `${(d.count / maxHourly) * 100}%`, minHeight: d.count > 0 ? 6 : 1,
-                background: d.hour === new Date().getHours()
-                  ? 'linear-gradient(180deg, #FBBF24, #EAB308)'
-                  : 'linear-gradient(180deg, #60A5FA, #3B82F6)',
-                borderRadius: '6px 6px 0 0',
-                boxShadow: d.hour === new Date().getHours() ? '0 0 12px rgba(234,179,8,0.5)' : 'none',
-              }} />
-              <div style={{ fontSize: 'clamp(11px, 0.9vw, 14px)', color: 'var(--text-tertiary, #666)', marginTop: 4, fontFamily: 'monospace' }}>{d.hour}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <p style={{ textAlign: 'center', color: '#444', fontSize: 'clamp(11px, 0.9vw, 14px)', marginTop: 16 }}>
-        <button onClick={goFullscreen} style={{ background: 'none', border: '1px solid #444', color: '#888', borderRadius: 6, padding: '6px 16px', cursor: 'pointer', fontSize: 'clamp(11px, 0.9vw, 14px)' }}>\u26f6 Toggle Fullscreen</button>
-        {' \u00b7 '}Auto-refreshes in real time
-      </p>
+      <button onClick={goFullscreen} style={k.fullscreenBtn} title="Toggle fullscreen">⛶</button>
     </div>
   );
 }
 
 const k = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #f0f0f0)', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", padding: 'clamp(10px, 1.4vw, 22px) clamp(12px, 1.6vw, 26px)', boxSizing: 'border-box', overflowX: 'hidden' },
-  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'clamp(8px, 0.8vw, 14px)', flexWrap: 'wrap', gap: 12 },
-  jobName: { fontSize: 'clamp(24px, 2.8vw, 46px)', fontWeight: 900, margin: 0, letterSpacing: '-0.5px', background: 'linear-gradient(90deg, #fff, #aaa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' },
-  modeLabel: { color: 'var(--text-secondary, #888)', fontSize: 'clamp(12px, 1vw, 18px)', fontWeight: 600 },
-  clock: { fontSize: 'clamp(28px, 3.2vw, 56px)', fontWeight: 200, color: 'var(--text-secondary, #888)', fontFamily: 'monospace', letterSpacing: '-1px' },
+  container: {
+    height: '100vh', width: '100vw', maxWidth: '100vw',
+    backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #f0f0f0)',
+    fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    padding: 'clamp(8px, 1.2vh, 18px) clamp(10px, 1.4vw, 22px)',
+    boxSizing: 'border-box', overflow: 'hidden',
+    display: 'flex', flexDirection: 'column', gap: 'clamp(4px, 0.8vh, 10px)',
+    position: 'relative',
+  },
+  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexShrink: 0 },
+  jobName: { fontSize: 'clamp(20px, 2.6vw, 38px)', fontWeight: 900, margin: 0, letterSpacing: '-0.5px', lineHeight: 1.1, background: 'linear-gradient(90deg, #fff, #aaa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  modeLabel: { color: 'var(--text-secondary, #888)', fontSize: 'clamp(11px, 1vw, 16px)', fontWeight: 600, display: 'inline-flex', alignItems: 'center' },
+  clock: { fontSize: 'clamp(24px, 2.8vw, 44px)', fontWeight: 200, color: 'var(--text-secondary, #888)', fontFamily: 'monospace', letterSpacing: '-1px', flexShrink: 0 },
+
   motivBanner: {
     textAlign: 'center',
-    fontSize: 'clamp(22px, 2.8vw, 44px)',
+    fontSize: 'clamp(20px, 2.6vw, 40px)',
     fontWeight: 900,
     letterSpacing: '2px',
-    padding: 'clamp(8px, 0.9vw, 16px) clamp(12px, 1.4vw, 22px)',
-    margin: 'clamp(4px, 0.6vw, 10px) 0 clamp(6px, 0.6vw, 10px)',
+    padding: 'clamp(6px, 1vh, 14px) clamp(10px, 1.2vw, 20px)',
     border: '2px solid',
-    borderRadius: 14,
+    borderRadius: 12,
     background: 'rgba(255,255,255,0.02)',
     textShadow: '0 0 30px currentColor',
     transition: 'all 0.6s ease',
+    flexShrink: 0,
   },
   funFact: {
     textAlign: 'center',
-    fontSize: 'clamp(13px, 1.3vw, 22px)',
+    fontSize: 'clamp(12px, 1.2vw, 18px)',
     fontWeight: 700,
     color: '#cbd5e1',
     letterSpacing: 0.5,
-    padding: 'clamp(5px, 0.5vw, 10px) clamp(10px, 1vw, 18px)',
-    margin: '0 0 clamp(8px, 0.9vw, 16px)',
+    padding: 'clamp(4px, 0.6vh, 8px) clamp(8px, 1vw, 16px)',
     background: 'linear-gradient(90deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08))',
     border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 10,
+    borderRadius: 8,
     animation: 'fact-in 0.6s ease-out',
+    flexShrink: 0,
   },
-  bigRow: { display: 'flex', gap: 'clamp(10px, 1.2vw, 22px)', justifyContent: 'space-around', marginBottom: 'clamp(8px, 0.9vw, 16px)', flexWrap: 'wrap' },
-  bigStat: { textAlign: 'center', minWidth: 'clamp(100px, 10vw, 180px)', flex: 1 },
-  bigVal: { fontSize: 'clamp(38px, 5.5vw, 88px)', fontWeight: 900, lineHeight: 1, color: 'var(--text, #f0f0f0)', letterSpacing: '-2px', fontVariantNumeric: 'tabular-nums' },
-  bigLbl: { fontSize: 'clamp(11px, 0.95vw, 16px)', color: 'var(--text-secondary, #888)', letterSpacing: 2, fontWeight: 700, marginTop: 6, textTransform: 'uppercase' },
-  progressContainer: { height: 'clamp(22px, 2.4vw, 38px)', backgroundColor: '#1a1a1a', borderRadius: 20, overflow: 'hidden', position: 'relative', marginBottom: 'clamp(8px, 0.9vw, 16px)', border: '1px solid #2a2a2a' },
-  progressBar: { height: '100%', borderRadius: 20, transition: 'width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)', position: 'absolute', top: 0, left: 0 },
-  progressShimmer: { height: '100%', position: 'absolute', top: 0, left: 0, borderRadius: 20, pointerEvents: 'none' },
-  progressText: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(12px, 1.1vw, 20px)', fontWeight: 800, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)', fontFamily: 'monospace', letterSpacing: 1 },
-  spotlightRow: { display: 'flex', gap: 'clamp(8px, 1vw, 16px)', marginBottom: 'clamp(8px, 0.9vw, 16px)', flexWrap: 'wrap' },
+
+  // 2-column main layout fills remaining height
+  mainGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',
+    gap: 'clamp(8px, 1vw, 16px)',
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  leftCol: { display: 'flex', flexDirection: 'column', gap: 'clamp(6px, 0.8vh, 12px)', minHeight: 0, minWidth: 0 },
+  rightCol: { display: 'flex', flexDirection: 'column', gap: 'clamp(6px, 0.8vh, 12px)', minHeight: 0, minWidth: 0 },
+
+  bigRow: { display: 'flex', gap: 'clamp(8px, 1vw, 16px)', justifyContent: 'space-around', flexShrink: 0 },
+  bigStat: { textAlign: 'center', flex: 1, minWidth: 0 },
+  bigVal: { fontSize: 'clamp(36px, 5.5vw, 84px)', fontWeight: 900, lineHeight: 1, color: 'var(--text, #f0f0f0)', letterSpacing: '-2px', fontVariantNumeric: 'tabular-nums' },
+  bigLbl: { fontSize: 'clamp(10px, 0.9vw, 14px)', color: 'var(--text-secondary, #888)', letterSpacing: 2, fontWeight: 700, marginTop: 4, textTransform: 'uppercase' },
+
   topPerformer: {
-    flex: 1, minWidth: 240,
     background: 'linear-gradient(135deg, rgba(234,179,8,0.12), rgba(217,119,6,0.05))',
-    border: '2px solid #EAB308', borderRadius: 14,
-    padding: 'clamp(10px, 1.2vw, 22px)',
-    textAlign: 'center', position: 'relative', overflow: 'hidden',
+    border: '2px solid #EAB308', borderRadius: 12,
+    padding: 'clamp(10px, 1.2vh, 18px) clamp(10px, 1vw, 18px)',
+    textAlign: 'center', position: 'relative', overflow: 'hidden', flexShrink: 0,
   },
-  spotlightLbl: { fontSize: 'clamp(12px, 1vw, 18px)', fontWeight: 800, color: '#EAB308', letterSpacing: 3, marginBottom: 6 },
-  spotlightName: { fontSize: 'clamp(22px, 2.8vw, 44px)', fontWeight: 900, color: '#fff', letterSpacing: '-1px', lineHeight: 1.1, marginBottom: 4, wordBreak: 'break-word' },
-  spotlightCount: { fontSize: 'clamp(38px, 5.5vw, 88px)', fontWeight: 900, color: '#FBBF24', letterSpacing: '-2px', lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: '0 0 30px rgba(234,179,8,0.5)' },
-  spotlightSubLbl: { fontSize: 'clamp(11px, 0.9vw, 14px)', color: '#aaa', letterSpacing: 2, fontWeight: 600, marginTop: 4, textTransform: 'uppercase' },
-  section: { backgroundColor: 'var(--bg-card, #0f0f0f)', borderRadius: 12, padding: 'clamp(10px, 1.1vw, 18px)', border: '1px solid var(--border, #1e1e1e)', marginBottom: 'clamp(8px, 0.9vw, 16px)' },
-  sectionTitle: { fontSize: 'clamp(12px, 1.1vw, 20px)', fontWeight: 800, color: 'var(--text-secondary, #888)', margin: '0 0 clamp(6px, 0.7vw, 12px)', letterSpacing: 2, textTransform: 'uppercase' },
-  podGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(150px, 13vw, 220px), 1fr))', gap: 'clamp(8px, 0.9vw, 14px)' },
-  podCard: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 10, padding: 'clamp(10px, 1vw, 16px)', border: '2px solid var(--border, #222)', transition: 'box-shadow 0.4s ease' },
-  podHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  podName: { fontSize: 'clamp(18px, 1.6vw, 28px)', fontWeight: 900, letterSpacing: '-0.3px' },
-  podStatus: { fontSize: 'clamp(10px, 0.85vw, 14px)', fontWeight: 800, letterSpacing: 1 },
-  podOp: { fontSize: 'clamp(12px, 1vw, 16px)', color: '#bbb', marginBottom: 6, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  podStats: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' },
-  podCount: { fontSize: 'clamp(24px, 2.4vw, 40px)', fontWeight: 900, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' },
-  podPace: { fontSize: 'clamp(11px, 1vw, 16px)', color: '#888', fontWeight: 600, fontFamily: 'monospace' },
-  leaderboard: { },
-  leaderRow: { display: 'flex', alignItems: 'center', gap: 'clamp(8px, 0.9vw, 14px)', padding: 'clamp(7px, 0.8vw, 12px) clamp(6px, 0.7vw, 10px)', borderBottom: '1px solid var(--border, #1e1e1e)', borderRadius: 6 },
-  rank: { fontSize: 'clamp(18px, 1.6vw, 26px)', width: 'clamp(36px, 2.8vw, 50px)', textAlign: 'center', fontWeight: 800 },
-  leaderName: { flex: 1, fontSize: 'clamp(14px, 1.2vw, 20px)', fontWeight: 700, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  leaderCount: { fontSize: 'clamp(18px, 1.6vw, 28px)', fontWeight: 900, color: '#fff', fontFamily: 'monospace', letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums' },
+  spotlightLbl: { fontSize: 'clamp(11px, 0.95vw, 16px)', fontWeight: 800, color: '#EAB308', letterSpacing: 3, marginBottom: 4 },
+  spotlightName: { fontSize: 'clamp(18px, 2vw, 32px)', fontWeight: 900, color: '#fff', letterSpacing: '-0.5px', lineHeight: 1.1, marginBottom: 2, wordBreak: 'break-word' },
+  spotlightCount: { fontSize: 'clamp(36px, 5vw, 76px)', fontWeight: 900, color: '#FBBF24', letterSpacing: '-2px', lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: '0 0 30px rgba(234,179,8,0.5)' },
+  spotlightSubLbl: { fontSize: 'clamp(10px, 0.85vw, 14px)', color: '#aaa', letterSpacing: 2, fontWeight: 600, marginTop: 4, textTransform: 'uppercase' },
+
+  section: { backgroundColor: 'var(--bg-card, #0f0f0f)', borderRadius: 10, padding: 'clamp(8px, 1vw, 16px)', border: '1px solid var(--border, #1e1e1e)', minHeight: 0 },
+  sectionTitle: { fontSize: 'clamp(11px, 1vw, 16px)', fontWeight: 800, color: 'var(--text-secondary, #888)', margin: '0 0 clamp(4px, 0.6vh, 10px)', letterSpacing: 2, textTransform: 'uppercase' },
+
+  podGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(130px, 11vw, 180px), 1fr))',
+    gap: 'clamp(6px, 0.8vw, 12px)',
+  },
+  podCard: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 8, padding: 'clamp(8px, 0.9vw, 14px)', border: '2px solid var(--border, #222)', transition: 'box-shadow 0.4s ease' },
+  podHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 },
+  podName: { fontSize: 'clamp(15px, 1.4vw, 22px)', fontWeight: 900, letterSpacing: '-0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  podStatus: { fontSize: 'clamp(9px, 0.8vw, 12px)', fontWeight: 800, letterSpacing: 1, whiteSpace: 'nowrap' },
+  podOp: { fontSize: 'clamp(11px, 0.9vw, 14px)', color: '#bbb', marginBottom: 4, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  podStats: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 },
+  podPace: { fontSize: 'clamp(22px, 2.4vw, 38px)', fontWeight: 900, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums', color: '#22C55E' },
+  podPaceUnit: { fontSize: 'clamp(11px, 0.9vw, 14px)', fontWeight: 700, color: '#888', marginLeft: 2 },
+  podCount: { fontSize: 'clamp(13px, 1.1vw, 18px)', color: '#888', fontWeight: 700, fontFamily: 'monospace' },
+
+  leaderboard: {},
+  leaderRow: { display: 'flex', alignItems: 'center', gap: 'clamp(6px, 0.7vw, 12px)', padding: 'clamp(5px, 0.6vh, 10px) clamp(4px, 0.5vw, 8px)', borderBottom: '1px solid var(--border, #1e1e1e)', borderRadius: 4 },
+  rank: { fontSize: 'clamp(15px, 1.4vw, 22px)', width: 'clamp(28px, 2.4vw, 42px)', textAlign: 'center', fontWeight: 800, flexShrink: 0 },
+  leaderName: { flex: 1, minWidth: 0, fontSize: 'clamp(12px, 1.1vw, 18px)', fontWeight: 700, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  leaderCount: { fontSize: 'clamp(15px, 1.4vw, 24px)', fontWeight: 900, color: '#fff', fontFamily: 'monospace', letterSpacing: '-0.5px', fontVariantNumeric: 'tabular-nums', flexShrink: 0 },
+
+  fullscreenBtn: {
+    position: 'absolute', bottom: 8, right: 10,
+    background: 'rgba(0,0,0,0.4)', border: '1px solid #333',
+    color: '#666', borderRadius: 6, padding: '4px 10px',
+    cursor: 'pointer', fontSize: 14, opacity: 0.5,
+  },
 };
