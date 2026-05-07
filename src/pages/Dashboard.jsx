@@ -28,6 +28,7 @@ import { useToast } from '../components/Toast';
 import TodayLeaderboard from '../components/TodayLeaderboard';
 import { useAuth } from '../contexts/AuthContext';
 import { computeDailyTarget } from '../utils/target';
+import { normalizeOperatorKey, displayOperatorName, groupByOperator } from '../utils/operator';
 
 export default function Dashboard() {
   const { show: toast } = useToast();
@@ -271,8 +272,15 @@ export default function Dashboard() {
           scanCount: regularScans.length, // legacy alias — PodCard reads scanCount
           exceptionCount: autoExc.length, manualCount: manualScans.length, aiMatchCount: aiMatchScans.length, pace, targetPerHour, scanners };
         const byOp = {};
-        for (const s of podScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
-        opStats[podId] = byOp;
+        // Group by normalized operator key so case/whitespace variants merge.
+        for (const s of podScans) {
+          const key = normalizeOperatorKey(s.scannerId);
+          if (!key) continue;
+          if (!byOp[key]) byOp[key] = { name: displayOperatorName(s.scannerId), count: 0 };
+          byOp[key].count += 1;
+        }
+        // Expose as { displayName: count } for downstream code
+        opStats[podId] = Object.fromEntries(Object.values(byOp).map((v) => [v.name, v.count]));
       }
       setPodData(pods);
       setOperatorStats(opStats);
@@ -500,9 +508,9 @@ export default function Dashboard() {
 
   // Leaderboard
   const leaderboard = useMemo(() => {
-    const byOp = {};
-    for (const s of allScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
-    return Object.entries(byOp).sort((a, b) => b[1] - a[1]).map(([name, count], i) => ({ name, count, rank: i + 1 }));
+    return groupByOperator(allScans)
+      .sort((a, b) => b.count - a.count)
+      .map((g, i) => ({ name: g.name, count: g.count, rank: i + 1 }));
   }, [allScans]);
 
   // Hourly breakdown
@@ -814,11 +822,11 @@ export default function Dashboard() {
       }
     }
 
-    // Top operators
-    const byOp = {};
-    for (const s of allScans) { if (s.scannerId) byOp[s.scannerId] = (byOp[s.scannerId] || 0) + 1; }
-    const topOperators = Object.entries(byOp).sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([name, count]) => ({ name, count }));
+    // Top operators (normalized so case/whitespace variants merge)
+    const topOperators = groupByOperator(allScans)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map((g) => ({ name: g.name, count: g.count }));
 
     const summary = {
       jobId: job.id,

@@ -16,6 +16,7 @@ import { exportShiftSummary } from '../utils/export';
 import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import { PER_POD_DAILY_TARGET } from '../utils/target';
+import { displayOperatorName } from '../utils/operator';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
 
@@ -231,8 +232,11 @@ export default function Pod() {
   };
 
   const advanceFromOperator = async () => {
-    const name = operatorName.trim();
+    // Canonicalize: "maria " / "MARIA" / "Maria" all save as "Maria"
+    // so future scans roll up to one leaderboard row.
+    const name = displayOperatorName(operatorName);
     if (!name) return;
+    setOperatorName(name);
     const result = await claimPod(name);
     if (!result.ok) {
       setPodLocked(true);
@@ -874,7 +878,9 @@ export default function Pod() {
     setShowIdleWarning(false);
     if (!scanStartTimeRef.current) scanStartTimeRef.current = Date.now();
 
-    const scannerName = operatorName;
+    // Always write the canonical operator name so leaderboards roll up correctly
+    // even if `operatorName` was somehow set without going through the entry form.
+    const scannerName = displayOperatorName(operatorName) || operatorName;
     const scanId = `s_${now}_${Math.random().toString(36).slice(2, 6)}`;
 
     // Training mode: don't write to Firestore, don't count
@@ -1361,7 +1367,7 @@ export default function Pod() {
                 onChange={(e) => setSwitchName(e.target.value)}
                 onKeyDown={async (e) => {
                   if (e.key === 'Enter' && switchName.trim()) {
-                    const newName = switchName.trim();
+                    const newName = displayOperatorName(switchName);
                     await endShift();
                     saveOperatorToHistory(newName);
                     setOperatorName(newName); setSwitchName('');
@@ -1373,7 +1379,7 @@ export default function Pod() {
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <button onClick={async () => {
                   if (switchName.trim()) {
-                    const newName = switchName.trim();
+                    const newName = displayOperatorName(switchName);
                     await endShift();
                     saveOperatorToHistory(newName);
                     setOperatorName(newName); setSwitchName('');

@@ -4,6 +4,7 @@ import {
   collection, query, where, onSnapshot, Timestamp,
 } from 'firebase/firestore';
 import { computeDailyTarget } from '../utils/target';
+import { groupByOperator } from '../utils/operator';
 
 export default function Kiosk() {
   const [job, setJob] = useState(null);
@@ -75,7 +76,6 @@ export default function Kiosk() {
       setAllScans(scans);
 
       const pods = {};
-      const byOperator = {};
       const now = Date.now();
       const fifteenMinAgo = now - 15 * 60 * 1000;
 
@@ -93,15 +93,10 @@ export default function Kiosk() {
       }
       setPodData(pods);
 
-      // Leaderboard: by operator
-      for (const s of scans) {
-        if (s.scannerId) {
-          byOperator[s.scannerId] = (byOperator[s.scannerId] || 0) + 1;
-        }
-      }
-      setLeaderboard(
-        Object.entries(byOperator).sort((a, b) => b[1] - a[1]).map(([name, count], i) => ({ name, count, rank: i + 1 }))
-      );
+      // Leaderboard: group by normalized operator name so case/whitespace
+      // variations ("maria" vs "Maria " vs "MARIA") roll up together.
+      const grouped = groupByOperator(scans).sort((a, b) => b.count - a.count);
+      setLeaderboard(grouped.map((g, i) => ({ name: g.name, count: g.count, rank: i + 1 })));
     });
     return unsub;
   }, [job]);

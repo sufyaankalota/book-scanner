@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { computeDailyTarget } from '../utils/target';
+import { normalizeOperatorKey, displayOperatorName } from '../utils/operator';
 
 /**
  * Live "Today" stats: total scans, top 5 operators, hourly pace trend.
@@ -32,20 +33,21 @@ export default function TodayLeaderboard({ job, compact = false }) {
     if (!scans.length) {
       return { total: 0, leaders: [], lastHour: 0, prevHour: 0, paceDrop: 0 };
     }
-    const byOp = {};
+    const byOp = {}; // key -> { name, count }
     const now = Date.now();
     let lastHour = 0, prevHour = 0;
     for (const s of scans) {
-      const op = s.scannerId || 'Unknown';
-      byOp[op] = (byOp[op] || 0) + 1;
+      const raw = s.scannerId || 'Unknown';
+      const key = normalizeOperatorKey(raw) || 'unknown';
+      if (!byOp[key]) byOp[key] = { name: displayOperatorName(raw) || 'Unknown', count: 0 };
+      byOp[key].count += 1;
       const t = s.timestamp?.toDate?.()?.getTime?.();
       if (!t) continue;
       const ageMin = (now - t) / 60000;
       if (ageMin <= 60) lastHour += 1;
       else if (ageMin <= 120) prevHour += 1;
     }
-    const leaders = Object.entries(byOp)
-      .map(([name, count]) => ({ name, count }))
+    const leaders = Object.values(byOp)
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
     // % drop in pace vs previous hour. >25% drop = alert-worthy.

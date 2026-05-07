@@ -5,6 +5,7 @@ import {
   collection, getDocs, query, where, orderBy, Timestamp,
 } from 'firebase/firestore';
 import { downloadBlob } from '../utils/export';
+import { normalizeOperatorKey, displayOperatorName } from '../utils/operator';
 import * as XLSX from 'xlsx';
 
 export default function JobHistory() {
@@ -112,16 +113,15 @@ export default function JobHistory() {
   // Operator breakdown
   const operatorBreakdown = useMemo(() => {
     if (!jobScans.length) return [];
-    const byOp = {};
+    const byOp = {}; // key -> { name, scans, exceptions }
     for (const s of jobScans) {
-      if (!s.scannerId) continue;
-      if (!byOp[s.scannerId]) byOp[s.scannerId] = { scans: 0, exceptions: 0 };
-      byOp[s.scannerId].scans++;
-      if (s.type === 'exception') byOp[s.scannerId].exceptions++;
+      const key = normalizeOperatorKey(s.scannerId);
+      if (!key) continue;
+      if (!byOp[key]) byOp[key] = { name: displayOperatorName(s.scannerId), scans: 0, exceptions: 0 };
+      byOp[key].scans++;
+      if (s.type === 'exception') byOp[key].exceptions++;
     }
-    return Object.entries(byOp)
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.scans - a.scans);
+    return Object.values(byOp).sort((a, b) => b.scans - a.scans);
   }, [jobScans]);
 
   const handleExportJob = () => {
