@@ -439,40 +439,155 @@ export default function Pod() {
       // won't collide with barcode scans).
       const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm && !showTitleSearch && !aiMatchCandidates;
       if (noModal && e.ctrlKey && !e.altKey && !e.metaKey) {
-        if (e.key === '1') {
+        const k = e.key.toLowerCase();
+        if (k === '1') {
           e.preventDefault();
           setShowIsbnCamera(true);
           return;
         }
-        if (e.key === '2') {
+        if (k === '2') {
           e.preventDefault();
           setShowManualEntry(true);
           setTimeout(() => manualInputRef.current?.focus(), 100);
           return;
         }
-        if (e.key === '3') {
+        if (k === '3') {
           e.preventDefault();
           setShowExceptionModal(true);
           return;
         }
-        if (e.key === '4') {
+        if (k === '4') {
           e.preventDefault();
           setShowTitleSearch(true);
           setTitleSearchQuery('');
           return;
         }
+        // Ctrl+letter actions — keep on left-hand row so operators can hit
+        // them without leaving the home position. Scanner guns never emit
+        // Ctrl modifiers so these can't collide with a barcode scan.
+        if (k === 'u') {
+          e.preventDefault();
+          if (recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training') {
+            handleUndo();
+          }
+          return;
+        }
+        if (k === 'p') {
+          e.preventDefault();
+          setPhase(PHASE_PAUSED);
+          return;
+        }
+        if (k === 's') {
+          e.preventDefault();
+          setPhase(PHASE_PAUSED);
+          setShowSwitchOperator(true);
+          return;
+        }
+        if (k === 'e') {
+          e.preventDefault();
+          handleEndShift();
+          return;
+        }
+        if (k === ',') {
+          e.preventDefault();
+          setShowSettings((p) => !p);
+          return;
+        }
       }
-      if (e.key === 'Escape' && !showExceptionModal && !showSwitchOperator && !showSettings) {
+      if (e.key === 'Escape' && !showExceptionModal && !showSwitchOperator && !showSettings && !duplicateConfirm && !showEndShift && !showShortcuts && !showTitleSearch && !showManualEntry && !aiMatchCandidates && !showIsbnCamera) {
         e.preventDefault(); setShowExceptionModal(true); return;
       }
-      if (e.key === '?' && !showExceptionModal && !showSwitchOperator) {
+      if (e.key === '?' && !showExceptionModal && !showSwitchOperator && !duplicateConfirm && !showEndShift) {
         e.preventDefault(); setShowShortcuts((p) => !p); return;
       }
       if (!showExceptionModal && !showSwitchOperator && !showSettings && !showTitleSearch && !showManualEntry && !aiMatchCandidates) refocusInput();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, showTitleSearch, aiMatchCandidates, refocusInput]);
+    // handleUndo / handleEndShift are stable in scope and read via closure;
+    // recentScans is read via the latest closure when the user actually presses Ctrl+U.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, showTitleSearch, aiMatchCandidates, refocusInput, recentScans, showShortcuts]);
+
+  // ─── Pause overlay shortcuts ───
+  // Visible on the pause screen so operators can pick an action without
+  // reaching for the mouse. Single keys (no modifier) are safe here because
+  // scanning is paused and the input isn't focused.
+  useEffect(() => {
+    if (!isPaused || breakTimer !== null) return;
+    const handler = (e) => {
+      if (showSwitchOperator || showEndShift) return;
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      const k = e.key.toLowerCase();
+      if (e.key === ' ' || k === '1' || k === 'r') {
+        e.preventDefault(); setPhase(PHASE_SCANNING); setTimeout(refocusInput, 100); return;
+      }
+      if (k === '2') {
+        e.preventDefault(); setBreakTimer(15 * 60); setBreakTotal(15 * 60); setBreakMinutesUsed((p) => p + 15); return;
+      }
+      if (k === '3') {
+        e.preventDefault(); setBreakTimer(30 * 60); setBreakTotal(30 * 60); setBreakMinutesUsed((p) => p + 30); return;
+      }
+      if (k === 's') {
+        e.preventDefault(); setShowSwitchOperator(true); return;
+      }
+      if (k === 'e') {
+        e.preventDefault(); handleEndShift(); return;
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPaused, breakTimer, showSwitchOperator, showEndShift, refocusInput]);
+
+  // ─── Break-timer overlay shortcut: Space resumes early ───
+  useEffect(() => {
+    if (breakTimer === null) return;
+    const handler = (e) => {
+      if (e.key === ' ' || e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        setBreakTimer(null); setPhase(PHASE_SCANNING); setTimeout(refocusInput, 100);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [breakTimer, refocusInput]);
+
+  // ─── Duplicate confirm shortcuts: Y = scan it, N/Esc = skip ───
+  useEffect(() => {
+    if (!duplicateConfirm) return;
+    const handler = (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'y' || e.key === 'Enter') { e.preventDefault(); confirmDuplicate(); }
+      else if (k === 'n' || e.key === 'Escape') { e.preventDefault(); cancelDuplicate(); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duplicateConfirm]);
+
+  // ─── End-shift confirm shortcut: Enter confirms, Esc cancels ───
+  useEffect(() => {
+    if (!showEndShift) return;
+    const handler = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmEndShift(); }
+      else if (e.key === 'Escape') { e.preventDefault(); setShowEndShift(false); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEndShift]);
+
+  // ─── Help overlay: Esc closes ───
+  useEffect(() => {
+    if (!showShortcuts) return;
+    const handler = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); setShowShortcuts(false); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showShortcuts]);
 
   // ─── Load active job ───
   useEffect(() => {
@@ -1312,8 +1427,9 @@ export default function Pod() {
               <div style={{ height: '100%', backgroundColor: '#EAB308', borderRadius: 4, width: `${breakTotal > 0 ? ((breakTotal - breakTimer) / breakTotal) * 100 : 0}%`, transition: 'width 1s linear' }} />
             </div>
             <button onClick={() => { setBreakTimer(null); setPhase(PHASE_SCANNING); setTimeout(refocusInput, 100); }}
-              style={{ ...styles.primaryBtn, width: 'auto', padding: '14px 40px', fontSize: 18 }}>
-              ▶ {t('resume')} Early
+              style={{ ...styles.primaryBtn, width: 'auto', padding: '14px 40px', fontSize: 18 }}
+              title="Press Space">
+              ▶ {t('resume')} Early <kbd style={{ ...kbdHintStyle, marginLeft: 8, fontSize: 13 }}>Space</kbd>
             </button>
           </div>
         </div>
@@ -1328,29 +1444,34 @@ export default function Pod() {
               {operatorName} · Pod {podId}
             </p>
             <button onClick={() => { setPhase(PHASE_SCANNING); setTimeout(refocusInput, 100); }}
-              style={{ ...styles.primaryBtn, fontSize: 24, padding: '18px 40px', width: 'auto', marginBottom: 12 }}>
-              ▶ {t('resume')}
+              style={{ ...styles.primaryBtn, fontSize: 24, padding: '18px 40px', width: 'auto', marginBottom: 12 }}
+              title="Press Space, R, or 1">
+              ▶ {t('resume')} <kbd style={{ ...kbdHintStyle, marginLeft: 8, fontSize: 13 }}>Space</kbd>
             </button>
 
             {/* Break timer buttons */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, justifyContent: 'center' }}>
               <button onClick={() => { setBreakTimer(15 * 60); setBreakTotal(15 * 60); setBreakMinutesUsed((p) => p + 15); }}
-                style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}>
-                ☕ {t('break15')}
+                style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}
+                title="Press 2">
+                ☕ {t('break15')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>2</kbd>
               </button>
               <button onClick={() => { setBreakTimer(30 * 60); setBreakTotal(30 * 60); setBreakMinutesUsed((p) => p + 30); }}
-                style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}>
-                ☕ {t('break30')}
+                style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}
+                title="Press 3">
+                ☕ {t('break30')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>3</kbd>
               </button>
             </div>
 
             <button onClick={() => setShowSwitchOperator(true)}
-              style={{ ...styles.secondaryBtn, marginTop: 0, fontSize: 16, width: 280 }}>
-              🔄 Switch Operator
+              style={{ ...styles.secondaryBtn, marginTop: 0, fontSize: 16, width: 280 }}
+              title="Press S">
+              🔄 Switch Operator <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>S</kbd>
             </button>
             <button onClick={handleEndShift}
-              style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 16, width: 280, borderColor: '#EF4444', color: '#EF4444' }}>
-              🚪 {t('endShift')}
+              style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 16, width: 280, borderColor: '#EF4444', color: '#EF4444' }}
+              title="Press E">
+              🚪 {t('endShift')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>E</kbd>
             </button>
             <Link to={backPath} style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 14, textDecoration: 'none', display: 'block', textAlign: 'center', width: 280 }}>
               {fromPods ? '← Back to Pods' : '← Back to Home'}
@@ -1419,8 +1540,9 @@ export default function Pod() {
             </div>
             <p style={{ color: '#999', fontSize: 14, marginBottom: 12, fontWeight: 500 }}>📥 Shift report will download automatically</p>
             <button onClick={confirmEndShift}
-              style={{ ...styles.primaryBtn, backgroundColor: '#EF4444' }}>
-              Confirm End Shift
+              style={{ ...styles.primaryBtn, backgroundColor: '#EF4444' }}
+              title="Press Enter">
+              Confirm End Shift <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Enter</kbd>
             </button>
           </div>
         </div>
@@ -1441,10 +1563,14 @@ export default function Pod() {
             Paired ✓
           </div>
           {recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training' && (
-            <button onClick={handleUndo} style={styles.undoBtn}>↩ {t('undoLastScan')}</button>
+            <button onClick={handleUndo} style={styles.undoBtn} title="Press Ctrl + U">
+              ↩ {t('undoLastScan')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Ctrl + U</kbd>
+            </button>
           )}
-          <button onClick={() => setShowSettings(!showSettings)} style={styles.settingsBtn}>⚙️</button>
-          <button onClick={() => setPhase(PHASE_PAUSED)} style={styles.pauseBtn}>⏸ {t('pause')}</button>
+          <button onClick={() => setShowSettings(!showSettings)} style={styles.settingsBtn} title="Press Ctrl + ,">⚙️</button>
+          <button onClick={() => setPhase(PHASE_PAUSED)} style={styles.pauseBtn} title="Press Ctrl + P">
+            ⏸ {t('pause')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Ctrl + P</kbd>
+          </button>
         </div>
       </div>
 
@@ -1856,6 +1982,24 @@ export default function Pod() {
         </div>
       </div>
 
+      {/* Persistent shortcut hint — visible reminder so operators learn the keys */}
+      {isScanning && (
+        <button
+          onClick={() => setShowShortcuts(true)}
+          title="Show all keyboard shortcuts"
+          style={{
+            position: 'fixed', bottom: 12, left: 12, zIndex: 50,
+            backgroundColor: 'rgba(30, 58, 138, 0.85)', color: '#dbeafe',
+            border: '1px solid #3B82F6', borderRadius: 20, padding: '6px 12px',
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontFamily: "'Inter', system-ui, sans-serif",
+          }}
+        >
+          ⌨️ Shortcuts <kbd style={{ ...kbdHintStyle, fontSize: 10 }}>?</kbd>
+        </button>
+      )}
+
       {!job && (
         <div style={styles.warning}>
           No active job. <Link to="/setup" style={{ color: '#93c5fd' }}>Go to Setup</Link>
@@ -1888,12 +2032,14 @@ export default function Pod() {
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
               <button onClick={confirmDuplicate}
-                style={{ padding: '14px 28px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
-                ✓ {duplicateConfirm.overScan ? 'Yes, Scan It' : t('scanAgain')}
+                style={{ padding: '14px 28px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}
+                title="Press Y or Enter">
+                ✓ {duplicateConfirm.overScan ? 'Yes, Scan It' : t('scanAgain')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Y</kbd>
               </button>
               <button onClick={cancelDuplicate}
-                style={{ padding: '14px 28px', borderRadius: 10, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>
-                ✕ {t('skip')}
+                style={{ padding: '14px 28px', borderRadius: 10, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}
+                title="Press N or Esc">
+                ✕ {t('skip')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>N</kbd>
               </button>
             </div>
           </div>
@@ -1905,25 +2051,46 @@ export default function Pod() {
         <div style={styles.pauseOverlay} onClick={() => setShowShortcuts(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#1a1a1a', borderRadius: 16, padding: 32, maxWidth: 400, width: '90%' }}>
             <h2 style={{ color: '#fff', marginTop: 0, fontSize: 20, textAlign: 'center' }}>⌨️ Keyboard Shortcuts</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ color: '#888', fontSize: 12, textAlign: 'center', margin: '0 0 12px', fontStyle: 'italic' }}>Skip the mouse — stay on the keyboard</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                ['Ctrl + 1', 'Camera Entry (AI ISBN scan)'],
-                ['Ctrl + 2', 'Type ISBN manually'],
-                ['Ctrl + 3', 'Log exception'],
-                ['Ctrl + 4', 'Type Book Title (AI match)'],
-                ['Esc', 'Log exception (alternate)'],
-                ['?', 'Toggle this help overlay'],
-                ['Enter', 'Submit / Advance'],
-                ['Space', 'Resume from pause'],
-              ].map(([key, desc]) => (
-                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #333' }}>
-                  <kbd style={{ backgroundColor: '#333', padding: '3px 10px', borderRadius: 4, fontFamily: 'monospace', fontSize: 14, color: '#fff', border: '1px solid #555', fontWeight: 600 }}>{key}</kbd>
-                  <span style={{ color: '#bbb', fontSize: 14, fontWeight: 500 }}>{desc}</span>
-                </div>
+                ['— Scanning Screen —', null],
+                ['Ctrl + 1', '📷 Scan book cover (AI)'],
+                ['Ctrl + 4', '⌨️ Type book title (AI)'],
+                ['Ctrl + 2', '⌨️ Type ISBN manually'],
+                ['Ctrl + 3 / Esc', '⚠️ Log exception'],
+                ['Ctrl + U', '↩ Undo last scan'],
+                ['Ctrl + P', '⏸ Pause shift'],
+                ['Ctrl + S', '🔄 Switch operator'],
+                ['Ctrl + E', '🚪 End shift'],
+                ['Ctrl + ,', '⚙️ Toggle settings'],
+                ['?', 'Toggle this help'],
+                ['— Pause Screen —', null],
+                ['Space / R / 1', '▶ Resume scanning'],
+                ['2', '☕ Take 15 min break'],
+                ['3', '☕ Take 30 min break'],
+                ['S', '🔄 Switch operator'],
+                ['E', '🚪 End shift'],
+                ['— Modals —', null],
+                ['Enter', 'Submit / confirm'],
+                ['Esc', 'Cancel / close'],
+                ['Y / N', 'Confirm / skip duplicate'],
+                ['1–9', 'Pick AI-match candidate'],
+                ['M', 'Manual entry (from AI match)'],
+                ['E', 'Log exception (from AI match)'],
+              ].map(([key, desc], i) => (
+                desc === null ? (
+                  <div key={i} style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 0 2px', textAlign: 'center' }}>{key}</div>
+                ) : (
+                  <div key={key + i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #2a2a2a' }}>
+                    <kbd style={{ backgroundColor: '#333', padding: '3px 10px', borderRadius: 4, fontFamily: 'monospace', fontSize: 13, color: '#fff', border: '1px solid #555', fontWeight: 600, whiteSpace: 'nowrap' }}>{key}</kbd>
+                    <span style={{ color: '#bbb', fontSize: 13, fontWeight: 500, marginLeft: 12, textAlign: 'right' }}>{desc}</span>
+                  </div>
+                )
               ))}
             </div>
             <button onClick={() => setShowShortcuts(false)}
-              style={{ ...styles.primaryBtn, marginTop: 16, width: '100%' }}>Close</button>
+              style={{ ...styles.primaryBtn, marginTop: 16, width: '100%' }}>Close <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Esc</kbd></button>
           </div>
         </div>
       )}
