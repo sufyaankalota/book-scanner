@@ -86,6 +86,58 @@ export default function Dashboard() {
   const [poAlertsDismissed, setPOAlertsDismissed] = useState(new Set());
   const poAlertsNotifiedRef = useRef(new Set());
 
+  // ─── Operator merge tool (owner-only) ───
+  // Lets the owner combine two scanner identities — e.g. when an operator
+  // accidentally scans a barcode into the name prompt, or types a different
+  // spelling. Rewrites scans/exceptions/shifts in place.
+  const [mergeFrom, setMergeFrom] = useState('');
+  const [mergeTo, setMergeTo] = useState('');
+  const [merging, setMerging] = useState(false);
+  const [mergeStatus, setMergeStatus] = useState('');
+
+  const mergeOperators = async () => {
+    const from = (mergeFrom || '').trim();
+    const to = (mergeTo || '').trim();
+    if (!from || !to) { alert('Pick both a "from" and a "to" name.'); return; }
+    if (from === to) { alert('From and To are the same — nothing to merge.'); return; }
+    if (!confirm(`Merge ALL scans/exceptions/shifts from "${from}" into "${to}"?\n\nThis cannot be automatically undone.`)) return;
+    setMerging(true);
+    setMergeStatus('Searching…');
+    try {
+      let totalWritten = 0;
+      // scans + exceptions use scannerId; shifts use operatorName
+      const targets = [
+        { coll: 'scans', field: 'scannerId' },
+        { coll: 'exceptions', field: 'scannerId' },
+        { coll: 'shifts', field: 'operatorName' },
+      ];
+      for (const t of targets) {
+        const snap = await getDocs(query(collection(db, t.coll), where(t.field, '==', from)));
+        if (snap.empty) {
+          setMergeStatus(`${t.coll}: 0 docs`);
+          continue;
+        }
+        // Firestore batch limit is 500 writes
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 450) {
+          const slice = docs.slice(i, i + 450);
+          const batch = writeBatch(db);
+          for (const d of slice) batch.update(doc(db, t.coll, d.id), { [t.field]: to });
+          await batch.commit();
+          totalWritten += slice.length;
+          setMergeStatus(`${t.coll}: ${Math.min(i + 450, docs.length)}/${docs.length}`);
+        }
+      }
+      setMergeStatus(`✓ Done — ${totalWritten} doc(s) reattributed to "${to}"`);
+      setMergeFrom('');
+      setMergeTo('');
+      logAudit('operator_merge', { from, to, written: totalWritten });
+    } catch (err) {
+      setMergeStatus(`✗ Failed: ${err.message}`);
+    }
+    setMerging(false);
+  };
+
   // Daily Crew & Pay loader \u2014 fires when owner opens the panel or changes date/job
   useEffect(() => {
     if (!isOwner || showPanel !== 'crew' || !job?.id) return;
@@ -1299,6 +1351,42 @@ export default function Dashboard() {
       {/* Leaderboard panel */}
       {showPanel === 'leaderboard' && (
         <div style={st.panel}>
+          {isOwner && (
+            <div style={{ padding: 12, borderBottom: '1px solid #222', backgroundColor: '#0f1722' }}>
+              <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+                🛠 Merge Operators
+              </div>
+              <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
+                Combine two scanner identities (e.g. someone scanned a barcode into the name prompt). Rewrites scans, exceptions, and shifts.
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <select value={mergeFrom} onChange={(e) => setMergeFrom(e.target.value)} disabled={merging}
+                  style={{ padding: '8px 10px', borderRadius: 6, backgroundColor: '#1a1a1a', color: '#fff', border: '1px solid #333', fontSize: 13, minWidth: 180 }}>
+                  <option value="">From… (will be removed)</option>
+                  {leaderboard.map((l) => (
+                    <option key={l.name} value={l.name}>{l.name} ({l.count})</option>
+                  ))}
+                </select>
+                <span style={{ color: '#666' }}>→</span>
+                <select value={mergeTo} onChange={(e) => setMergeTo(e.target.value)} disabled={merging}
+                  style={{ padding: '8px 10px', borderRadius: 6, backgroundColor: '#1a1a1a', color: '#fff', border: '1px solid #333', fontSize: 13, minWidth: 180 }}>
+                  <option value="">Into… (kept)</option>
+                  {leaderboard.map((l) => (
+                    <option key={l.name} value={l.name}>{l.name} ({l.count})</option>
+                  ))}
+                </select>
+                <button onClick={mergeOperators} disabled={merging || !mergeFrom || !mergeTo}
+                  style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: merging ? '#444' : '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700, cursor: merging || !mergeFrom || !mergeTo ? 'not-allowed' : 'pointer' }}>
+                  {merging ? 'Merging…' : 'Merge'}
+                </button>
+              </div>
+              {mergeStatus && (
+                <div style={{ color: mergeStatus.startsWith('✓') ? '#22C55E' : mergeStatus.startsWith('✗') ? '#EF4444' : '#93c5fd', fontSize: 12, marginTop: 8, fontFamily: 'monospace' }}>
+                  {mergeStatus}
+                </div>
+              )}
+            </div>
+          )}
           {leaderboard.map((l) => (
             <div key={l.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid #222' }}>
               <span style={{ fontSize: 20, width: 36, textAlign: 'center',
