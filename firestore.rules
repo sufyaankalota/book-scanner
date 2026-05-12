@@ -41,7 +41,9 @@ service cloud.firestore {
         && request.resource.data.type in ['standard', 'exception']
         && request.resource.data.isbn.size() >= 8
         && request.resource.data.isbn.size() <= 18;
-      allow update: if false;
+      // Allow updates so the Dashboard "Merge Operators" tool can rewrite
+      // scannerId across historical scans. Same trust model as exceptions/shifts.
+      allow update: if true;
       allow delete: if true;
     }
 

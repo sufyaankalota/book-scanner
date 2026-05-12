@@ -798,6 +798,17 @@ export default function Pod() {
     const isbn = cleanISBN(raw);
     if (!isbn) return;
 
+    // Reject invalid ISBNs BEFORE any side effects (lastScannedRef / seenIsbnRef
+    // / duplicate prompts). Otherwise a bad scan poisons the next scan: the
+    // following valid book either triggers a phantom duplicate dialog or, if
+    // the operator dismisses/confirms it, gets routed to EXCEPTIONS (black bin)
+    // because the ref state is out of sync with what was actually written.
+    if (!isValidISBN(isbn)) {
+      playErrorBeep(); flash('#F59E0B', t('invalidIsbn'), 2000);
+      setLastBarcodeType(detectBarcodeType(isbn));
+      return;
+    }
+
     // Same ISBN as last scan — always confirm
     if (isbn === lastScannedRef.current.isbn) {
       playDuplicateBeep();
