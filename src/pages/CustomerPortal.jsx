@@ -243,7 +243,7 @@ export default function CustomerPortal() {
   // Computed
   // ─── Categorization (matches billing exactly) ───
   // Every processed unit falls into exactly ONE bucket so the four counts sum
-  // to Total Processed. Billing rules: regular = $0.40, all others = $0.60.
+  // to Total Processed. Billing rules: regular = $0.50, all others = $0.85.
   //   regular   → type=standard, no special source         (plain barcode)
   //   manual    → source='manual'                          (operator typed)
   //   aiCamera  → source='ai-match'                        (AI extracted from cover)
@@ -506,9 +506,9 @@ export default function CustomerPortal() {
     });
     const wb = XLSX.utils.book_new();
     const sourceLabel = (s) => {
-      if (s.source === 'ai-match') return 'AI Camera ($0.60)';
-      if (s.source === 'manual') return 'Manual Entry ($0.60)';
-      return 'Regular Scan ($0.40)';
+      if (s.source === 'ai-match') return 'AI Camera ($0.85)';
+      if (s.source === 'manual') return 'Manual Entry ($0.85)';
+      return 'Regular Scan ($0.50)';
     };
     const data = dayScans.map((s) => ({
       ISBN: s.isbn,
@@ -527,9 +527,9 @@ export default function CustomerPortal() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
       { Metric: 'Date', Value: date },
       { Metric: 'Total Units', Value: data.length },
-      { Metric: 'Regular Scans ($0.40)', Value: regularCount },
-      { Metric: 'Manual Entries ($0.60)', Value: manualCount },
-      { Metric: 'AI Camera ($0.60)', Value: aiCount },
+      { Metric: 'Regular Scans ($0.50)', Value: regularCount },
+      { Metric: 'Manual Entries ($0.85)', Value: manualCount },
+      { Metric: 'AI Camera ($0.85)', Value: aiCount },
     ]), 'Summary');
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     downloadBlob(buf, 'scans_' + date + '.xlsx');
@@ -736,19 +736,19 @@ ${allExcs.map((exc, i) => `<div class="exc">
           {/* The 4-bucket totals — these sum to Total Processed and match billing exactly */}
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: '#22C55E' }}>{totalRegularCount.toLocaleString()}</div>
-            <div style={st.statLbl}>Regular Scans <span style={st.rateChip}>$0.40</span></div>
+            <div style={st.statLbl}>Regular Scans <span style={st.rateChip}>$0.50</span></div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: totalManualCount > 0 ? '#3B82F6' : '#888' }}>{totalManualCount.toLocaleString()}</div>
-            <div style={st.statLbl}>Manual Entries <span style={st.rateChip}>$0.60</span></div>
+            <div style={st.statLbl}>Manual Entries <span style={st.rateChip}>$0.85</span></div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: totalAiCameraCount > 0 ? '#93C5FD' : '#888' }}>{totalAiCameraCount.toLocaleString()}</div>
-            <div style={st.statLbl}>AI Camera <span style={st.rateChip}>$0.60</span></div>
+            <div style={st.statLbl}>AI Camera <span style={st.rateChip}>$0.85</span></div>
           </div>
           <div style={st.statBox}>
             <div style={{ ...st.statVal, color: totalLoggedExcCount > 0 ? '#EF4444' : '#888' }}>{totalLoggedExcCount.toLocaleString()}</div>
-            <div style={st.statLbl}>Exceptions <span style={st.rateChip}>$0.60</span></div>
+            <div style={st.statLbl}>Exceptions <span style={st.rateChip}>$0.85</span></div>
           </div>
           <div style={{ ...st.statBox, borderColor: '#EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
             <div style={{ ...st.statVal, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
@@ -950,7 +950,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
             const totalAi = active.reduce((s, r) => s + (r.aiMatchCount || 0), 0);
             const totalLogged = active.reduce((s, r) => s + (r.loggedExceptionCount || 0), 0);
             const hasBreakdown = totalManual + totalAi + totalLogged > 0;
-            const totalAmt = totalStandard * 0.40 + totalExc * 0.60;
+            const totalAmt = totalStandard * 0.50 + totalExc * 0.85;
             return active.length > 0 ? (
               <div style={{ ...st.card, border: '1px solid #2D2B6B', background: 'linear-gradient(135deg, #1a1a2e 0%, #0a0a0a 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -962,13 +962,13 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#22C55E', fontSize: 20, fontWeight: 800 }}>{totalStandard.toLocaleString()}</div>
-                      <div style={{ color: '#888', fontSize: 11 }}>Regular @ $0.40</div>
-                      <div style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>${(totalStandard * 0.40).toFixed(2)}</div>
+                      <div style={{ color: '#888', fontSize: 11 }}>Regular @ $0.50</div>
+                      <div style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>${(totalStandard * 0.50).toFixed(2)}</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#EF4444', fontSize: 20, fontWeight: 800 }}>{totalExc.toLocaleString()}</div>
-                      <div style={{ color: '#888', fontSize: 11 }}>Exceptions @ $0.60</div>
-                      <div style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>${(totalExc * 0.60).toFixed(2)}</div>
+                      <div style={{ color: '#888', fontSize: 11 }}>Exceptions @ $0.85</div>
+                      <div style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>${(totalExc * 0.85).toFixed(2)}</div>
                     </div>
                   </div>
                 </div>
@@ -1038,11 +1038,11 @@ ${allExcs.map((exc, i) => `<div class="exc">
                   <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#22C55E', fontSize: 22, fontWeight: 800 }}>{(report.standardCount || 0).toLocaleString()}</div>
-                      <div style={{ color: '#888', fontSize: 12 }}>Regular @ $0.40</div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Regular @ $0.50</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#EF4444', fontSize: 22, fontWeight: 800 }}>{(report.exceptionCount || 0).toLocaleString()}</div>
-                      <div style={{ color: '#888', fontSize: 12 }}>Exceptions @ $0.60</div>
+                      <div style={{ color: '#888', fontSize: 12 }}>Exceptions @ $0.85</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#3B82F6', fontSize: 22, fontWeight: 800 }}>{(report.totalUnits || 0).toLocaleString()}</div>
@@ -1050,13 +1050,13 @@ ${allExcs.map((exc, i) => `<div class="exc">
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ color: '#EAB308', fontSize: 22, fontWeight: 800 }}>
-                        ${(report.totalAmount != null ? report.totalAmount : (report.standardCount || 0) * 0.40 + (report.exceptionCount || 0) * 0.60).toFixed(2)}
+                        ${(report.totalAmount != null ? report.totalAmount : (report.standardCount || 0) * 0.50 + (report.exceptionCount || 0) * 0.85).toFixed(2)}
                       </div>
                       <div style={{ color: '#888', fontSize: 12 }}>Total Amount</div>
                     </div>
                   </div>
 
-                  {/* Breakdown of the $0.60 exception bucket — only shown for reports generated after the breakdown fields were added */}
+                  {/* Breakdown of the $0.85 exception bucket — only shown for reports generated after the breakdown fields were added */}
                   {(report.manualCount != null || report.aiMatchCount != null || report.loggedExceptionCount != null) && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #333', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Exceptions made up of:</span>

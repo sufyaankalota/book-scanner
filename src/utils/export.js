@@ -274,11 +274,11 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
   const startStr = weekStart.toLocaleDateString();
   const endStr = weekEnd.toLocaleDateString();
 
-  const RATE_REGULAR = 0.40;
-  const RATE_EXCEPTION = 0.60;
+  const RATE_REGULAR = 0.50;
+  const RATE_EXCEPTION = 0.85;
 
   // Categorize scans 4 ways for breakdown visibility, but billing is still
-  // 2-tier: regular @ $0.40 vs everything-else @ $0.60.
+  // 2-tier: regular @ $0.50 vs everything-else @ $0.85.
   // - Regular: type=standard AND no source (plain barcode scan)
   // - Manual: source='manual' (operator typed the ISBN)
   // - AI Camera: source='ai-match' (cover photo → AI extracted ISBN)

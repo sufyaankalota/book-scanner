@@ -108,7 +108,7 @@ export default function Billing() {
       const aiMatchCount = scans.filter((s) => s.source === 'ai-match').length;
       const loggedExceptionCount = scans.filter((s) => s.type === 'exception').length + excs.length;
       const exceptionCount = manualCount + aiMatchCount + loggedExceptionCount;
-      const totalAmount = standardCount * 0.40 + exceptionCount * 0.60;
+      const totalAmount = standardCount * 0.50 + exceptionCount * 0.85;
       const { buf, fileName } = exportBillingXLSX(scans, excs, selectedJob.meta, weekStart, weekEnd);
 
       // Auto-download for the operator

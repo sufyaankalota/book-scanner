@@ -4,8 +4,8 @@ import { describe, it, expect } from 'vitest';
 // These test the same formulas used in Dashboard.jsx and export.js
 
 describe('Billing Calculations', () => {
-  const RATE_REGULAR = 0.40;
-  const RATE_EXCEPTION = 0.60;
+  const RATE_REGULAR = 0.50;
+  const RATE_EXCEPTION = 0.85;
 
   function calculateBilling(scans, exceptions) {
     const standardCount = scans.filter((s) => s.type === 'standard' && s.source !== 'manual').length;
@@ -15,7 +15,7 @@ describe('Billing Calculations', () => {
     return { standardCount, exceptionCount, regularAmount, exceptionAmount, totalAmount: regularAmount + exceptionAmount };
   }
 
-  it('calculates standard scans at $0.40', () => {
+  it('calculates standard scans at $0.50', () => {
     const scans = [
       { type: 'standard', isbn: '111' },
       { type: 'standard', isbn: '222' },
@@ -23,10 +23,10 @@ describe('Billing Calculations', () => {
     ];
     const result = calculateBilling(scans, []);
     expect(result.standardCount).toBe(3);
-    expect(result.regularAmount).toBeCloseTo(1.20);
+    expect(result.regularAmount).toBeCloseTo(1.50);
   });
 
-  it('calculates exceptions at $0.60', () => {
+  it('calculates exceptions at $0.85', () => {
     const scans = [
       { type: 'exception', isbn: '444' },
     ];
@@ -35,7 +35,7 @@ describe('Billing Calculations', () => {
     ];
     const result = calculateBilling(scans, exceptions);
     expect(result.exceptionCount).toBe(2);
-    expect(result.exceptionAmount).toBeCloseTo(1.20);
+    expect(result.exceptionAmount).toBeCloseTo(1.70);
   });
 
   it('bills manual entries as exceptions', () => {
@@ -46,9 +46,9 @@ describe('Billing Calculations', () => {
     const result = calculateBilling(scans, []);
     expect(result.standardCount).toBe(1); // Only non-manual
     expect(result.exceptionCount).toBe(1); // Manual billed as exception
-    expect(result.regularAmount).toBeCloseTo(0.40);
-    expect(result.exceptionAmount).toBeCloseTo(0.60);
-    expect(result.totalAmount).toBeCloseTo(1.00);
+    expect(result.regularAmount).toBeCloseTo(0.50);
+    expect(result.exceptionAmount).toBeCloseTo(0.85);
+    expect(result.totalAmount).toBeCloseTo(1.35);
   });
 
   it('calculates total for mixed scan types', () => {
@@ -66,7 +66,7 @@ describe('Billing Calculations', () => {
     const result = calculateBilling(scans, exceptions);
     expect(result.standardCount).toBe(2);  // standard, non-manual
     expect(result.exceptionCount).toBe(5); // 1 manual + 2 exception scans + 2 manual exceptions
-    expect(result.totalAmount).toBeCloseTo(2 * 0.40 + 5 * 0.60);
+    expect(result.totalAmount).toBeCloseTo(2 * 0.50 + 5 * 0.85);
   });
 
   it('handles empty data', () => {

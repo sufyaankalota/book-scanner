@@ -253,7 +253,7 @@ export default function Dashboard() {
       for (const podId of job.meta.pods || []) {
         const podIdU = String(podId).toUpperCase();
         const podScans = scans.filter((s) => String(s.podId || '').toUpperCase() === podIdU);
-        // Regular scans = type=standard with no special source (true ISBN-matched scans @ $0.40)
+        // Regular scans = type=standard with no special source (true ISBN-matched scans @ $0.50)
         const regularScans = podScans.filter((s) => s.type === 'standard' && !s.source);
         const autoExc = podScans.filter((s) => s.type === 'exception' && s.source !== 'manual' && s.source !== 'ai-match');
         const manualScans = podScans.filter((s) => s.source === 'manual');
@@ -768,7 +768,7 @@ export default function Dashboard() {
       const aiMatchCount = scans.filter((s) => s.source === 'ai-match').length;
       const loggedExceptionCount = scans.filter((s) => s.type === 'exception').length + excs.length;
       const exceptionCount = manualCount + aiMatchCount + loggedExceptionCount;
-      const totalAmount = standardCount * 0.40 + exceptionCount * 0.60;
+      const totalAmount = standardCount * 0.50 + exceptionCount * 0.85;
       const { buf, fileName } = exportBillingXLSX(scans, excs, job.meta, weekStart, weekEnd);
       // Convert to base64 for Firestore storage
       const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -937,19 +937,19 @@ export default function Dashboard() {
       <div data-summary-row style={st.summaryRow}>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: '#22C55E' }}>{totalRegular.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Regular{isOwner ? ' @ $0.40' : ''}</div>
+          <div style={st.summaryLabel}>Regular{isOwner ? ' @ $0.50' : ''}</div>
         </div>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalManual > 0 ? '#3B82F6' : '#888' }}>{totalManual.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Manual{isOwner ? ' @ $0.60' : ''}</div>
+          <div style={st.summaryLabel}>Manual{isOwner ? ' @ $0.85' : ''}</div>
         </div>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalAiMatch > 0 ? '#93C5FD' : '#888' }}>{totalAiMatch.toLocaleString()}</div>
-          <div style={st.summaryLabel}>AI Camera{isOwner ? ' @ $0.60' : ''}</div>
+          <div style={st.summaryLabel}>AI Camera{isOwner ? ' @ $0.85' : ''}</div>
         </div>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: totalExceptions > 0 ? '#EF4444' : '#888' }}>{totalExceptions.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Logged Exc{isOwner ? ' @ $0.60' : ''}</div>
+          <div style={st.summaryLabel}>Logged Exc{isOwner ? ' @ $0.85' : ''}</div>
         </div>
         <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
           <div style={{ ...st.summaryValue, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
