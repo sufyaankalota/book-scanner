@@ -1175,10 +1175,14 @@ export default function Pod() {
 
     if (job.meta.mode === 'single') {
       playSuccessBeep();
-      flash('#22C55E', '✓ ' + t('scanSuccess'));
+      // AI matches announce in their own visual lane (the pinned panel) so the
+      // full-screen flash is reserved for regular barcode scans only — keeps
+      // the two streams visually disambiguated while the operator multitasks.
       if (isAiMatch) {
         pulseAiPanel('#22C55E', '✓ ' + t('scanSuccess'), opts.aiSeq);
         recordAiHistory({ seq: opts.aiSeq, isbn, poName: job.meta.name, color: '#22C55E', photo: opts.capturedPhoto, title: opts.capturedTitle });
+      } else {
+        flash('#22C55E', '✓ ' + t('scanSuccess'));
       }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
@@ -1208,13 +1212,13 @@ export default function Pod() {
       const poNum = job.poNumbers?.[poName];
       playColorBeep(color);
       if (ttsEnabled) speak(poNum ? `number ${poNum}, ${getColorName(color)}` : getColorName(color));
-      flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`);
-      // For AI matches, also pulse the side panel with the bin color so the
-      // result is visually announced in its own spatial lane (right side)
-      // rather than overlapping the regular scan's center-screen flash.
+      // AI matches announce in their own visual lane (the pinned panel) so the
+      // full-screen flash is reserved for regular barcode scans only.
       if (isAiMatch) {
         pulseAiPanel(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`, opts.aiSeq);
         recordAiHistory({ seq: opts.aiSeq, isbn, poName, color, photo: opts.capturedPhoto, title: opts.capturedTitle });
+      } else {
+        flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`);
       }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
@@ -1233,10 +1237,12 @@ export default function Pod() {
       const excColor = job.exceptionColor || '#EF4444';
       const excNum = job.exceptionNumber;
       if (ttsEnabled) speak(excNum ? `number ${excNum}, ${getColorName(excColor)} exceptions` : `${getColorName(excColor)} exceptions`);
-      flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, 2000);
+      // AI matches announce in their own visual lane (the pinned panel) only.
       if (isAiMatch) {
         pulseAiPanel(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, opts.aiSeq);
         recordAiHistory({ seq: opts.aiSeq, isbn, poName: 'EXCEPTIONS', color: excColor, photo: opts.capturedPhoto, title: opts.capturedTitle });
+      } else {
+        flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, 2000);
       }
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
