@@ -15,7 +15,7 @@ import { logAudit } from '../utils/audit';
 import { exportShiftSummary } from '../utils/export';
 import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
-import { PER_POD_DAILY_TARGET } from '../utils/target';
+import { PER_POD_DAILY_TARGET, PER_POD_DAILY_MIN, PER_POD_BONUS_TARGET } from '../utils/target';
 import { displayOperatorName } from '../utils/operator';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
@@ -1094,6 +1094,19 @@ export default function Pod() {
       setTimeout(() => setMilestoneMsg(''), 4000);
     }
 
+    // Daily-goal milestones — minimum (1800) and bonus (2200 = gift card).
+    // Fire only on the exact scan that crosses the threshold so it celebrates
+    // once per shift, not on every subsequent scan.
+    if (newTotal === PER_POD_DAILY_MIN) {
+      triggerConfetti();
+      setMilestoneMsg(`🎯 Minimum hit! ${PER_POD_DAILY_MIN.toLocaleString()} scans — ${PER_POD_BONUS_TARGET - PER_POD_DAILY_MIN} more for a gift card!`);
+      setTimeout(() => setMilestoneMsg(''), 5000);
+    } else if (newTotal === PER_POD_BONUS_TARGET) {
+      triggerConfetti();
+      setMilestoneMsg(`🎁 GIFT CARD EARNED! ${PER_POD_BONUS_TARGET.toLocaleString()} scans — keep going, ${operatorName}!`);
+      setTimeout(() => setMilestoneMsg(''), 6000);
+    }
+
     if (job.meta.mode === 'single') {
       playSuccessBeep();
       flash('#22C55E', '✓ ' + t('scanSuccess'));
@@ -1392,6 +1405,38 @@ export default function Pod() {
               </div>
             </div>
           )}
+
+          {/* Daily targets — minimum + gift-card bonus */}
+          <div style={{
+            display: 'flex', gap: 10, marginBottom: 16,
+          }}>
+            <div style={{
+              flex: 1, padding: '12px 14px', borderRadius: 10,
+              border: '2px solid #3B82F6', backgroundColor: 'var(--bg-input, #0a0a0a)',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary, #93C5FD)', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                🎯 Minimum
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: '#3B82F6', lineHeight: 1.2 }}>
+                {PER_POD_DAILY_MIN.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary, #888)' }}>per shift</div>
+            </div>
+            <div style={{
+              flex: 1, padding: '12px 14px', borderRadius: 10,
+              border: '2px solid #22C55E', backgroundColor: 'var(--bg-input, #0a0a0a)',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 12, color: '#86efac', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                🎁 Gift Card
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: '#22C55E', lineHeight: 1.2 }}>
+                {PER_POD_BONUS_TARGET.toLocaleString()}+
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary, #888)' }}>earns a daily gift card</div>
+            </div>
+          </div>
 
           {/* Settings panel in Ready phase */}
           <div style={{ backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
@@ -1760,6 +1805,36 @@ export default function Pod() {
           );
         })()
       )}
+
+      {/* Daily milestone pill — minimum (1800) and gift-card bonus (2200) */}
+      {(() => {
+        const hitBonus = totalScans >= PER_POD_BONUS_TARGET;
+        const hitMin = totalScans >= PER_POD_DAILY_MIN;
+        let bg, border, color, text;
+        if (hitBonus) {
+          bg = '#14532d'; border = '#22C55E'; color = '#86efac';
+          text = `🎁 GIFT CARD EARNED! ${totalScans.toLocaleString()} scans today`;
+        } else if (hitMin) {
+          const toBonus = PER_POD_BONUS_TARGET - totalScans;
+          bg = 'var(--bg-card, #1a1a1a)'; border = '#EAB308'; color = '#FCD34D';
+          text = `🎁 ${toBonus.toLocaleString()} more for a gift card (${PER_POD_BONUS_TARGET.toLocaleString()})`;
+        } else {
+          const toMin = PER_POD_DAILY_MIN - totalScans;
+          bg = 'var(--bg-card, #1a1a1a)'; border = '#3B82F6'; color = '#93C5FD';
+          text = `🎯 ${toMin.toLocaleString()} to minimum (${PER_POD_DAILY_MIN.toLocaleString()}) · ${PER_POD_BONUS_TARGET.toLocaleString()} = gift card`;
+        }
+        return (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+            <span style={{
+              fontSize: 13, fontWeight: 700,
+              padding: '4px 12px', borderRadius: 999,
+              backgroundColor: bg, border: `1px solid ${border}`, color,
+            }}>
+              {text}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Offline queue indicator */}
       {!isOnline && (
