@@ -138,6 +138,13 @@ export default function Pod() {
   const [pace, setPace] = useState(0);
   const [flashColor, setFlashColor] = useState(null);
   const [flashText, setFlashText] = useState('');
+  // Flash metadata so AI cover-match flashes can be visually distinguished
+  // from regular barcode-scan flashes. kind: 'regular' | 'ai'. When 'ai' is
+  // set the overlay renders with diagonal stripes + a giant "AI #N" badge so
+  // operators can never confuse which book the bin color is for, even when
+  // two flashes happen back-to-back.
+  const [flashKind, setFlashKind] = useState('regular');
+  const [flashAiSeq, setFlashAiSeq] = useState(null);
   const [showExceptionModal, setShowExceptionModal] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualIsbn, setManualIsbn] = useState('');
@@ -868,9 +875,16 @@ export default function Pod() {
   };
 
   // ─── Flash helper ───
-  const flash = (color, text, duration = 1500) => {
-    setFlashColor(color); setFlashText(text);
-    setTimeout(() => { setFlashColor(null); setFlashText(''); }, duration);
+  // meta: { kind?: 'regular'|'ai', aiSeq?: number }
+  const flash = (color, text, duration = 1500, meta = null) => {
+    setFlashColor(color);
+    setFlashText(text);
+    setFlashKind(meta?.kind || 'regular');
+    setFlashAiSeq(meta?.aiSeq || null);
+    setTimeout(() => {
+      setFlashColor(null); setFlashText('');
+      setFlashKind('regular'); setFlashAiSeq(null);
+    }, duration);
   };
 
   // ─── Scan handler ───
@@ -1151,7 +1165,9 @@ export default function Pod() {
 
     if (job.meta.mode === 'single') {
       playSuccessBeep();
-      flash('#22C55E', '✓ ' + t('scanSuccess'));
+      flash('#22C55E', '✓ ' + t('scanSuccess'),
+        isAiMatch ? 2200 : 1500,
+        isAiMatch ? { kind: 'ai', aiSeq: opts.aiSeq } : null);
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -1180,7 +1196,9 @@ export default function Pod() {
       const poNum = job.poNumbers?.[poName];
       playColorBeep(color);
       if (ttsEnabled) speak(poNum ? `number ${poNum}, ${getColorName(color)}` : getColorName(color));
-      flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`);
+      flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`,
+        isAiMatch ? 2200 : 1500,
+        isAiMatch ? { kind: 'ai', aiSeq: opts.aiSeq } : null);
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -1198,7 +1216,9 @@ export default function Pod() {
       const excColor = job.exceptionColor || '#EF4444';
       const excNum = job.exceptionNumber;
       if (ttsEnabled) speak(excNum ? `number ${excNum}, ${getColorName(excColor)} exceptions` : `${getColorName(excColor)} exceptions`);
-      flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, 2000);
+      flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`,
+        2200,
+        isAiMatch ? { kind: 'ai', aiSeq: opts.aiSeq } : null);
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -1551,7 +1571,17 @@ export default function Pod() {
     <div className="pod-screen" style={{ ...styles.container, ...scaleStyle, ...(aiMatchCandidates ? { paddingRight: 'calc(380px + 24px)' } : null) }}>
       {/* Full-screen flash overlay */}
       {flashColor && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: flashColor, transition: 'opacity 0.15s ease-in', zIndex: 400, pointerEvents: 'none' }} />
+        <div style={{
+          position: 'fixed', inset: 0,
+          backgroundColor: flashColor,
+          // AI flashes use diagonal candy-stripes so they're instantly
+          // distinguishable from regular barcode-scan flashes even when two
+          // happen back to back. Regular scans stay solid color (existing UX).
+          backgroundImage: flashKind === 'ai'
+            ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.18) 0 24px, transparent 24px 48px)'
+            : 'none',
+          transition: 'opacity 0.15s ease-in', zIndex: 400, pointerEvents: 'none',
+        }} />
       )}
 
       {/* AI processing pill — non-blocking. Operator can keep scanning while
@@ -1612,6 +1642,22 @@ export default function Pod() {
 
       {flashText && (
         <div style={styles.flashOverlay}>
+          {/* When this flash is for an AI-matched book, add a giant AI #N
+              badge above the bin label so it's unmistakable which physical
+              book in their hand the bin color belongs to. */}
+          {flashKind === 'ai' && flashAiSeq != null && (
+            <div style={{
+              position: 'absolute', top: '8%', left: '50%', transform: 'translateX(-50%)',
+              padding: '10px 28px', borderRadius: 12,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              border: `4px solid ${isLightColor(flashColor) ? '#0a0a0a' : '#fff'}`,
+              fontSize: 'clamp(36px, 8vw, 96px)', fontWeight: 900,
+              color: isLightColor(flashColor) ? '#0a0a0a' : '#fff',
+              letterSpacing: 2, lineHeight: 1,
+            }}>
+              📷 AI #{flashAiSeq}
+            </div>
+          )}
           <span style={{ ...styles.flashText, color: isLightColor(flashColor) ? '#0a0a0a' : '#fff', textShadow: isLightColor(flashColor) ? '2px 2px 12px rgba(255,255,255,0.6)' : '2px 2px 12px rgba(0,0,0,0.8)' }}>{flashText}</span>
         </div>
       )}
