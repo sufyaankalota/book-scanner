@@ -117,6 +117,10 @@ export default function Pod() {
   // per job. Stays empty if the manifest doesn't include titles.
   // Title-index for AI cover match lives server-side (matchManifestTitle).
   const [aiMatchCandidates, setAiMatchCandidates] = useState(null); // { capturedTitle, photo, candidates: [...] } when ambiguous
+  // True while a server-side AI match call is in flight (between camera snap
+  // and candidate panel). Surfaced as a non-blocking pill so operators can
+  // keep scanning regular barcodes during the wait.
+  const [aiProcessing, setAiProcessing] = useState(false);
   const [showTitleSearch, setShowTitleSearch] = useState(false);
   const [titleSearchQuery, setTitleSearchQuery] = useState('');
   const [titleSearchBusy, setTitleSearchBusy] = useState(false);
@@ -478,11 +482,16 @@ export default function Pod() {
   }, []);
 
   // ─── Keep input focused ───
+  // NOTE: aiMatchCandidates is intentionally NOT in the blocklist. The AI
+  // candidate picker now renders as a non-blocking side panel so operators
+  // can keep scanning regular barcodes (with full screen flashes & PO color
+  // callouts) while they decide on the AI match. They've been doing this
+  // by ear; this just makes it visual.
   const refocusInput = useCallback(() => {
-    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift && !showManualEntry && !duplicateConfirm && !showTitleSearch && !aiMatchCandidates && !showIsbnCamera) {
+    if (isScanning && inputRef.current && !showExceptionModal && !showSwitchOperator && !showSettings && !showBreakPicker && !showEndShift && !showManualEntry && !duplicateConfirm && !showTitleSearch && !showIsbnCamera) {
       inputRef.current.focus();
     }
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift, showManualEntry, duplicateConfirm, showTitleSearch, aiMatchCandidates, showIsbnCamera]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showBreakPicker, showEndShift, showManualEntry, duplicateConfirm, showTitleSearch, showIsbnCamera]);
 
   useEffect(() => {
     if (!isScanning) return;
@@ -929,6 +938,7 @@ export default function Pod() {
     }
     let candidates = Array.isArray(preCandidates) ? preCandidates : null;
     if (!candidates) {
+      setAiProcessing(true);
       try {
         // Use extractAndMatch (warm, minInstances=1) in text-only mode instead of
         // matchManifestTitle (min=0) to avoid 60–90s cold starts on typed search.
@@ -947,7 +957,10 @@ export default function Pod() {
         const prefill = coverText || title || author || displayTitle || '';
         flash('#EF4444', 'Title match service unavailable — logging exception', 2500);
         openExceptionForCapture(prefill, photo);
+        setAiProcessing(false);
         return;
+      } finally {
+        setAiProcessing(false);
       }
     }
     const shown = displayTitle || candidates[0]?.variant || title || coverText || author || '';
@@ -1506,11 +1519,31 @@ export default function Pod() {
   // PHASE: Scanning / Paused
   // ═══════════════════════════════════════════
   return (
-    <div className="pod-screen" style={{ ...styles.container, ...scaleStyle }}>
+    <div className="pod-screen" style={{ ...styles.container, ...scaleStyle, ...(aiMatchCandidates ? { paddingRight: 'calc(380px + 24px)' } : null) }}>
       {/* Full-screen flash overlay */}
       {flashColor && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: flashColor, transition: 'opacity 0.15s ease-in', zIndex: 400, pointerEvents: 'none' }} />
       )}
+
+      {/* AI processing pill — non-blocking. Operator can keep scanning while
+          AI matches the cover photo. Shows on the right edge below the panel. */}
+      {aiProcessing && (
+        <div style={{
+          position: 'fixed', top: 18, right: 18, zIndex: 360,
+          padding: '8px 14px', borderRadius: 999,
+          backgroundColor: '#1e3a8a', border: '2px solid #3B82F6',
+          color: '#dbeafe', fontSize: 13, fontWeight: 700,
+          display: 'flex', alignItems: 'center', gap: 8,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        }}>
+          <span style={{
+            display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+            backgroundColor: '#60a5fa', animation: 'aipulse 1s ease-in-out infinite',
+          }} />
+          📷 AI matching cover… keep scanning
+        </div>
+      )}
+      <style>{`@keyframes aipulse { 0%,100% { opacity: 0.4; transform: scale(0.85);} 50% { opacity: 1; transform: scale(1.15);} }`}</style>
 
       {/* Training mode banner */}
       {trainingMode && (
@@ -2073,16 +2106,31 @@ export default function Pod() {
 
       {/* Ambiguous AI match — let the operator pick or reject */}
       {aiMatchCandidates && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 16 }}
-          onClick={() => setAiMatchCandidates(null)}>
-          <div onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#0f0f0f', border: '2px solid #EAB308', borderRadius: 14, padding: 22, maxWidth: 560, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ color: '#EAB308', margin: '0 0 6px', fontSize: 20, fontWeight: 800 }}>
-              {aiMatchCandidates.candidates.length ? 'Pick the matching title' : 'No likely matches'}
+        <div
+          // Non-blocking side panel: anchored to the right edge so the main
+          // scan UI (flash overlay, PO color, recent-scans list, stats) stays
+          // visible. Operators continue scanning regular barcodes while they
+          // decide on the AI match. z-index sits below the flash overlay (400)
+          // so PO color flashes briefly cover it on each scan, which is the
+          // same UX as everywhere else in the app.
+          style={{
+            position: 'fixed', top: 70, right: 12, bottom: 12,
+            width: 380, maxWidth: '94vw', zIndex: 350,
+            backgroundColor: '#0f0f0f', border: '2px solid #EAB308', borderRadius: 14,
+            padding: 18, overflowY: 'auto',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+          }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <h2 style={{ color: '#EAB308', margin: 0, fontSize: 18, fontWeight: 800 }}>
+              {aiMatchCandidates.candidates.length ? '📖 Pick AI match' : '⚠️ No match'}
             </h2>
-            <p style={{ color: '#bbb', margin: '0 0 14px', fontSize: 14 }}>
-              AI read the cover as: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle || '(no text detected)'}"</strong>
-            </p>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#22C55E', padding: '3px 8px', borderRadius: 999, backgroundColor: '#14532d', border: '1px solid #22C55E' }}>
+              keep scanning →
+            </span>
+          </div>
+          <p style={{ color: '#bbb', margin: '0 0 12px', fontSize: 13 }}>
+            AI read: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle || '(no text)'}"</strong>
+          </p>
             {aiMatchCandidates.candidates.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {aiMatchCandidates.candidates.map((c, idx) => (
@@ -2130,7 +2178,6 @@ export default function Pod() {
                 </div>
               )}
             </div>
-          </div>
         </div>
       )}
 
