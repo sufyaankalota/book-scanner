@@ -125,6 +125,10 @@ export default function Pod() {
   // — lets operators correlate a panel/recent-scans row to the physical
   // book they photographed instead of guessing.
   const aiSeqRef = useRef(0);
+  // Mini history of resolved AI matches this shift, shown in the pinned
+  // right-side rail so operators can audit what AI has done recently.
+  // Newest first, capped at 6 entries.
+  const [aiHistory, setAiHistory] = useState([]); // [{ seq, isbn, poName, color, photo, title, time }]
   const [showTitleSearch, setShowTitleSearch] = useState(false);
   const [titleSearchQuery, setTitleSearchQuery] = useState('');
   const [titleSearchBusy, setTitleSearchBusy] = useState(false);
@@ -138,13 +142,11 @@ export default function Pod() {
   const [pace, setPace] = useState(0);
   const [flashColor, setFlashColor] = useState(null);
   const [flashText, setFlashText] = useState('');
-  // Flash metadata so AI cover-match flashes can be visually distinguished
-  // from regular barcode-scan flashes. kind: 'regular' | 'ai'. When 'ai' is
-  // set the overlay renders with diagonal stripes + a giant "AI #N" badge so
-  // operators can never confuse which book the bin color is for, even when
-  // two flashes happen back-to-back.
-  const [flashKind, setFlashKind] = useState('regular');
-  const [flashAiSeq, setFlashAiSeq] = useState(null);
+  // When an AI cover-match result lands, instead of stealing the center-screen
+  // flash (which would compete with the regular barcode scan's flash) we
+  // pulse the right-side AI panel with the bin color. Keeps the two
+  // workflows visually in their own lanes.
+  const [aiPulse, setAiPulse] = useState(null); // { color, text, seq } | null
   const [showExceptionModal, setShowExceptionModal] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualIsbn, setManualIsbn] = useState('');
@@ -361,6 +363,7 @@ export default function Pod() {
       if (today !== dayRef.current) {
         dayRef.current = today;
         setLocalCount(0); setRecentScans([]); scanStartTimeRef.current = null;
+        setAiHistory([]); aiSeqRef.current = 0;
       }
     }, 30000);
     return () => clearInterval(interval);
@@ -431,7 +434,7 @@ export default function Pod() {
         setScannerPaired(false);
         setLocalCount(0);
         setRecentScans([]);
-        scanStartTimeRef.current = null;
+        setAiHistory([]); aiSeqRef.current = 0;
         setScanStreak(0);
         setBreakMinutesUsed(0);
         if (fromPods) navigate('/pods');
@@ -875,16 +878,23 @@ export default function Pod() {
   };
 
   // ─── Flash helper ───
-  // meta: { kind?: 'regular'|'ai', aiSeq?: number }
-  const flash = (color, text, duration = 1500, meta = null) => {
-    setFlashColor(color);
-    setFlashText(text);
-    setFlashKind(meta?.kind || 'regular');
-    setFlashAiSeq(meta?.aiSeq || null);
-    setTimeout(() => {
-      setFlashColor(null); setFlashText('');
-      setFlashKind('regular'); setFlashAiSeq(null);
-    }, duration);
+  const flash = (color, text, duration = 1500) => {
+    setFlashColor(color); setFlashText(text);
+    setTimeout(() => { setFlashColor(null); setFlashText(''); }, duration);
+  };
+
+  // ─── AI panel pulse ───
+  // Brief side-panel highlight when an AI match resolves. Lives in its own
+  // visual lane (right edge) so it never overlaps a regular barcode scan's
+  // center-screen flash.
+  const pulseAiPanel = (color, text, seq) => {
+    setAiPulse({ color, text, seq });
+    setTimeout(() => setAiPulse(null), 2200);
+  };
+
+  // Append to the AI mini-history (newest first, max 6 entries).
+  const recordAiHistory = ({ seq, isbn, poName, color, photo, title }) => {
+    setAiHistory((prev) => [{ seq, isbn, poName, color, photo, title, time: new Date() }, ...prev].slice(0, 6));
   };
 
   // ─── Scan handler ───
@@ -1165,9 +1175,11 @@ export default function Pod() {
 
     if (job.meta.mode === 'single') {
       playSuccessBeep();
-      flash('#22C55E', '✓ ' + t('scanSuccess'),
-        isAiMatch ? 2200 : 1500,
-        isAiMatch ? { kind: 'ai', aiSeq: opts.aiSeq } : null);
+      flash('#22C55E', '✓ ' + t('scanSuccess'));
+      if (isAiMatch) {
+        pulseAiPanel('#22C55E', '✓ ' + t('scanSuccess'), opts.aiSeq);
+        recordAiHistory({ seq: opts.aiSeq, isbn, poName: job.meta.name, color: '#22C55E', photo: opts.capturedPhoto, title: opts.capturedTitle });
+      }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -1196,9 +1208,14 @@ export default function Pod() {
       const poNum = job.poNumbers?.[poName];
       playColorBeep(color);
       if (ttsEnabled) speak(poNum ? `number ${poNum}, ${getColorName(color)}` : getColorName(color));
-      flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`,
-        isAiMatch ? 2200 : 1500,
-        isAiMatch ? { kind: 'ai', aiSeq: opts.aiSeq } : null);
+      flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`);
+      // For AI matches, also pulse the side panel with the bin color so the
+      // result is visually announced in its own spatial lane (right side)
+      // rather than overlapping the regular scan's center-screen flash.
+      if (isAiMatch) {
+        pulseAiPanel(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`, opts.aiSeq);
+        recordAiHistory({ seq: opts.aiSeq, isbn, poName, color, photo: opts.capturedPhoto, title: opts.capturedTitle });
+      }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -1216,9 +1233,11 @@ export default function Pod() {
       const excColor = job.exceptionColor || '#EF4444';
       const excNum = job.exceptionNumber;
       if (ttsEnabled) speak(excNum ? `number ${excNum}, ${getColorName(excColor)} exceptions` : `${getColorName(excColor)} exceptions`);
-      flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`,
-        2200,
-        isAiMatch ? { kind: 'ai', aiSeq: opts.aiSeq } : null);
+      flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, 2000);
+      if (isAiMatch) {
+        pulseAiPanel(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, opts.aiSeq);
+        recordAiHistory({ seq: opts.aiSeq, isbn, poName: 'EXCEPTIONS', color: excColor, photo: opts.capturedPhoto, title: opts.capturedTitle });
+      }
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
@@ -1315,6 +1334,7 @@ export default function Pod() {
     setPhase(PHASE_OPERATOR); setOperatorName('');
     setScannerPaired(false); setLocalCount(0);
     setRecentScans([]); scanStartTimeRef.current = null;
+    setAiHistory([]); aiSeqRef.current = 0;
     setScanStreak(0); setBreakMinutesUsed(0);
     localStorage.removeItem(`pod_${podId}_state`);
     // On kiosk devices, go back to pod selector
@@ -1568,41 +1588,23 @@ export default function Pod() {
   // PHASE: Scanning / Paused
   // ═══════════════════════════════════════════
   return (
-    <div className="pod-screen" style={{ ...styles.container, ...scaleStyle, ...(aiMatchCandidates ? { paddingRight: 'calc(380px + 24px)' } : null) }}>
+    <div className="pod-screen" style={{ ...styles.container, ...scaleStyle, ...((aiMatchCandidates || aiProcessing || aiHistory.length > 0) ? { paddingRight: 'calc(380px + 24px)' } : null) }}>
       {/* Full-screen flash overlay */}
       {flashColor && (
         <div style={{
           position: 'fixed', inset: 0,
           backgroundColor: flashColor,
-          // AI flashes use diagonal candy-stripes so they're instantly
-          // distinguishable from regular barcode-scan flashes even when two
-          // happen back to back. Regular scans stay solid color (existing UX).
-          backgroundImage: flashKind === 'ai'
-            ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.18) 0 24px, transparent 24px 48px)'
-            : 'none',
           transition: 'opacity 0.15s ease-in', zIndex: 400, pointerEvents: 'none',
         }} />
       )}
 
-      {/* AI processing pill — non-blocking. Operator can keep scanning while
-          AI matches the cover photo. Shows on the right edge below the panel. */}
-      {aiProcessing && (
-        <div style={{
-          position: 'fixed', top: 18, right: 18, zIndex: 360,
-          padding: '8px 14px', borderRadius: 999,
-          backgroundColor: '#1e3a8a', border: '2px solid #3B82F6',
-          color: '#dbeafe', fontSize: 13, fontWeight: 700,
-          display: 'flex', alignItems: 'center', gap: 8,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-        }}>
-          <span style={{
-            display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-            backgroundColor: '#60a5fa', animation: 'aipulse 1s ease-in-out infinite',
-          }} />
-          📷 AI matching cover #{aiSeqRef.current + 1}… keep scanning
-        </div>
-      )}
-      <style>{`@keyframes aipulse { 0%,100% { opacity: 0.4; transform: scale(0.85);} 50% { opacity: 1; transform: scale(1.15);} }`}</style>
+      {/* AI processing pill — now folded into the pinned AI panel below.
+          Kept only as a fallback for sessions that haven't used AI yet (so
+          there's no pinned panel) — though aiProcessing implies one is in
+          flight so the pinned panel will have rendered anyway. We leave this
+          unrendered to avoid a duplicate "AI matching" indicator. */}
+      <style>{`@keyframes aipulse { 0%,100% { opacity: 0.4; transform: scale(0.85);} 50% { opacity: 1; transform: scale(1.15);} }
+@keyframes aipanelpulse { 0% { box-shadow: 0 0 0 0 var(--pulse-color, #EAB308); } 70% { box-shadow: 0 0 0 18px rgba(0,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }`}</style>
 
       {/* Training mode banner */}
       {trainingMode && (
@@ -1642,22 +1644,6 @@ export default function Pod() {
 
       {flashText && (
         <div style={styles.flashOverlay}>
-          {/* When this flash is for an AI-matched book, add a giant AI #N
-              badge above the bin label so it's unmistakable which physical
-              book in their hand the bin color belongs to. */}
-          {flashKind === 'ai' && flashAiSeq != null && (
-            <div style={{
-              position: 'absolute', top: '8%', left: '50%', transform: 'translateX(-50%)',
-              padding: '10px 28px', borderRadius: 12,
-              backgroundColor: 'rgba(0,0,0,0.55)',
-              border: `4px solid ${isLightColor(flashColor) ? '#0a0a0a' : '#fff'}`,
-              fontSize: 'clamp(36px, 8vw, 96px)', fontWeight: 900,
-              color: isLightColor(flashColor) ? '#0a0a0a' : '#fff',
-              letterSpacing: 2, lineHeight: 1,
-            }}>
-              📷 AI #{flashAiSeq}
-            </div>
-          )}
           <span style={{ ...styles.flashText, color: isLightColor(flashColor) ? '#0a0a0a' : '#fff', textShadow: isLightColor(flashColor) ? '2px 2px 12px rgba(255,255,255,0.6)' : '2px 2px 12px rgba(0,0,0,0.8)' }}>{flashText}</span>
         </div>
       )}
@@ -2196,94 +2182,206 @@ export default function Pod() {
         </div>
       )}
 
-      {/* Ambiguous AI match — let the operator pick or reject */}
-      {aiMatchCandidates && (
+      {/* ─── Pinned AI panel ───
+          Always visible to the right once an AI session has occurred this
+          shift, OR while an AI workflow is active. Single visual lane for
+          all AI state so operators know exactly where to look. States:
+          - aiMatchCandidates: full picker
+          - aiProcessing: pulsing "matching cover…" indicator
+          - aiPulse: brief bin-color flash when a match resolves
+          - aiHistory only (idle): condensed last-3-AI-matches list
+          z-index < flash overlay (400) so regular scan center-flashes still
+          briefly cover it, matching the rest of the app's UX. */}
+      {(aiMatchCandidates || aiProcessing || aiHistory.length > 0) && (
         <div
-          // Non-blocking side panel: anchored to the right edge so the main
-          // scan UI (flash overlay, PO color, recent-scans list, stats) stays
-          // visible. Operators continue scanning regular barcodes while they
-          // decide on the AI match. z-index sits below the flash overlay (400)
-          // so PO color flashes briefly cover it on each scan, which is the
-          // same UX as everywhere else in the app.
           style={{
             position: 'fixed', top: 70, right: 12, bottom: 12,
             width: 380, maxWidth: '94vw', zIndex: 350,
-            backgroundColor: '#0f0f0f', border: '2px solid #EAB308', borderRadius: 14,
-            padding: 18, overflowY: 'auto',
+            backgroundColor: '#0f0f0f',
+            border: `2px solid ${aiPulse ? aiPulse.color : aiMatchCandidates ? '#EAB308' : aiProcessing ? '#3B82F6' : '#333'}`,
+            borderRadius: 14,
+            padding: 16, overflowY: 'auto',
             boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            transition: 'border-color 0.25s ease',
+            // CSS variable feeds the @keyframes aipanelpulse ring color.
+            '--pulse-color': aiPulse ? aiPulse.color : 'transparent',
+            animation: aiPulse ? 'aipanelpulse 0.9s ease-out' : 'none',
           }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <h2 style={{ color: '#EAB308', margin: 0, fontSize: 18, fontWeight: 800 }}>
-              {aiMatchCandidates.candidates.length ? '📖 Pick AI match' : '⚠️ No match'}
-              {aiMatchCandidates.seq && (
-                <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 800, color: '#93C5FD', backgroundColor: '#1e3a8a', padding: '2px 8px', borderRadius: 6 }}>
-                  AI #{aiMatchCandidates.seq}
-                </span>
-              )}
+
+          {/* Panel header — always visible regardless of state */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h2 style={{ color: '#dbeafe', margin: 0, fontSize: 15, fontWeight: 800, letterSpacing: 0.3 }}>
+              📷 AI WORKSPACE
             </h2>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#22C55E', padding: '3px 8px', borderRadius: 999, backgroundColor: '#14532d', border: '1px solid #22C55E' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#22C55E', padding: '2px 7px', borderRadius: 999, backgroundColor: '#14532d', border: '1px solid #22C55E' }}>
               keep scanning →
             </span>
           </div>
-          {/* Big cover preview so the operator can identify the physical book
-              in their hand at a glance — critical when several AI snaps and
-              regular barcoded books are interleaved. */}
-          {aiMatchCandidates.photo && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-              <img src={aiMatchCandidates.photo} alt="captured cover"
-                style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, border: '2px solid #EAB308' }} />
+
+          {/* Pulse banner — bin-color confirmation when an AI match resolves.
+              Shows for ~2s then disappears. Lives in its own lane so it never
+              competes with the regular scan's center-screen flash. */}
+          {aiPulse && (
+            <div style={{
+              marginBottom: 12, padding: '14px 16px', borderRadius: 10,
+              backgroundColor: aiPulse.color,
+              color: isLightColor(aiPulse.color) ? '#0a0a0a' : '#fff',
+              border: `2px solid ${isLightColor(aiPulse.color) ? '#0a0a0a' : '#fff'}`,
+              textAlign: 'center', fontWeight: 900,
+            }}>
+              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 4 }}>
+                AI #{aiPulse.seq} → goes to
+              </div>
+              <div style={{ fontSize: 22, lineHeight: 1.1 }}>
+                {aiPulse.text}
+              </div>
             </div>
           )}
-          <p style={{ color: '#bbb', margin: '0 0 12px', fontSize: 13 }}>
-            AI read: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle || '(no text)'}"</strong>
-          </p>
-            {aiMatchCandidates.candidates.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {aiMatchCandidates.candidates.map((c, idx) => (
-                  <button key={c.isbn}
-                    onClick={() => pickAiCandidate(idx)}
-                    style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #555', backgroundColor: '#0a0a0a', color: '#EAB308', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{idx + 1}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || `(no title — ${c.isbn})`}</div>
-                      <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po || '—'} · {c.isbn}</div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : c.score >= MATCH_AMBIGUOUS ? '#EAB308' : '#888' }}>
-                      {Math.round(c.score * 100)}%
-                    </div>
-                  </button>
-                ))}
+
+          {/* PROCESSING state — pulsing dot */}
+          {aiProcessing && !aiMatchCandidates && (
+            <div style={{
+              padding: '14px 16px', marginBottom: 12, borderRadius: 10,
+              backgroundColor: '#1e3a8a', border: '1px solid #3B82F6',
+              color: '#dbeafe', fontSize: 14, fontWeight: 700,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{
+                display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
+                backgroundColor: '#60a5fa', animation: 'aipulse 1s ease-in-out infinite',
+                flexShrink: 0,
+              }} />
+              <div>
+                <div>Matching cover #{aiSeqRef.current + 1}…</div>
+                <div style={{ fontSize: 11, fontWeight: 500, color: '#93c5fd', marginTop: 2 }}>
+                  Keep scanning regular barcodes
+                </div>
               </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-              <button onClick={() => {
-                setAiMatchCandidates(null);
-                setShowManualEntry(true);
-                setTimeout(() => manualInputRef.current?.focus(), 100);
-              }}
-                style={{ padding: '12px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#93c5fd', fontWeight: 700, cursor: 'pointer' }}>
-                Type ISBN manually <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>M</kbd>
-              </button>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => {
-                  const sel = aiMatchCandidates;
-                  setAiMatchCandidates(null);
-                  openExceptionForCapture(sel.capturedTitle, sel.photo);
-                }}
-                  style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#fca5a5', fontWeight: 700, cursor: 'pointer' }}>
-                  {aiMatchCandidates.candidates.length ? 'None of these — log exception' : 'Log exception'} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>E</kbd>
-                </button>
-                <button onClick={() => setAiMatchCandidates(null)}
-                  style={{ padding: '12px 18px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#2a2a2a', color: '#ccc', fontWeight: 700, cursor: 'pointer' }}>
-                  Cancel <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Esc</kbd>
-                </button>
+            </div>
+          )}
+
+          {/* CANDIDATE PICKER state */}
+          {aiMatchCandidates && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <h3 style={{ color: '#EAB308', margin: 0, fontSize: 16, fontWeight: 800 }}>
+                  {aiMatchCandidates.candidates.length ? 'Pick AI match' : '⚠️ No match'}
+                  {aiMatchCandidates.seq && (
+                    <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, color: '#93C5FD', backgroundColor: '#1e3a8a', padding: '2px 8px', borderRadius: 6 }}>
+                      AI #{aiMatchCandidates.seq}
+                    </span>
+                  )}
+                </h3>
               </div>
-              {aiMatchCandidates.candidates.length > 0 && (
-                <div style={{ color: '#666', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
-                  Press <kbd style={kbdHintStyle}>1</kbd>–<kbd style={kbdHintStyle}>{Math.min(9, aiMatchCandidates.candidates.length)}</kbd> to pick a title
+              {aiMatchCandidates.photo && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+                  <img src={aiMatchCandidates.photo} alt="captured cover"
+                    style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, border: '2px solid #EAB308' }} />
                 </div>
               )}
+              <p style={{ color: '#bbb', margin: '0 0 12px', fontSize: 13 }}>
+                AI read: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle || '(no text)'}"</strong>
+              </p>
+              {aiMatchCandidates.candidates.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {aiMatchCandidates.candidates.map((c, idx) => (
+                    <button key={c.isbn}
+                      onClick={() => pickAiCandidate(idx)}
+                      style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #555', backgroundColor: '#0a0a0a', color: '#EAB308', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{idx + 1}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || `(no title — ${c.isbn})`}</div>
+                        <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po || '—'} · {c.isbn}</div>
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : c.score >= MATCH_AMBIGUOUS ? '#EAB308' : '#888' }}>
+                        {Math.round(c.score * 100)}%
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+                <button onClick={() => {
+                  setAiMatchCandidates(null);
+                  setShowManualEntry(true);
+                  setTimeout(() => manualInputRef.current?.focus(), 100);
+                }}
+                  style={{ padding: '10px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#93c5fd', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                  Type ISBN manually <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>M</kbd>
+                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => {
+                    const sel = aiMatchCandidates;
+                    setAiMatchCandidates(null);
+                    openExceptionForCapture(sel.capturedTitle, sel.photo);
+                  }}
+                    style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#fca5a5', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                    {aiMatchCandidates.candidates.length ? 'None — exception' : 'Log exception'} <kbd style={{ ...kbdHintStyle, marginLeft: 4 }}>E</kbd>
+                  </button>
+                  <button onClick={() => setAiMatchCandidates(null)}
+                    style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #555', backgroundColor: '#2a2a2a', color: '#ccc', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                    <kbd style={kbdHintStyle}>Esc</kbd>
+                  </button>
+                </div>
+                {aiMatchCandidates.candidates.length > 0 && (
+                  <div style={{ color: '#666', fontSize: 11, textAlign: 'center', marginTop: 2 }}>
+                    Press <kbd style={kbdHintStyle}>1</kbd>–<kbd style={kbdHintStyle}>{Math.min(9, aiMatchCandidates.candidates.length)}</kbd> to pick
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* IDLE state — quick-snap button + recent AI history.
+              Only visible when no picker / processing is active. */}
+          {!aiMatchCandidates && !aiProcessing && (
+            <>
+              <button
+                onClick={() => setShowIsbnCamera(true)}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 10,
+                  border: '2px solid #3B82F6', backgroundColor: '#1e3a8a',
+                  color: '#dbeafe', fontSize: 15, fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  marginBottom: 14,
+                }}>
+                📷 Snap next cover (AI #{aiSeqRef.current + 1})
+                <kbd style={{ ...kbdHintStyle, marginLeft: 4 }}>Ctrl+1</kbd>
+              </button>
+              {aiHistory.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                    Recent AI matches
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {aiHistory.slice(0, 6).map((h) => (
+                      <div key={`${h.seq}-${h.isbn}`} style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '8px 10px', borderRadius: 8,
+                        backgroundColor: '#1a1a1a', border: '1px solid #222',
+                      }}>
+                        {h.photo
+                          ? <img src={h.photo} alt="" style={{ width: 30, height: 40, objectFit: 'cover', borderRadius: 4, border: `1px solid ${h.color}`, flexShrink: 0 }} />
+                          : <div style={{ width: 30, height: 40, borderRadius: 4, backgroundColor: '#222', flexShrink: 0 }} />
+                        }
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: h.color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            AI #{h.seq} · {h.poName}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#777', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {h.isbn}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 10, color: '#666', flexShrink: 0 }}>
+                          {h.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
 
