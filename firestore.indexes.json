@@ -26,6 +26,14 @@
       ]
     },
     {
+      "collectionGroup": "scans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "scannerId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "exceptions",
       "queryScope": "COLLECTION",
       "fields": [

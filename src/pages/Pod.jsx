@@ -165,6 +165,9 @@ export default function Pod() {
   const [operatorHistory, setOperatorHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('operator-history') || '[]'); } catch { return []; }
   });
+  // Personal record to beat: most recent prior day this operator scanned (any pod).
+  // null = not yet queried; { count: 0 } = queried, no prior scans found.
+  const [previousBest, setPreviousBest] = useState(null); // { count, dateLabel } | null
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
   const inputRef = useRef(null);
@@ -245,7 +248,52 @@ export default function Pod() {
     }
     saveOperatorToHistory(name);
     setPodLocked(false);
+    // Fire-and-forget: look up this operator's most recent prior day total
+    // so we can show them a record to beat. Doesn't block pod entry.
+    loadPreviousBest(name);
     setPhase(PHASE_PAIR_SCANNER);
+  };
+
+  // ─── Personal record to beat ───
+  // Query the last 7 days of scans for this operator and pick the most recent
+  // prior day with any scans. Single getDocs (not realtime). Best-effort: any
+  // error just leaves previousBest=null so the UI gracefully hides.
+  const loadPreviousBest = async (name) => {
+    if (!name) return;
+    try {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const weekAgo = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const q = query(
+        collection(db, 'scans'),
+        where('scannerId', '==', name),
+        where('timestamp', '>=', Timestamp.fromDate(weekAgo)),
+        where('timestamp', '<', Timestamp.fromDate(start)),
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) { setPreviousBest({ count: 0, dateLabel: '' }); return; }
+      // Group by local date (YYYY-MM-DD) and pick the most recent.
+      const byDay = new Map();
+      for (const d of snap.docs) {
+        const ts = d.data().timestamp?.toDate?.();
+        if (!ts) continue;
+        const key = `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')}`;
+        byDay.set(key, (byDay.get(key) || 0) + 1);
+      }
+      if (!byDay.size) { setPreviousBest({ count: 0, dateLabel: '' }); return; }
+      const sortedKeys = [...byDay.keys()].sort().reverse();
+      const topKey = sortedKeys[0];
+      const count = byDay.get(topKey);
+      // Friendly label: "yesterday" if it's literally yesterday, else weekday name
+      const [y, m, dd] = topKey.split('-').map(Number);
+      const recordDate = new Date(y, m - 1, dd);
+      const yesterday = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+      yesterday.setHours(0, 0, 0, 0);
+      const isYesterday = recordDate.getTime() === yesterday.getTime();
+      const dateLabel = isYesterday ? 'yesterday' : recordDate.toLocaleDateString(undefined, { weekday: 'long' });
+      setPreviousBest({ count, dateLabel });
+    } catch {
+      // Silent fail — motivational ribbon is non-critical.
+    }
   };
 
   // ─── Font size ───
@@ -302,6 +350,19 @@ export default function Pod() {
     }, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // ─── Load previous-best on operator restore (page refresh mid-shift) ───
+  // advanceFromOperator already kicks this off for fresh sign-ins; this covers
+  // the case where savedState already had an operator and we never went
+  // through PHASE_OPERATOR this load.
+  useEffect(() => {
+    if (operatorName) {
+      loadPreviousBest(operatorName);
+    } else {
+      setPreviousBest(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operatorName]);
 
   // ─── Scanner idle detection (visual warning only — disconnect alarm disabled) ───
   useEffect(() => {
@@ -708,7 +769,10 @@ export default function Pod() {
       const regularCount = docs.filter((d) => d.type === 'standard' && !d.source).length;
       const manualCount = docs.filter((d) => d.source === 'manual').length;
       const autoExcCount = docs.filter((d) => d.type === 'exception' && d.source !== 'manual' && d.source !== 'ai-match').length;
-      setFirestoreCount(regularCount);
+      // Total Scans must match the Kiosk's per-pod count (all /scans docs for
+      // this pod today, any type/source). Manual & exception sub-counts are
+      // still shown separately as their own stats below.
+      setFirestoreCount(docs.length);
       setManualEntryCount(manualCount);
       // Count auto-exceptions (not-in-manifest, excluding manual entries)
       setAutoExceptionCount(autoExcCount);
@@ -1017,9 +1081,9 @@ export default function Pod() {
       return;
     }
 
-    // Optimistic update — only count toward "Total Scans" if this is a regular scan.
-    // Manual entries and AI-matches have their own counters (Manual stat).
-    if (!source) setLocalCount((c) => c + 1);
+    // Optimistic update — every scan that lands in /scans bumps Total Scans
+    // (matches the Kiosk's per-pod count exactly).
+    setLocalCount((c) => c + 1);
 
     // Milestone check
     const newTotal = totalScans + 1;
@@ -1041,7 +1105,7 @@ export default function Pod() {
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
-        if (!source) setLocalCount((c) => Math.max(0, c - 1));
+        setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
         playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
@@ -1070,7 +1134,7 @@ export default function Pod() {
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
-        if (!source) setLocalCount((c) => Math.max(0, c - 1));
+        setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
         playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
@@ -1088,7 +1152,7 @@ export default function Pod() {
       }).then((docRef) => {
         setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
       }).catch(() => {
-        // exceptions don't increment localCount, no need to decrement
+        setLocalCount((c) => Math.max(0, c - 1));
         setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
         playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
       });
@@ -1309,6 +1373,25 @@ export default function Pod() {
               <span style={styles.readyValue}>{job?.meta?.name || 'No active job'}</span>
             </div>
           </div>
+
+          {/* Personal record to beat */}
+          {previousBest && previousBest.count > 0 && (
+            <div style={{
+              backgroundColor: 'var(--bg-input, #0a0a0a)',
+              border: '2px solid #EAB308', borderRadius: 10,
+              padding: '14px 18px', marginBottom: 16, textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 14, color: 'var(--text-secondary, #aaa)', fontWeight: 600, marginBottom: 4 }}>
+                🏆 Your record to beat ({previousBest.dateLabel})
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: '#EAB308', lineHeight: 1 }}>
+                {previousBest.count.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary, #888)', marginTop: 4 }}>
+                Beat it today, {operatorName}!
+              </div>
+            </div>
+          )}
 
           {/* Settings panel in Ready phase */}
           <div style={{ backgroundColor: 'var(--bg-input, #0a0a0a)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
@@ -1653,6 +1736,29 @@ export default function Pod() {
             </span>
           )}
         </div>
+      )}
+
+      {/* Record-to-beat pill — collapses once they pass it */}
+      {previousBest && previousBest.count > 0 && (
+        (() => {
+          const beaten = totalScans >= previousBest.count;
+          const remaining = Math.max(0, previousBest.count - totalScans);
+          return (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+              <span style={{
+                fontSize: 13, fontWeight: 700,
+                padding: '4px 12px', borderRadius: 999,
+                backgroundColor: beaten ? '#14532d' : 'var(--bg-card, #1a1a1a)',
+                border: `1px solid ${beaten ? '#22C55E' : '#EAB308'}`,
+                color: beaten ? '#86efac' : '#FCD34D',
+              }}>
+                {beaten
+                  ? `🎉 Beat ${previousBest.dateLabel}'s record of ${previousBest.count.toLocaleString()}!`
+                  : `🏆 ${remaining.toLocaleString()} to beat ${previousBest.dateLabel} (${previousBest.count.toLocaleString()})`}
+              </span>
+            </div>
+          );
+        })()
       )}
 
       {/* Offline queue indicator */}
