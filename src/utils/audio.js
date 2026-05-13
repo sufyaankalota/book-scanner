@@ -108,6 +108,30 @@ export function playColorBeep(hex) {
   playTone(COLOR_TONES[hex] || 880, 0.15, 0.25);
 }
 
+// Distinct "AI match ready" chime — three quick ascending notes so the
+// operator can tell by ear that an AI cover-match panel has appeared and
+// needs their attention. Different from playSuccessBeep (regular scan) and
+// playColorBeep (PO color callout) so it doesn't get confused with either.
+export function playAiReadyChime() {
+  try {
+    const vol = getVolume() / 100;
+    if (vol === 0) return;
+    const ctx = getAudioContext();
+    const notes = [784, 988, 1175]; // G5, B5, D6
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
+      g.gain.setValueAtTime(0.25 * vol, ctx.currentTime + i * 0.08);
+      g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.12);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.08);
+      osc.stop(ctx.currentTime + i * 0.08 + 0.12);
+    });
+  } catch {}
+}
+
 // ─── Scanner disconnect alarm ───
 // Loud, repeating siren-style tone meant to grab attention from across the warehouse.
 // Returns a stop() function so the caller can cancel when scanning resumes.

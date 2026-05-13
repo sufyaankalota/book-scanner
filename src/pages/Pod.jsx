@@ -7,7 +7,7 @@ import {
   query, where, onSnapshot, serverTimestamp, Timestamp, runTransaction,
 } from 'firebase/firestore';
 import { isValidISBN, cleanISBN, detectBarcodeType } from '../utils/isbn';
-import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, speak, getVolume, setVolume } from '../utils/audio';
+import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, playAiReadyChime, speak, getVolume, setVolume } from '../utils/audio';
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang } from '../utils/locale';
 import { cycleTheme, getTheme } from '../utils/theme';
@@ -116,11 +116,15 @@ export default function Pod() {
   // Title index for AI cover-photo → ISBN fuzzy match. Loaded lazily once
   // per job. Stays empty if the manifest doesn't include titles.
   // Title-index for AI cover match lives server-side (matchManifestTitle).
-  const [aiMatchCandidates, setAiMatchCandidates] = useState(null); // { capturedTitle, photo, candidates: [...] } when ambiguous
+  const [aiMatchCandidates, setAiMatchCandidates] = useState(null); // { capturedTitle, photo, candidates: [...], seq } when ambiguous
   // True while a server-side AI match call is in flight (between camera snap
   // and candidate panel). Surfaced as a non-blocking pill so operators can
   // keep scanning regular barcodes during the wait.
   const [aiProcessing, setAiProcessing] = useState(false);
+  // Running counter so each AI snap gets a visible sequence number ("AI #3")
+  // — lets operators correlate a panel/recent-scans row to the physical
+  // book they photographed instead of guessing.
+  const aiSeqRef = useRef(0);
   const [showTitleSearch, setShowTitleSearch] = useState(false);
   const [titleSearchQuery, setTitleSearchQuery] = useState('');
   const [titleSearchBusy, setTitleSearchBusy] = useState(false);
@@ -512,6 +516,13 @@ export default function Pod() {
         const k = e.key.toLowerCase();
         if (k === '1') {
           e.preventDefault();
+          // Don't open a second AI snap while one is still pending — the
+          // operator needs to resolve the current panel first to avoid
+          // pairing the wrong physical book with the wrong ISBN.
+          if (aiProcessing || aiMatchCandidates) {
+            flash('#EAB308', 'Resolve current AI match first', 1500);
+            return;
+          }
           setShowIsbnCamera(true);
           return;
         }
@@ -964,12 +975,20 @@ export default function Pod() {
       }
     }
     const shown = displayTitle || candidates[0]?.variant || title || coverText || author || '';
+    // Assign a sequence number so this AI book is visually tied to its
+    // panel + recent-scans row + cover thumbnail. Operators can read it off
+    // the side panel ("AI #4") and match it to the physical book in hand.
+    aiSeqRef.current += 1;
+    const seq = aiSeqRef.current;
+    // Audible cue so they know to look at the side panel without having to
+    // glance up after every barcode scan.
+    playAiReadyChime();
     if (!candidates.length) {
       flash('#EAB308', 'No likely matches — log exception or type ISBN', 2200);
-      setAiMatchCandidates({ capturedTitle: shown, photo, candidates: [] });
+      setAiMatchCandidates({ capturedTitle: shown, photo, candidates: [], seq });
       return;
     }
-    setAiMatchCandidates({ capturedTitle: shown, photo, candidates });
+    setAiMatchCandidates({ capturedTitle: shown, photo, candidates, seq });
   };
 
   const handleAiCoverResult = async (data) => {
@@ -1014,7 +1033,17 @@ export default function Pod() {
     if (!c) return;
     const sel = aiMatchCandidates;
     setAiMatchCandidates(null);
-    handleScan(c.isbn, { isManual: true, source: 'ai-match', capturedTitle: sel.capturedTitle, matchScore: c.score });
+    handleScan(c.isbn, {
+      isManual: true,
+      source: 'ai-match',
+      capturedTitle: sel.capturedTitle,
+      matchScore: c.score,
+      // Pass photo + seq down so the recent-scans row carries a thumbnail
+      // and the same AI #N label, letting the operator visually correlate
+      // the row to the physical book that was photographed.
+      capturedPhoto: sel.photo,
+      aiSeq: sel.seq,
+    });
   };
   useEffect(() => {
     if (!aiMatchCandidates) return;
@@ -1124,7 +1153,7 @@ export default function Pod() {
       playSuccessBeep();
       flash('#22C55E', '✓ ' + t('scanSuccess'));
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
-      setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual, isAiMatch }, ...prev].slice(0, 20));
+      setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
         poName: job.meta.name, timestamp: serverTimestamp(), type: 'standard', ...sourceMeta,
@@ -1153,7 +1182,7 @@ export default function Pod() {
       if (ttsEnabled) speak(poNum ? `number ${poNum}, ${getColorName(color)}` : getColorName(color));
       flash(color, `${poNum ? `#${poNum} ` : ''}${getColorName(color)} ${t('gaylord')}`);
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
-      setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch }, ...prev].slice(0, 20));
+      setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn, poName,
         timestamp: serverTimestamp(), type: 'standard', ...sourceMeta,
@@ -1171,7 +1200,7 @@ export default function Pod() {
       if (ttsEnabled) speak(excNum ? `number ${excNum}, ${getColorName(excColor)} exceptions` : `${getColorName(excColor)} exceptions`);
       flash(excColor, `${excNum ? `#${excNum} ` : ''}${getColorName(excColor)} ${t('exceptions') || 'EXCEPTIONS'}`, 2000);
       setScanStreak(0);
-      setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true }, ...prev].slice(0, 20));
+      setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
       addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
         poName: 'EXCEPTIONS', timestamp: serverTimestamp(), type: 'exception', ...sourceMeta,
@@ -1540,7 +1569,7 @@ export default function Pod() {
             display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
             backgroundColor: '#60a5fa', animation: 'aipulse 1s ease-in-out infinite',
           }} />
-          📷 AI matching cover… keep scanning
+          📷 AI matching cover #{aiSeqRef.current + 1}… keep scanning
         </div>
       )}
       <style>{`@keyframes aipulse { 0%,100% { opacity: 0.4; transform: scale(0.85);} 50% { opacity: 1; transform: scale(1.15);} }`}</style>
@@ -1929,6 +1958,13 @@ export default function Pod() {
           <div style={styles.recentTitle}>{t('recentScans')}</div>
           {recentScans.slice(0, 8).map((s, i) => (
             <div key={s.id} style={{ ...styles.recentRow, opacity: i === 0 ? 1 : 0.5 + (0.5 / (i + 1)) }}>
+              {/* AI-match rows show a small cover thumbnail so the operator
+                  can correlate the on-screen entry to the physical book they
+                  photographed (especially when several books are in flight). */}
+              {s.capturedPhoto && (
+                <img src={s.capturedPhoto} alt="cover"
+                  style={{ width: 32, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid #3B82F6', flexShrink: 0 }} />
+              )}
               <span
                 onClick={() => {
                   navigator.clipboard?.writeText(s.isbn).catch(() => {});
@@ -1947,8 +1983,18 @@ export default function Pod() {
               )}
               {s.poName === 'TRAINING' && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 700 }}>TRAINING</span>}
               {s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 700 }}>EXCEPTION</span>}
-              {s.isAiMatch && !s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#1e3a8a', color: '#93C5FD', fontWeight: 700 }}>AI</span>}
+              {s.isAiMatch && !s.isException && (
+                <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#1e3a8a', color: '#93C5FD', fontWeight: 700 }}>
+                  AI{s.aiSeq ? ` #${s.aiSeq}` : ''}
+                </span>
+              )}
               {s.isManual && !s.isAiMatch && !s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
+              {s.capturedTitle && (s.isAiMatch || s.isException) && (
+                <span title={s.capturedTitle}
+                  style={{ fontSize: 12, color: '#999', fontStyle: 'italic', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  "{s.capturedTitle}"
+                </span>
+              )}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: '#777', fontWeight: 500 }}>{s.time.toLocaleTimeString()}</span>
             </div>
           ))}
@@ -2123,11 +2169,25 @@ export default function Pod() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <h2 style={{ color: '#EAB308', margin: 0, fontSize: 18, fontWeight: 800 }}>
               {aiMatchCandidates.candidates.length ? '📖 Pick AI match' : '⚠️ No match'}
+              {aiMatchCandidates.seq && (
+                <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 800, color: '#93C5FD', backgroundColor: '#1e3a8a', padding: '2px 8px', borderRadius: 6 }}>
+                  AI #{aiMatchCandidates.seq}
+                </span>
+              )}
             </h2>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#22C55E', padding: '3px 8px', borderRadius: 999, backgroundColor: '#14532d', border: '1px solid #22C55E' }}>
               keep scanning →
             </span>
           </div>
+          {/* Big cover preview so the operator can identify the physical book
+              in their hand at a glance — critical when several AI snaps and
+              regular barcoded books are interleaved. */}
+          {aiMatchCandidates.photo && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+              <img src={aiMatchCandidates.photo} alt="captured cover"
+                style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, border: '2px solid #EAB308' }} />
+            </div>
+          )}
           <p style={{ color: '#bbb', margin: '0 0 12px', fontSize: 13 }}>
             AI read: <strong style={{ color: '#fff' }}>"{aiMatchCandidates.capturedTitle || '(no text)'}"</strong>
           </p>
@@ -2191,11 +2251,31 @@ export default function Pod() {
       {/* Action buttons — Camera is the primary path (auto-falls to exception when no match);
           Type ISBN for hand-keying barcodes; Log Exception only for severely damaged books. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
-        <button onClick={() => setShowIsbnCamera(true)}
-          title="Press Ctrl+1 — reads the cover, matches to manifest, auto-logs exception if no match"
-          style={{ ...styles.secondaryBtn, margin: 0, borderColor: '#3B82F6', backgroundColor: '#1e3a8a', color: '#dbeafe', fontSize: 18, padding: '20px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, fontWeight: 800 }}>
+        <button
+          onClick={() => {
+            if (aiProcessing || aiMatchCandidates) {
+              flash('#EAB308', 'Resolve current AI match first', 1500);
+              return;
+            }
+            setShowIsbnCamera(true);
+          }}
+          disabled={aiProcessing || !!aiMatchCandidates}
+          title={aiProcessing || aiMatchCandidates
+            ? 'Resolve the current AI match before snapping another cover'
+            : 'Press Ctrl+1 — reads the cover, matches to manifest, auto-logs exception if no match'}
+          style={{
+            ...styles.secondaryBtn, margin: 0,
+            borderColor: '#3B82F6', backgroundColor: '#1e3a8a', color: '#dbeafe',
+            fontSize: 18, padding: '20px 24px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+            fontWeight: 800,
+            opacity: (aiProcessing || aiMatchCandidates) ? 0.45 : 1,
+            cursor: (aiProcessing || aiMatchCandidates) ? 'not-allowed' : 'pointer',
+          }}>
           <span>📷 Scan Book Cover (AI)</span>
-          <span style={{ fontSize: 12, fontWeight: 500, color: '#93c5fd' }}>Auto-matches to ISBN · falls back to exception if not found</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#93c5fd' }}>
+            {aiProcessing ? 'AI is still matching…' : aiMatchCandidates ? 'Pick a match in the side panel first' : 'Auto-matches to ISBN · falls back to exception if not found'}
+          </span>
           <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
         </button>
         <button onClick={() => { setShowTitleSearch(true); setTitleSearchQuery(''); }}
