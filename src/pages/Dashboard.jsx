@@ -1021,24 +1021,9 @@ export default function Dashboard() {
           <div style={st.summaryValue}>{estHoursLeft}</div>
           <div style={st.summaryLabel}>Est. Hours Left</div>
         </div>
-        {laborMetrics && (
-          <div style={st.summaryItem}>
-            <div style={{ ...st.summaryValue, color: '#818cf8' }}>{laborMetrics.scansPerHour}</div>
-            <div style={st.summaryLabel}>Scans/Labor Hr</div>
-          </div>
-        )}
-        {laborMetrics && isOwner && (
-          <div style={st.summaryItem}>
-            <div style={{ ...st.summaryValue, color: '#34D399' }}>${laborMetrics.totalCost.toFixed(0)}</div>
-            <div style={st.summaryLabel}>Labor Cost</div>
-          </div>
-        )}
-        {laborMetrics && isOwner && laborMetrics.costPerScan > 0 && (
-          <div style={st.summaryItem}>
-            <div style={{ ...st.summaryValue, color: '#34D399' }}>${laborMetrics.costPerScan.toFixed(3)}</div>
-            <div style={st.summaryLabel}>$ / Scan</div>
-          </div>
-        )}
+        {/* Labor cost / scans-per-labor-hr tiles removed — too crowded for the
+            ops dashboard. Numbers are still computed and saved to daily
+            summaries for back-office reporting. */}
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: '#F59E0B' }}>{totalRegular >= 1500 ? `${Math.floor(totalRegular / 2000)}–${Math.floor(totalRegular / 1500)}` : '—'}</div>
           <div style={st.summaryLabel}>Est. Gaylords</div>
@@ -1255,7 +1240,7 @@ export default function Dashboard() {
           ['hourly', '📊 Hourly'],
           ['excTrend', '📈 Exception Trend'],
           ['shifts', '⏱ Shifts'],
-          ...(isOwner ? [['labor', '💵 Labor Cost']] : []),
+          // Labor Cost tab disabled — see daily summaries for the numbers.
           ...(isOwner ? [['crew', '👥 Daily Crew & Pay']] : []),
           ['bols', `🚛 BOLs (${bols.length})`],
         ].map(([key, label]) => (
@@ -1421,86 +1406,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Shifts panel */}
-      {showPanel === 'labor' && isOwner && (
-        <div style={st.panel}>
-          {laborMetrics ? (
-            <div style={{ padding: 16 }}>
-              <div style={{ marginBottom: 12, color: '#888', fontSize: 12 }}>
-                Estimated over {laborMetrics.numDays} working day{laborMetrics.numDays === 1 ? '' : 's'} · Scanners $15/hr · Floaters $15/hr · Runners $15/hr · Supervisor $17/hr
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', color: '#ddd', fontSize: 14 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #333', color: '#888', fontSize: 12, textAlign: 'left' }}>
-                    <th style={{ padding: '8px 12px' }}>Role</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Headcount</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Hours</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Rate</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style={{ borderBottom: '1px solid #222' }}>
-                    <td style={{ padding: '8px 12px' }}>Scanners <span style={{ color: '#888', fontSize: 11 }}>(actual shifts)</span></td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                      {laborMetrics.activePodCount} active
-                      {laborMetrics.configuredPodCount !== laborMetrics.activePodCount && (
-                        <span style={{ color: '#666', fontSize: 11 }}> / {laborMetrics.configuredPodCount} configured</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.totalHours}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$15</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.scannerCost.toFixed(2)}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #222' }}>
-                    <td style={{ padding: '8px 12px' }}>Floaters</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{job?.meta?.floaters || 0}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.floaterHours.toFixed(1)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$15</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.floaterCost.toFixed(2)}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #222' }}>
-                    <td style={{ padding: '8px 12px' }}>Runners</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{job?.meta?.runners || 0}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.runnerHours.toFixed(1)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$15</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.runnerCost.toFixed(2)}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #222' }}>
-                    <td style={{ padding: '8px 12px' }}>Supervisor</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{laborMetrics.supervisors}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' }}>{laborMetrics.supervisorHours.toFixed(1)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>$17</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#34D399' }}>${laborMetrics.supervisorCost.toFixed(2)}</td>
-                  </tr>
-                  <tr style={{ borderTop: '2px solid #444', backgroundColor: '#0f1f15' }}>
-                    <td style={{ padding: '10px 12px', fontWeight: 700 }}>Total</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{laborMetrics.activePodCount + (job?.meta?.floaters || 0) + (job?.meta?.runners || 0) + laborMetrics.supervisors}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{laborMetrics.totalLaborHours.toFixed(1)}</td>
-                    <td style={{ padding: '10px 12px' }} />
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: '#34D399', fontSize: 16 }}>${laborMetrics.totalCost.toFixed(2)}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 160, padding: 12, backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #222' }}>
-                  <div style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Cost / Scan</div>
-                  <div style={{ color: '#34D399', fontSize: 22, fontWeight: 800, fontFamily: 'monospace', marginTop: 4 }}>${laborMetrics.costPerScan.toFixed(3)}</div>
-                </div>
-                <div style={{ flex: 1, minWidth: 160, padding: 12, backgroundColor: '#0a0a0a', borderRadius: 8, border: '1px solid #222' }}>
-                  <div style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total Scans</div>
-                  <div style={{ color: '#fff', fontSize: 22, fontWeight: 800, fontFamily: 'monospace', marginTop: 4 }}>{allScans.length.toLocaleString()}</div>
-                </div>
-              </div>
-              <p style={{ color: '#666', fontSize: 11, marginTop: 12, fontStyle: 'italic' }}>
-                Note: Scanner cost reflects only pods that actually clocked in ({laborMetrics.activePodCount} of {laborMetrics.configuredPodCount} configured). Floater, runner, and supervisor hours are estimated as headcount × {job?.meta?.workingHours || 8} working hours × {laborMetrics.numDays} day{laborMetrics.numDays === 1 ? '' : 's'}.
-              </p>
-            </div>
-          ) : (
-            <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No shifts recorded yet — labor cost will appear once scanners clock in.</p>
-          )}
-        </div>
-      )}
+      {/* Labor Cost panel removed — too crowded for the ops dashboard.
+          laborMetrics is still computed above and persisted to daily summaries
+          for back-office reporting. */}
 
       {/* Shifts panel */}
       {showPanel === 'shifts' && (
