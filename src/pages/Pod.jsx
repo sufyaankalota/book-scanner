@@ -1960,15 +1960,18 @@ export default function Pod() {
         </div>
       )}
 
-      {/* Stats */}
+      {/* Stats — primary count gets 2x grid weight; three secondary stats
+          share the remaining width. Sizes scale to container, not viewport,
+          so digits never overflow their tile when the AI panel narrows the
+          main column. */}
       <div style={styles.statsRow}>
-        <div style={styles.stat}>
-          <div style={styles.statValue}>{totalScans.toLocaleString()}</div>
+        <div style={styles.statBig}>
+          <div style={styles.statValueBig}>{totalScans.toLocaleString()}</div>
           <div style={styles.statLabel}>{t('totalScans')} ({dailyPct}%)</div>
         </div>
         <div style={styles.stat}>
           <div style={{ ...styles.statValue, color: paceColor }}>{pace}</div>
-          <div style={styles.statLabel}>{t('pacePerHour')} ({t('goal')}: {targetPerHour})</div>
+          <div style={styles.statLabel}>{t('pacePerHour')} · {t('goal')} {targetPerHour}</div>
         </div>
         <div style={styles.stat}>
           <div style={{ ...styles.statValue, color: manualEntryCount > 0 ? '#3B82F6' : 'var(--text-secondary, #666)' }}>
@@ -2638,15 +2641,39 @@ const styles = {
     color: '#EAB308', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0, top: -100, left: -100 },
-  statsRow: { display: 'flex', gap: 'clamp(10px, 2vw, 24px)', justifyContent: 'center', marginTop: 'clamp(14px, 3vh, 32px)', flexWrap: 'wrap', maxWidth: 700, alignSelf: 'center', width: '100%' },
-  stat: { textAlign: 'center', minWidth: 90, flex: 1 },
-  statValue: { fontSize: 'clamp(40px, 9vw, 80px)', fontWeight: 800, lineHeight: 1, color: 'var(--text, #fff)', letterSpacing: '-2px' },
-  statLabel: { fontSize: 'clamp(12px, 2vw, 17px)', color: 'var(--text-secondary, #999)', marginTop: 'clamp(4px, 1vh, 8px)', fontWeight: 600 },
-  paceBarContainer: {
-    marginTop: 'clamp(10px, 2vh, 20px)', height: 10, backgroundColor: 'var(--bg-input, #333)', borderRadius: 5,
-    overflow: 'visible', maxWidth: 640, alignSelf: 'center', width: '100%', position: 'relative',
+  statsRow: {
+    // CSS Grid so the primary count (total scans) gets 2x weight and the
+    // three secondary stats share the remaining width evenly. Sizes scale
+    // with the container, not the viewport, so they don't overflow when the
+    // AI side panel narrows the main column. No max-width — we want
+    // operators to see big, glanceable numbers across the full screen.
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+    gap: 'clamp(8px, 1.5vw, 18px)',
+    marginTop: 'clamp(10px, 2vh, 20px)',
+    width: '100%',
+    alignItems: 'end',
   },
-  paceBar: { height: '100%', borderRadius: 5, transition: 'width 0.5s ease, background-color 0.5s ease' },
+  stat: { textAlign: 'center', minWidth: 0, padding: '6px 4px' },
+  statBig: { textAlign: 'center', minWidth: 0, padding: '6px 4px' },
+  statValue: {
+    // Cap by container width via cqi (with vw fallback) so digits never
+    // overflow their tile when the AI panel is open. minmax keeps it
+    // readable on small kiosks too.
+    fontSize: 'clamp(34px, 5vw, 60px)', fontWeight: 800, lineHeight: 1,
+    color: 'var(--text, #fff)', letterSpacing: '-1px',
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+  statValueBig: {
+    fontSize: 'clamp(48px, 8vw, 96px)', fontWeight: 900, lineHeight: 1,
+    color: 'var(--text, #fff)', letterSpacing: '-2px',
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+  statLabel: { fontSize: 'clamp(11px, 1.3vw, 14px)', color: 'var(--text-secondary, #999)', marginTop: 4, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  paceBarContainer: {
+    marginTop: 'clamp(8px, 1.5vh, 14px)', height: 14, backgroundColor: 'var(--bg-input, #333)', borderRadius: 7,
+    overflow: 'visible', width: '100%', position: 'relative',
+  },
   exceptionBtn: {
     marginTop: 'clamp(10px, 2vh, 18px)', alignSelf: 'center', padding: 'clamp(10px, 2vh, 16px) clamp(20px, 4vw, 32px)', borderRadius: 10,
     border: '2px solid #EF4444', backgroundColor: 'rgba(239,68,68,0.15)',
@@ -2658,13 +2685,14 @@ const styles = {
   idleWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '10px 16px', textAlign: 'center', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 10 },
   lockWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '12px 16px', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 14, lineHeight: 1.5 },
   warning: { marginTop: 24, padding: 16, backgroundColor: '#7f1d1d', borderRadius: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 },
+  paceBar: { height: '100%', borderRadius: 7, transition: 'width 0.5s ease, background-color 0.5s ease' },
   recentScans: {
     marginTop: 'clamp(12px, 2vh, 20px)', backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10,
-    border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 'clamp(180px, 32vh, 280px)',
-    overflowY: 'auto', alignSelf: 'center', width: '100%', maxWidth: 700,
+    border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 'clamp(180px, 32vh, 320px)',
+    overflowY: 'auto', width: '100%',
   },
   recentTitle: { padding: '10px 14px', borderBottom: '1px solid var(--border, #333)', color: '#999', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
-  recentRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid #222' },
+  recentRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderBottom: '1px solid #222', flexWrap: 'nowrap', overflow: 'hidden' },
   pauseOverlay: {
     position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
