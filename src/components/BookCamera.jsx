@@ -14,8 +14,10 @@ import { functions } from '../firebase';
  *     For 'title' mode, image is a JPEG data URL the caller can persist for
  *     customer verification.
  *   onClose(): user cancelled
+ *   embedded: when true, renders inline (no fullscreen overlay) so the camera
+ *     can live inside a side panel and the rest of the app stays interactive.
  */
-export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
+export default function BookCamera({ mode, podId, jobId, onResult, onClose, embedded = false }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const sampleRef = useRef(null); // tiny canvas for stability sampling
@@ -337,10 +339,13 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
   }, [mode, podId, jobId, onResult]);
 
   return (
-    <div style={st.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={st.modal} onClick={(e) => e.stopPropagation()}>
+    <div
+      style={embedded ? st.embeddedWrap : st.overlay}
+      onMouseDown={embedded ? undefined : (e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={embedded ? st.embeddedBody : st.modal} onClick={(e) => e.stopPropagation()}>
         <div style={st.header}>
-          <h2 style={st.title}>
+          <h2 style={embedded ? { ...st.title, fontSize: 16 } : st.title}>
             {mode === 'isbn' ? '🔢 Auto-Read ISBN' : '📖 Auto-Read Title'}
           </h2>
           <button style={st.closeX} onClick={onClose} aria-label="Close">✕</button>
@@ -434,6 +439,10 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose }) {
 const st = {
   overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 12 },
   modal: { backgroundColor: '#0f0f0f', border: '2px solid #3B82F6', borderRadius: 14, padding: 20, width: '100%', maxWidth: 720, maxHeight: '94vh', overflowY: 'auto', fontFamily: "'Inter', system-ui, sans-serif" },
+  // Embedded variant: lives inline inside the AI side panel so the operator
+  // can keep scanning regular barcodes while the camera is active.
+  embeddedWrap: { width: '100%', fontFamily: "'Inter', system-ui, sans-serif" },
+  embeddedBody: { backgroundColor: 'transparent', padding: 0, width: '100%' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   title: { color: '#fff', fontSize: 22, fontWeight: 800, margin: 0 },
   closeX: { background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer' },

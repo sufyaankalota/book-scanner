@@ -1590,11 +1590,25 @@ export default function Pod() {
     );
   }
 
+  // Whether the pinned AI side panel is visible. When pinned we widen the
+  // main content area (drop maxWidth + center) so stat numbers, the pace
+  // bar, recent-scan rows etc. don't get squished under the 380px reservation.
+  const aiPanelVisible = !!(aiMatchCandidates || aiProcessing || aiHistory.length > 0 || showIsbnCamera);
+
   // ═══════════════════════════════════════════
   // PHASE: Scanning / Paused
   // ═══════════════════════════════════════════
   return (
-    <div className="pod-screen" style={{ ...styles.container, ...scaleStyle, ...((aiMatchCandidates || aiProcessing || aiHistory.length > 0) ? { paddingRight: 'calc(380px + 24px)' } : null) }}>
+    <div
+      className="pod-screen"
+      style={{
+        ...styles.container,
+        ...scaleStyle,
+        ...(aiPanelVisible
+          ? { paddingRight: 'calc(380px + 24px)', maxWidth: 'none', margin: 0 }
+          : null),
+      }}
+    >
       {/* Full-screen flash overlay */}
       {flashColor && (
         <div style={{
@@ -2100,20 +2114,10 @@ export default function Pod() {
         </div>
       )}
 
-      {/* AI camera — reads cover title and fuzzy-matches against the manifest */}
-      {showIsbnCamera && (
-        <BookCamera
-          mode="title"
-          podId={podId}
-          jobId={job?.id}
-          onResult={(data) => {
-            setShowIsbnCamera(false);
-            handleAiCoverResult(data);
-            setTimeout(refocusInput, 200);
-          }}
-          onClose={() => { setShowIsbnCamera(false); setTimeout(refocusInput, 100); }}
-        />
-      )}
+      {/* AI camera is now rendered inline inside the pinned AI panel below
+          (look for `<BookCamera embedded ...>`), so the rest of the screen
+          stays interactive and the operator can keep scanning regular
+          barcodes while the cover is being read. */}
 
       {/* Type-a-title search — manual fuzzy match against the manifest */}
       {showTitleSearch && (
@@ -2198,7 +2202,7 @@ export default function Pod() {
           - aiHistory only (idle): condensed last-3-AI-matches list
           z-index < flash overlay (400) so regular scan center-flashes still
           briefly cover it, matching the rest of the app's UX. */}
-      {(aiMatchCandidates || aiProcessing || aiHistory.length > 0) && (
+      {aiPanelVisible && (
         <div
           style={{
             position: 'fixed', top: 70, right: 12, bottom: 12,
@@ -2338,9 +2342,27 @@ export default function Pod() {
             </div>
           )}
 
+          {/* EMBEDDED CAMERA — lives inside the panel so the operator can
+              keep scanning regular barcodes while it's active. Mutually
+              exclusive with the picker/processing states. */}
+          {showIsbnCamera && !aiMatchCandidates && !aiProcessing && (
+            <BookCamera
+              embedded
+              mode="title"
+              podId={podId}
+              jobId={job?.id}
+              onResult={(data) => {
+                setShowIsbnCamera(false);
+                handleAiCoverResult(data);
+                setTimeout(refocusInput, 200);
+              }}
+              onClose={() => { setShowIsbnCamera(false); setTimeout(refocusInput, 100); }}
+            />
+          )}
+
           {/* IDLE state — quick-snap button + recent AI history.
-              Only visible when no picker / processing is active. */}
-          {!aiMatchCandidates && !aiProcessing && (
+              Only visible when no picker / processing / camera is active. */}
+          {!aiMatchCandidates && !aiProcessing && !showIsbnCamera && (
             <>
               <button
                 onClick={() => setShowIsbnCamera(true)}
