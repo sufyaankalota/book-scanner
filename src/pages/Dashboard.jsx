@@ -990,7 +990,7 @@ export default function Dashboard() {
       </div>
 
       {/* Today's leaderboard + pace alert */}
-      <TodayLeaderboard job={job} />
+      <TodayLeaderboard job={job} canMerge={isOwner} />
 
       {/* Auto-refresh indicator */}
       {lastUpdated && (

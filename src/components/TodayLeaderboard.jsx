@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
 import { computeDailyTarget } from '../utils/target';
 import { normalizeOperatorKey, displayOperatorName } from '../utils/operator';
 
@@ -10,10 +11,16 @@ import { normalizeOperatorKey, displayOperatorName } from '../utils/operator';
  *
  * @param {object} job   active job doc ({ id, meta, ... })
  * @param {object} opts
- * @param {boolean} opts.compact  smaller layout for the home page
+ * @param {boolean} opts.compact   smaller layout for the home page
+ * @param {boolean} opts.canMerge  show admin-only "merge scanner names" UI
  */
-export default function TodayLeaderboard({ job, compact = false }) {
+export default function TodayLeaderboard({ job, compact = false, canMerge = false }) {
   const [scans, setScans] = useState([]);
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selected, setSelected] = useState(new Set()); // keys to merge FROM
+  const [targetName, setTargetName] = useState('');
+  const [merging, setMerging] = useState(false);
+  const [mergeMsg, setMergeMsg] = useState('');
 
   useEffect(() => {
     if (!job?.id) return;
@@ -31,15 +38,15 @@ export default function TodayLeaderboard({ job, compact = false }) {
 
   const stats = useMemo(() => {
     if (!scans.length) {
-      return { total: 0, leaders: [], lastHour: 0, prevHour: 0, paceDrop: 0 };
+      return { total: 0, leaders: [], all: [], lastHour: 0, prevHour: 0, paceDrop: 0 };
     }
-    const byOp = {}; // key -> { name, count }
+    const byOp = {}; // key -> { name, key, count }
     const now = Date.now();
     let lastHour = 0, prevHour = 0;
     for (const s of scans) {
       const raw = s.scannerId || 'Unknown';
       const key = normalizeOperatorKey(raw) || 'unknown';
-      if (!byOp[key]) byOp[key] = { name: displayOperatorName(raw) || 'Unknown', count: 0 };
+      if (!byOp[key]) byOp[key] = { name: displayOperatorName(raw) || 'Unknown', key, count: 0, raw };
       byOp[key].count += 1;
       const t = s.timestamp?.toDate?.()?.getTime?.();
       if (!t) continue;
@@ -47,19 +54,51 @@ export default function TodayLeaderboard({ job, compact = false }) {
       if (ageMin <= 60) lastHour += 1;
       else if (ageMin <= 120) prevHour += 1;
     }
-    const leaders = Object.values(byOp)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
+    const all = Object.values(byOp).sort((a, b) => b.count - a.count);
+    const leaders = all.slice(0, 5);
     // % drop in pace vs previous hour. >25% drop = alert-worthy.
     // Need at least 30 scans in prevHour for the comparison to be meaningful.
     const paceDrop = prevHour >= 30 ? Math.round(((prevHour - lastHour) / prevHour) * 100) : 0;
-    return { total: scans.length, leaders, lastHour, prevHour, paceDrop };
+    return { total: scans.length, leaders, all, lastHour, prevHour, paceDrop };
   }, [scans]);
 
   if (!job) return null;
 
   const target = computeDailyTarget(job);
   const pct = target > 0 ? Math.round((stats.total / target) * 100) : 0;
+
+  const toggleSelected = (key, name) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      // auto-fill target name with the largest selected row's display name
+      if (!targetName) setTargetName(name);
+      return next;
+    });
+  };
+
+  const runMerge = async () => {
+    if (selected.size < 1 || !targetName.trim() || merging) return;
+    const fromNames = Array.from(selected)
+      .map((k) => stats.all.find((r) => r.key === k)?.raw)
+      .filter(Boolean);
+    const to = targetName.trim();
+    if (!window.confirm(`Merge ${fromNames.length} scanner name(s) → "${to}" for this job?\n\nFrom: ${fromNames.join(', ')}\n\nThis rewrites every matching scan + exception. Then click "🔄 Rebuild counts" to refresh totals.`)) return;
+    setMerging(true); setMergeMsg('');
+    try {
+      const fn = httpsCallable(functions, 'mergeScannerName');
+      const res = await fn({ fromNames, toName: to, jobId: job.id });
+      setMergeMsg(`✓ Merged ${res.data?.updated || 0} record(s) into "${to}"`);
+      setSelected(new Set());
+      setTargetName('');
+    } catch (err) {
+      setMergeMsg('Failed: ' + (err.message || 'unknown'));
+    }
+    setMerging(false);
+  };
+
+  const rowsToShow = mergeMode ? stats.all : stats.leaders;
 
   return (
     <div style={compact ? styles.compactWrap : styles.wrap}>
@@ -72,24 +111,80 @@ export default function TodayLeaderboard({ job, compact = false }) {
 
       <div style={styles.headerRow}>
         <div style={styles.title}>🏆 Today's Leaderboard</div>
-        <div style={styles.totalChip}>
-          {stats.total.toLocaleString()} scans · {pct}% of {target.toLocaleString()}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {canMerge && stats.all.length > 1 && (
+            <button
+              onClick={() => { setMergeMode((m) => !m); setSelected(new Set()); setMergeMsg(''); }}
+              title="Combine duplicate scanner names (e.g. typos)"
+              style={mergeMode ? styles.mergeBtnActive : styles.mergeBtn}
+            >
+              {mergeMode ? '✕ Cancel merge' : '🔗 Merge names'}
+            </button>
+          )}
+          <div style={styles.totalChip}>
+            {stats.total.toLocaleString()} scans · {pct}% of {target.toLocaleString()}
+          </div>
         </div>
       </div>
 
-      {stats.leaders.length === 0 ? (
+      {mergeMode && (
+        <div style={styles.mergeHint}>
+          Check the rows to combine, then type the correct name to merge them into.
+        </div>
+      )}
+
+      {rowsToShow.length === 0 ? (
         <div style={styles.empty}>No scans yet today — be the first!</div>
       ) : (
         <div style={styles.list}>
-          {stats.leaders.map((l, i) => (
-            <div key={l.name} style={{ ...styles.row, ...(i === 0 ? styles.firstRow : null) }}>
-              <span style={styles.rank}>{['🥇', '🥈', '🥉', '4️⃣', '5️⃣'][i]}</span>
+          {rowsToShow.map((l, i) => (
+            <div
+              key={l.key || l.name}
+              style={{
+                ...styles.row,
+                ...(!mergeMode && i === 0 ? styles.firstRow : null),
+                ...(mergeMode && selected.has(l.key) ? styles.selectedRow : null),
+                cursor: mergeMode ? 'pointer' : 'default',
+              }}
+              onClick={mergeMode ? () => toggleSelected(l.key, l.name) : undefined}
+            >
+              {mergeMode ? (
+                <input
+                  type="checkbox"
+                  checked={selected.has(l.key)}
+                  onChange={() => toggleSelected(l.key, l.name)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                />
+              ) : (
+                <span style={styles.rank}>{['🥇', '🥈', '🥉', '4️⃣', '5️⃣'][i]}</span>
+              )}
               <span style={styles.name}>{l.name}</span>
               <span style={styles.count}>{l.count.toLocaleString()}</span>
             </div>
           ))}
         </div>
       )}
+
+      {mergeMode && (
+        <div style={styles.mergeBar}>
+          <input
+            type="text"
+            value={targetName}
+            onChange={(e) => setTargetName(e.target.value)}
+            placeholder="Correct name (e.g. Subatha)"
+            style={styles.mergeInput}
+          />
+          <button
+            onClick={runMerge}
+            disabled={merging || selected.size < 1 || !targetName.trim()}
+            style={{ ...styles.mergeGo, opacity: (merging || selected.size < 1 || !targetName.trim()) ? 0.5 : 1, cursor: merging ? 'wait' : 'pointer' }}
+          >
+            {merging ? '⏳ Merging…' : `Merge ${selected.size} → "${targetName.trim() || '…'}"`}
+          </button>
+        </div>
+      )}
+      {mergeMsg && <div style={styles.mergeMsg}>{mergeMsg}</div>}
 
       {stats.lastHour > 0 && (
         <div style={styles.paceLine}>
@@ -137,4 +232,12 @@ const styles = {
     fontSize: 14,
     fontWeight: 600,
   },
+  mergeBtn: { padding: '4px 10px', borderRadius: 6, border: '1px solid #555', backgroundColor: 'transparent', color: '#aaa', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  mergeBtnActive: { padding: '4px 10px', borderRadius: 6, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.15)', color: '#FDE68A', fontSize: 11, fontWeight: 700, cursor: 'pointer' },
+  mergeHint: { color: '#FDE68A', fontSize: 12, marginBottom: 8, padding: '6px 10px', backgroundColor: 'rgba(234,179,8,0.08)', borderRadius: 6, border: '1px solid rgba(234,179,8,0.25)' },
+  selectedRow: { backgroundColor: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)' },
+  mergeBar: { display: 'flex', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border, #333)' },
+  mergeInput: { flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #444', backgroundColor: '#0b0b0b', color: '#eee', fontSize: 13 },
+  mergeGo: { padding: '6px 14px', borderRadius: 6, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700 },
+  mergeMsg: { color: '#aaa', fontSize: 12, marginTop: 8, fontStyle: 'italic' },
 };

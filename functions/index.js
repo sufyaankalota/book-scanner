@@ -600,4 +600,5 @@ const aggregates = require('./aggregates');
 exports.onScanWrite = aggregates.onScanWrite;
 exports.onExceptionWrite = aggregates.onExceptionWrite;
 exports.recomputeJobAggregate = aggregates.recomputeJobAggregate;
+exports.mergeScannerName = aggregates.mergeScannerName;
 

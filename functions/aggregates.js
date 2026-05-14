@@ -178,3 +178,75 @@ exports.recomputeJobAggregate = onCall({
 
   return { ok: true, scanned, totalScanned, totalExceptions, totalManual, totalAiMatch, totalManualExceptions, poCount: Object.keys(byPO).length };
 });
+
+// ─── Callable: mergeScannerName ───
+// When an operator mistypes their name on sign-in ("Subatha" vs "Subhata"),
+// their work is split across multiple leaderboard rows. This rewrites
+// scannerId on every matching /scans + /exceptions doc to a single
+// canonical name. Matches case-insensitively after trimming whitespace.
+exports.mergeScannerName = onCall({
+  region: 'us-east1',
+  memory: '512MiB',
+  timeoutSeconds: 540,
+  maxInstances: 2,
+}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const fromNamesRaw = Array.isArray(request.data?.fromNames) ? request.data.fromNames : [];
+  const toNameRaw = request.data?.toName;
+  const jobId = request.data?.jobId || null; // optional scope
+
+  const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const fromKeys = new Set(fromNamesRaw.map(norm).filter(Boolean));
+  const toName = String(toNameRaw || '').trim();
+  if (fromKeys.size === 0) throw new HttpsError('invalid-argument', 'fromNames required');
+  if (!toName) throw new HttpsError('invalid-argument', 'toName required');
+  // Don't let a merge collapse INTO one of the source names — that's a no-op
+  // for the canonical row but would still consume writes. Allow it if the
+  // toName is identical to one of the fromNames (user clicked "rename to
+  // proper casing") — we'll still rewrite to apply the new casing.
+  const db = getFirestore();
+
+  const PAGE = 1000;
+  const BATCH = 400; // Firestore batched-write hard limit is 500
+  let scanned = 0;
+  let updated = 0;
+  const affectedJobs = new Set();
+
+  async function rewriteCollection(collName) {
+    let lastDoc = null;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      let q = db.collection(collName).orderBy('__name__').limit(PAGE);
+      if (jobId) q = db.collection(collName).where('jobId', '==', jobId).orderBy('__name__').limit(PAGE);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      // eslint-disable-next-line no-await-in-loop
+      const snap = await q.get();
+      if (snap.empty) break;
+      const toUpdate = [];
+      for (const d of snap.docs) {
+        scanned++;
+        const cur = d.data();
+        if (fromKeys.has(norm(cur.scannerId))) {
+          toUpdate.push(d.ref);
+          if (cur.jobId) affectedJobs.add(cur.jobId);
+        }
+      }
+      // commit in chunks
+      for (let i = 0; i < toUpdate.length; i += BATCH) {
+        const batch = db.batch();
+        const slice = toUpdate.slice(i, i + BATCH);
+        for (const ref of slice) batch.update(ref, { scannerId: toName });
+        // eslint-disable-next-line no-await-in-loop
+        await batch.commit();
+        updated += slice.length;
+      }
+      lastDoc = snap.docs[snap.docs.length - 1];
+      if (snap.size < PAGE) break;
+    }
+  }
+
+  await rewriteCollection('scans');
+  await rewriteCollection('exceptions');
+
+  return { ok: true, scanned, updated, affectedJobs: Array.from(affectedJobs) };
+});
