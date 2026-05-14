@@ -518,10 +518,74 @@ export default function Pod() {
   useEffect(() => {
     if (!isScanning) return;
     const handler = (e) => {
+      // ─── Bare numpad shortcuts (no modifier) ───
+      // Barcode scanner guns emit Digit0-9 codes; physical numeric keypads
+      // emit Numpad0-9. So we can intercept bare numpad keys safely without
+      // any chance of colliding with a scan. This is the fastest path for
+      // operators — one-finger jump to any action.
+      const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm && !showTitleSearch && !aiMatchCandidates;
+      if (noModal && !e.ctrlKey && !e.altKey && !e.metaKey && e.code && e.code.startsWith('Numpad')) {
+        // Map numpad keys to the same actions as Ctrl+digit:
+        //   NumPad1 = AI camera
+        //   NumPad2 = Type ISBN
+        //   NumPad3 = Damaged / exception
+        //   NumPad4 = Type Title (AI fuzzy)
+        //   NumPad0 = Undo last
+        //   NumPad. (Decimal) = Pause
+        //   NumPad+ (Add)     = Settings toggle
+        //   NumPad- (Subtract)= Switch operator
+        //   NumPad* (Multiply)= Help/shortcuts overlay
+        // Enter on the numpad is left alone so it can submit any focused form.
+        switch (e.code) {
+          case 'Numpad1':
+            e.preventDefault();
+            if (aiProcessing || aiMatchCandidates) { flash('#EAB308', 'Resolve current AI match first', 1500); return; }
+            setShowIsbnCamera(true);
+            return;
+          case 'Numpad2':
+            e.preventDefault();
+            setShowManualEntry(true);
+            setTimeout(() => manualInputRef.current?.focus(), 100);
+            return;
+          case 'Numpad3':
+            e.preventDefault();
+            setShowExceptionModal(true);
+            return;
+          case 'Numpad4':
+            e.preventDefault();
+            setShowTitleSearch(true);
+            setTitleSearchQuery('');
+            return;
+          case 'Numpad0':
+            e.preventDefault();
+            if (recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training') {
+              handleUndo();
+            }
+            return;
+          case 'NumpadDecimal':
+            e.preventDefault();
+            setPhase(PHASE_PAUSED);
+            return;
+          case 'NumpadAdd':
+            e.preventDefault();
+            setShowSettings((p) => !p);
+            return;
+          case 'NumpadSubtract':
+            e.preventDefault();
+            setPhase(PHASE_PAUSED);
+            setShowSwitchOperator(true);
+            return;
+          case 'NumpadMultiply':
+            e.preventDefault();
+            setShowShortcuts((p) => !p);
+            return;
+          default:
+            break;
+        }
+      }
       // Quick-action shortcuts. Use Ctrl+digit (Chromebook-kiosk-safe — F1/F2/F3
       // are reserved by ChromeOS, and scanners never emit Ctrl modifiers so they
       // won't collide with barcode scans).
-      const noModal = !showExceptionModal && !showSwitchOperator && !showSettings && !showManualEntry && !showIsbnCamera && !showBreakPicker && !showEndShift && !duplicateConfirm && !showTitleSearch && !aiMatchCandidates;
       if (noModal && e.ctrlKey && !e.altKey && !e.metaKey) {
         const k = e.key.toLowerCase();
         if (k === '1') {
@@ -611,19 +675,21 @@ export default function Pod() {
       const tag = (e.target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
       const k = e.key.toLowerCase();
-      if (e.key === ' ' || k === '1' || k === 'r') {
+      // Numpad shortcuts work without modifier so operators can resume / take
+      // a break with one finger from the right-hand keypad.
+      if (e.code === 'Numpad1' || e.key === ' ' || k === '1' || k === 'r') {
         e.preventDefault(); setPhase(PHASE_SCANNING); setTimeout(refocusInput, 100); return;
       }
-      if (k === '2') {
+      if (e.code === 'Numpad2' || k === '2') {
         e.preventDefault(); setBreakTimer(15 * 60); setBreakTotal(15 * 60); setBreakMinutesUsed((p) => p + 15); return;
       }
-      if (k === '3') {
+      if (e.code === 'Numpad3' || k === '3') {
         e.preventDefault(); setBreakTimer(30 * 60); setBreakTotal(30 * 60); setBreakMinutesUsed((p) => p + 30); return;
       }
-      if (k === 's') {
+      if (e.code === 'NumpadSubtract' || k === 's') {
         e.preventDefault(); setShowSwitchOperator(true); return;
       }
-      if (k === 'e') {
+      if (e.code === 'NumpadMultiply' || k === 'e') {
         e.preventDefault(); handleEndShift(); return;
       }
     };
@@ -645,25 +711,25 @@ export default function Pod() {
     return () => document.removeEventListener('keydown', handler);
   }, [breakTimer, refocusInput]);
 
-  // ─── Duplicate confirm shortcuts: Y = scan it, N/Esc = skip ───
+  // ─── Duplicate confirm shortcuts: Y/NumPad1/Enter = scan it, N/NumPad0/Esc = skip ───
   useEffect(() => {
     if (!duplicateConfirm) return;
     const handler = (e) => {
       const k = e.key.toLowerCase();
-      if (k === 'y' || e.key === 'Enter') { e.preventDefault(); confirmDuplicate(); }
-      else if (k === 'n' || e.key === 'Escape') { e.preventDefault(); cancelDuplicate(); }
+      if (k === 'y' || e.key === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Numpad1') { e.preventDefault(); confirmDuplicate(); }
+      else if (k === 'n' || e.key === 'Escape' || e.code === 'Numpad0' || e.code === 'Numpad2') { e.preventDefault(); cancelDuplicate(); }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [duplicateConfirm]);
 
-  // ─── End-shift confirm shortcut: Enter confirms, Esc cancels ───
+  // ─── End-shift confirm shortcut: Enter/NumPadEnter/NumPad1 confirms, Esc/NumPad0 cancels ───
   useEffect(() => {
     if (!showEndShift) return;
     const handler = (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); confirmEndShift(); }
-      else if (e.key === 'Escape') { e.preventDefault(); setShowEndShift(false); }
+      if (e.key === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Numpad1') { e.preventDefault(); confirmEndShift(); }
+      else if (e.key === 'Escape' || e.code === 'Numpad0') { e.preventDefault(); setShowEndShift(false); }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -1072,10 +1138,24 @@ export default function Pod() {
   useEffect(() => {
     if (!aiMatchCandidates) return;
     const handler = (e) => {
-      // Ignore if user is typing in any input/textarea
+      // Numpad keys are reserved for the human operator (scanner guns never
+      // emit them) so they work even when the hidden scanner input is
+      // focused. Top-row digits / letters still respect input focus to
+      // avoid hijacking typed text.
+      const isNumpad = !!(e.code && e.code.startsWith('Numpad'));
       const tag = (e.target?.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      if (!isNumpad && (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable)) return;
       if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      // Numpad1-9 picks candidate immediately (regardless of focus).
+      if (isNumpad && e.code >= 'Numpad1' && e.code <= 'Numpad9') {
+        const idx = Number(e.code.slice(-1)) - 1;
+        if (idx < aiMatchCandidates.candidates.length) {
+          e.preventDefault();
+          pickAiCandidate(idx);
+        }
+        return;
+      }
 
       if (e.key >= '1' && e.key <= '9') {
         const idx = Number(e.key) - 1;
@@ -2377,7 +2457,7 @@ export default function Pod() {
                   marginBottom: 14,
                 }}>
                 📷 Snap next cover (AI #{aiSeqRef.current + 1})
-                <kbd style={{ ...kbdHintStyle, marginLeft: 4 }}>Ctrl+1</kbd>
+                <kbd style={{ ...kbdHintStyle, marginLeft: 4, backgroundColor: '#1e3a8a', borderColor: '#3B82F6' }}>NumPad 1</kbd>
               </button>
               {aiHistory.length > 0 && (
                 <>
@@ -2451,27 +2531,35 @@ export default function Pod() {
           <span style={{ fontSize: 12, fontWeight: 500, color: '#93c5fd' }}>
             {aiProcessing ? 'AI is still matching…' : aiMatchCandidates ? 'Pick a match in the side panel first' : 'Auto-matches to ISBN · falls back to exception if not found'}
           </span>
-          <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <kbd style={{ ...kbdHintStyle, backgroundColor: '#1e3a8a', color: '#dbeafe', borderColor: '#3B82F6' }}>NumPad 1</kbd>
+            <span style={{ fontSize: 10, color: '#64748b' }}>or</span>
+            <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
+          </span>
         </button>
         <button onClick={() => { setShowTitleSearch(true); setTitleSearchQuery(''); }}
           title="Press Ctrl+4 — type the title, matches to manifest, picks ISBN"
           style={{ ...styles.secondaryBtn, margin: 0, borderColor: '#8B5CF6', backgroundColor: '#3b0764', color: '#ede9fe', fontSize: 16, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontWeight: 800 }}>
           <span>⌨️ Type Book Title (AI)</span>
           <span style={{ fontSize: 11, fontWeight: 500, color: '#c4b5fd' }}>Fuzzy-matches your typed title to manifest · pick ISBN</span>
-          <kbd style={kbdHintStyle}>Ctrl + 4</kbd>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <kbd style={{ ...kbdHintStyle, backgroundColor: '#3b0764', color: '#ede9fe', borderColor: '#8B5CF6' }}>NumPad 4</kbd>
+            <span style={{ fontSize: 10, color: '#64748b' }}>or</span>
+            <kbd style={kbdHintStyle}>Ctrl + 4</kbd>
+          </span>
         </button>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
             title="Press Ctrl+2"
             style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 13, padding: '10px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <span>⌨️ Type ISBN</span>
-            <kbd style={kbdHintStyle}>Ctrl + 2</kbd>
+            <kbd style={{ ...kbdHintStyle, backgroundColor: '#1e293b', color: '#cbd5e1' }}>NumPad 2</kbd>
           </button>
           <button onClick={() => setShowExceptionModal(true)}
             title="Press Ctrl+3 or Esc — only for severely damaged books"
             style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '10px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <span>⚠️ Damaged / Exception</span>
-            <kbd style={kbdHintStyle}>Ctrl + 3</kbd>
+            <kbd style={{ ...kbdHintStyle, backgroundColor: '#7f1d1d', color: '#fecaca', borderColor: '#EF4444' }}>NumPad 3</kbd>
           </button>
         </div>
       </div>
@@ -2490,7 +2578,7 @@ export default function Pod() {
             fontFamily: "'Inter', system-ui, sans-serif",
           }}
         >
-          ⌨️ Shortcuts <kbd style={{ ...kbdHintStyle, fontSize: 10 }}>?</kbd>
+          ⌨️ NumPad shortcuts <kbd style={{ ...kbdHintStyle, fontSize: 10 }}>?</kbd>
         </button>
       )}
 
@@ -2545,10 +2633,20 @@ export default function Pod() {
         <div style={styles.pauseOverlay} onClick={() => setShowShortcuts(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#1a1a1a', borderRadius: 16, padding: 32, maxWidth: 400, width: '90%' }}>
             <h2 style={{ color: '#fff', marginTop: 0, fontSize: 20, textAlign: 'center' }}>⌨️ Keyboard Shortcuts</h2>
-            <p style={{ color: '#888', fontSize: 12, textAlign: 'center', margin: '0 0 12px', fontStyle: 'italic' }}>Skip the mouse — stay on the keyboard</p>
+            <p style={{ color: '#888', fontSize: 12, textAlign: 'center', margin: '0 0 12px', fontStyle: 'italic' }}>NumPad keys = fastest (no modifier needed). Ctrl+digit also works.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                ['— Scanning Screen —', null],
+                ['— NumPad (fastest — no Ctrl) —', null],
+                ['NumPad 1', '📷 Scan book cover (AI)'],
+                ['NumPad 2', '⌨️ Type ISBN manually'],
+                ['NumPad 3', '⚠️ Log exception'],
+                ['NumPad 4', '⌨️ Type book title (AI)'],
+                ['NumPad 0', '↩ Undo last scan'],
+                ['NumPad .', '⏸ Pause shift'],
+                ['NumPad +', '⚙️ Toggle settings'],
+                ['NumPad −', '🔄 Switch operator'],
+                ['NumPad ×', '? Toggle this help'],
+                ['— Ctrl shortcuts —', null],
                 ['Ctrl + 1', '📷 Scan book cover (AI)'],
                 ['Ctrl + 4', '⌨️ Type book title (AI)'],
                 ['Ctrl + 2', '⌨️ Type ISBN manually'],
@@ -2560,18 +2658,21 @@ export default function Pod() {
                 ['Ctrl + ,', '⚙️ Toggle settings'],
                 ['?', 'Toggle this help'],
                 ['— Pause Screen —', null],
-                ['Space / R / 1', '▶ Resume scanning'],
-                ['2', '☕ Take 15 min break'],
-                ['3', '☕ Take 30 min break'],
-                ['S', '🔄 Switch operator'],
-                ['E', '🚪 End shift'],
-                ['— Modals —', null],
-                ['Enter', 'Submit / confirm'],
-                ['Esc', 'Cancel / close'],
-                ['Y / N', 'Confirm / skip duplicate'],
-                ['1–9', 'Pick AI-match candidate'],
+                ['NumPad 1 / Space / R', '▶ Resume scanning'],
+                ['NumPad 2', '☕ Take 15 min break'],
+                ['NumPad 3', '☕ Take 30 min break'],
+                ['NumPad −  /  S', '🔄 Switch operator'],
+                ['NumPad ×  /  E', '🚪 End shift'],
+                ['— AI Match Picker —', null],
+                ['NumPad 1–9', 'Pick AI-match candidate'],
                 ['M', 'Manual entry (from AI match)'],
                 ['E', 'Log exception (from AI match)'],
+                ['Esc', 'Close picker'],
+                ['— Modals —', null],
+                ['Enter / NumPad Enter', 'Submit / confirm'],
+                ['Esc / NumPad 0', 'Cancel / close'],
+                ['Y / NumPad 1', 'Confirm duplicate'],
+                ['N / NumPad 0', 'Skip duplicate'],
               ].map(([key, desc], i) => (
                 desc === null ? (
                   <div key={i} style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 0 2px', textAlign: 'center' }}>{key}</div>
