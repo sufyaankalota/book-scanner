@@ -65,7 +65,7 @@ export default function Dashboard() {
   const [crewSaving, setCrewSaving] = useState(false);
   const [crewSavedAt, setCrewSavedAt] = useState(null);
   const [crewDirty, setCrewDirty] = useState(false);
-  const [manifestData, setManifestData] = useState({});
+  const [manifestData, setManifestData] = useState({}); // legacy — only populated when a PO is added so reconciliation paths can resolve; unused for dashboard UI
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedExceptions, setSelectedExceptions] = useState(new Set());
   const [viewingPhoto, setViewingPhoto] = useState(null);
@@ -228,14 +228,9 @@ export default function Dashboard() {
         const picked = { id: d.id, ...d.data() };
         if (picked) {
           setJob(picked);
-          // Load manifest for completion tracking (skip for chunked — uses metadata)
-          if (!picked.manifestMeta?.chunked) {
-            getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
-              const cache = {};
-              ms.forEach((m) => { cache[m.id] = m.data().poName; });
-              setManifestData(cache);
-            });
-          }
+          // Manifests can hold 8M+ ISBNs while a job only scans ~1M, so we
+          // no longer load the full manifest just to compute a misleading
+          // completion %. Per-PO scanned counts come from the job aggregate.
         } else setJob(null);
       } else setJob(null);
       setLoading(false);
@@ -578,76 +573,26 @@ export default function Dashboard() {
   }, [allScans]);
   const maxHourly = Math.max(1, ...hourlyData.map((d) => d.count));
 
-  // Manifest completion
-  const manifestCompletion = useMemo(() => {
-    // Chunked manifest: use metadata + scan counts
-    if (job?.manifestMeta?.chunked) {
-      const poCounts = job.manifestMeta.poCounts || {};
-      const total = job.manifestMeta.totalIsbns || 0;
-      if (!total) return null;
-      const seenIsbns = new Set();
-      const scannedByPO = {};
-      let found = 0;
-      for (const s of allScans) {
-        if (s.type !== 'standard' || seenIsbns.has(s.isbn)) continue;
-        seenIsbns.add(s.isbn);
-        const po = s.poName || 'Unknown';
-        scannedByPO[po] = (scannedByPO[po] || 0) + 1;
-        found++;
-      }
-      const byPO = {};
-      for (const [po, poTotal] of Object.entries(poCounts)) {
-        byPO[po] = { total: poTotal, found: scannedByPO[po] || 0 };
-      }
-      return { total, found, pct: Math.round((found / total) * 100), byPO };
-    }
-    // Legacy per-doc manifest
-    if (!Object.keys(manifestData).length) return null;
-    const scannedIsbns = new Set(allScans.filter((s) => s.type === 'standard').map((s) => s.isbn));
-    const total = Object.keys(manifestData).length;
-    const found = [...Object.keys(manifestData)].filter((isbn) => scannedIsbns.has(isbn)).length;
-    // By PO
-    const byPO = {};
-    for (const [isbn, po] of Object.entries(manifestData)) {
-      if (!byPO[po]) byPO[po] = { total: 0, found: 0 };
-      byPO[po].total++;
-      if (scannedIsbns.has(isbn)) byPO[po].found++;
-    }
-    return { total, found, pct: Math.round((found / total) * 100), byPO };
-  }, [manifestData, allScans, job]);
+  // Manifest completion: removed. Customer-uploaded manifests can carry
+  // 8M+ ISBNs while a job only ever physically receives ~1M books, so a
+  // completion percentage against the full manifest is meaningless. We
+  // now only track scanned counts (jobAggregate) and per-PO scans.
+  const manifestCompletion = null;
 
-  // Total job progress (from server-maintained aggregate counter)
+  // Total job progress (from server-maintained aggregate counter).
+  // We no longer surface "expected" counts because the manifest size is
+  // not what's actually being received \u2014 only the scanned-so-far number
+  // is reliable. By-PO scanned counts come straight from the aggregate.
   const jobProgress = useMemo(() => {
     const totalScanned = jobAggregate?.totalScanned || 0;
     const totalExceptions = jobAggregate?.totalExceptions || 0;
     const aggByPO = jobAggregate?.byPO || {};
     const byPO = {};
     for (const [po, scanned] of Object.entries(aggByPO)) {
-      byPO[po] = { scanned: Number(scanned) || 0, expected: 0 };
+      byPO[po] = { scanned: Number(scanned) || 0 };
     }
-    // Use chunked metadata or legacy per-doc manifest for expected counts
-    const poCounts = job?.manifestMeta?.chunked ? job.manifestMeta.poCounts : null;
-    const totalExpected = poCounts
-      ? Object.values(poCounts).reduce((s, n) => s + n, 0)
-      : (Object.keys(manifestData).length || null);
-    if (poCounts) {
-      for (const [po, count] of Object.entries(poCounts)) {
-        if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
-        byPO[po].expected = count;
-      }
-    } else if (totalExpected) {
-      const poExpected = {};
-      for (const po of Object.values(manifestData)) {
-        poExpected[po] = (poExpected[po] || 0) + 1;
-      }
-      for (const [po, count] of Object.entries(poExpected)) {
-        if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
-        byPO[po].expected = count;
-      }
-    }
-    const pct = totalExpected ? Math.round((totalScanned / totalExpected) * 100) : null;
-    return { totalScanned, totalExceptions, totalExpected, pct, byPO };
-  }, [jobAggregate, manifestData, job]);
+    return { totalScanned, totalExceptions, byPO };
+  }, [jobAggregate]);
 
   // Labor efficiency
   const laborMetrics = useMemo(() => {
@@ -790,14 +735,9 @@ export default function Dashboard() {
     } catch (err) { toast('Export failed: ' + err.message, 'error'); }
     setExporting(false);
   };
-  const handleExportReconciliation = () => {
-    if (!job) return;
-    if (job.manifestMeta?.chunked) {
-      return toast('Reconciliation export is not available for large chunked manifests. Use the per-PO completion breakdown instead.', 'info', 5000);
-    }
-    if (!Object.keys(manifestData).length) return;
-    exportReconciliation(allScans, manifestData, job.meta);
-  };
+  // Reconciliation export removed — it compared scans against the full
+  // customer manifest, which is misleading when the manifest is 8M+ ISBNs
+  // but only ~1M books are physically received.
 
   const handleBillingExport = async () => {
     if (!job) return;
@@ -937,9 +877,8 @@ export default function Dashboard() {
             {exporting ? '...' : '📊 All'}
           </button>
           <button onClick={() => setShowBilling(true)} style={{ ...st.exportBtn, borderColor: '#22C55E', color: '#22C55E' }}>💰 Billing</button>
-          {manifestCompletion && (
-            <button onClick={handleExportReconciliation} style={st.exportBtn}>📋 Reconciliation</button>
-          )}
+          {/* Reconciliation export removed — manifest size is not meaningful
+              relative to actual books received (8M+ vs ~1M typical). */}
           <button onClick={generateDailySummary} style={{ ...st.exportBtn, borderColor: '#A855F7', color: '#A855F7' }}>📧 Daily Summary</button>
           <Link to="/kiosk" style={{ ...st.exportBtn, textDecoration: 'none' }}>📺 Kiosk</Link>
           <Link to="/setup" style={st.setupLink}>Setup</Link>
@@ -985,7 +924,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Summary bar — buckets match billing exactly */}
+      {/* Summary bar — buckets match billing exactly. Trimmed for density:
+          % of Target removed (already shown in the progress bar below); Est.
+          Gaylords removed (too rough to be actionable for ops). */}
       <div data-summary-row style={st.summaryRow}>
         <div style={st.summaryItem}>
           <div style={{ ...st.summaryValue, color: '#22C55E' }}>{totalRegular.toLocaleString()}</div>
@@ -1005,28 +946,22 @@ export default function Dashboard() {
         </div>
         <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
           <div style={{ ...st.summaryValue, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
-          <div style={st.summaryLabel}>Total Processed / {dailyTarget.toLocaleString()}</div>
-        </div>
-        <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: dailyTarget > 0 && totalProcessed >= dailyTarget ? '#22C55E' : '#3B82F6' }}>
-            {dailyTarget > 0 ? Math.min(100, Math.round((totalProcessed / dailyTarget) * 100)) : 0}%
+          <div style={st.summaryLabel}>
+            Total / {dailyTarget.toLocaleString()}
+            {dailyTarget > 0 && (
+              <span style={{ marginLeft: 6, color: totalProcessed >= dailyTarget ? '#22C55E' : '#aaa', fontWeight: 700 }}>
+                ({Math.min(100, Math.round((totalProcessed / dailyTarget) * 100))}%)
+              </span>
+            )}
           </div>
-          <div style={st.summaryLabel}>of Target</div>
         </div>
         <div style={st.summaryItem}>
           <div style={st.summaryValue}>{totalPace}</div>
-          <div style={st.summaryLabel}>Combined Scans/hr</div>
+          <div style={st.summaryLabel}>Combined/hr</div>
         </div>
         <div style={st.summaryItem}>
           <div style={st.summaryValue}>{estHoursLeft}</div>
           <div style={st.summaryLabel}>Est. Hours Left</div>
-        </div>
-        {/* Labor cost / scans-per-labor-hr tiles removed — too crowded for the
-            ops dashboard. Numbers are still computed and saved to daily
-            summaries for back-office reporting. */}
-        <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: '#F59E0B' }}>{totalRegular >= 1500 ? `${Math.floor(totalRegular / 2000)}–${Math.floor(totalRegular / 1500)}` : '—'}</div>
-          <div style={st.summaryLabel}>Est. Gaylords</div>
         </div>
       </div>
 
@@ -1100,45 +1035,43 @@ export default function Dashboard() {
         </button>
       )}
 
-      {/* Job Progress */}
+      {/* Job Progress — scanned counts only. Expected/% removed because the
+          customer manifest can be 8M+ ISBNs but only ~1M books are physically
+          received, making a completion percentage meaningless. */}
       {jobProgress.totalScanned > 0 && (
         <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ color: '#ccc', fontSize: 14, margin: 0 }}>📊 Total Job Progress</h3>
+            <h3 style={{ color: '#ccc', fontSize: 14, margin: 0 }}>📊 Job Total Scanned</h3>
             <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
-              {jobProgress.totalScanned.toLocaleString()} scanned
-              {jobProgress.totalExpected ? ` / ${jobProgress.totalExpected.toLocaleString()} expected (${jobProgress.pct}%)` : ''}
+              {jobProgress.totalScanned.toLocaleString()} scanned to date
             </span>
           </div>
-          {jobProgress.totalExpected && (
-            <div style={{ height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
-              <div style={{ height: '100%', backgroundColor: jobProgress.pct >= 100 ? '#22C55E' : '#3B82F6', width: `${Math.min(100, jobProgress.pct)}%`, borderRadius: 3, transition: 'width 0.5s ease' }} />
-            </div>
-          )}
-          {job.meta.mode === 'multi' && Object.keys(jobProgress.byPO).length > 1 && (
-            <div style={{ marginTop: 8 }}>
-              {Object.entries(jobProgress.byPO)
-                .filter(([po]) => po !== 'EXCEPTIONS' && po !== 'Unassigned')
-                .sort((a, b) => a[0].localeCompare(b[0]))
-                .map(([po, data]) => {
-                  const poPct = data.expected > 0 ? Math.round((data.scanned / data.expected) * 100) : null;
+          {job.meta.mode === 'multi' && Object.keys(jobProgress.byPO).length > 1 && (() => {
+            const rows = Object.entries(jobProgress.byPO)
+              .filter(([po]) => po !== 'EXCEPTIONS' && po !== 'Unassigned')
+              .sort((a, b) => (b[1].scanned || 0) - (a[1].scanned || 0));
+            const max = Math.max(1, ...rows.map(([, d]) => d.scanned || 0));
+            return (
+              <div style={{ marginTop: 8 }}>
+                {rows.map(([po, data]) => {
                   const color = job.poColors?.[po] || '#3B82F6';
+                  const width = Math.round(((data.scanned || 0) / max) * 100);
                   return (
                     <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
                       <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po}</span>
                       <div style={{ flex: 1, height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', backgroundColor: poPct !== null && poPct >= 100 ? '#22C55E' : color, width: `${poPct !== null ? Math.min(100, poPct) : 100}%`, borderRadius: 3 }} />
+                        <div style={{ height: '100%', backgroundColor: color, width: `${width}%`, borderRadius: 3 }} />
                       </div>
-                      <span style={{ color: '#888', fontSize: 12, minWidth: 100, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {data.scanned.toLocaleString()}{data.expected > 0 ? ` / ${data.expected.toLocaleString()}` : ''}
-                        {poPct !== null ? ` (${poPct}%)` : ''}
+                      <span style={{ color: '#888', fontSize: 12, minWidth: 80, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {(data.scanned || 0).toLocaleString()}
                       </span>
                     </div>
                   );
                 })}
-            </div>
-          )}
+              </div>
+            );
+          })()}
           {jobProgress.totalExceptions > 0 && (
             <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13 }}>
               ⚠ {jobProgress.totalExceptions.toLocaleString()} exception scan{jobProgress.totalExceptions !== 1 ? 's' : ''} (not in manifest)
@@ -1147,35 +1080,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Manifest completion */}
-      {manifestCompletion && (
-        <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h3 style={{ color: '#ccc', fontSize: 14, margin: 0 }}>📋 Manifest Completion</h3>
-            <span style={{ color: '#3B82F6', fontWeight: 700 }}>{manifestCompletion.pct}% ({manifestCompletion.found}/{manifestCompletion.total})</span>
-          </div>
-          <div style={{ height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ height: '100%', backgroundColor: '#3B82F6', width: `${manifestCompletion.pct}%`, borderRadius: 3 }} />
-          </div>
-          <button onClick={() => setShowPanel(showPanel === 'manifest' ? '' : 'manifest')}
-            style={{ background: 'none', border: 'none', color: '#888', fontSize: 12, cursor: 'pointer', marginTop: 8, padding: 0, minHeight: 24 }}>
-            {showPanel === 'manifest' ? 'Hide details' : 'Show by PO'}
-          </button>
-          {showPanel === 'manifest' && (
-            <div style={{ marginTop: 8 }}>
-              {Object.entries(manifestCompletion.byPO).sort((a, b) => a[0].localeCompare(b[0])).map(([po, data]) => (
-                <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, minWidth: 100 }}>{po}</span>
-                  <div style={{ flex: 1, height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', backgroundColor: data.found === data.total ? '#22C55E' : '#3B82F6', width: `${Math.round((data.found / data.total) * 100)}%` }} />
-                  </div>
-                  <span style={{ color: '#888', fontSize: 12, minWidth: 60, textAlign: 'right' }}>{data.found}/{data.total}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Manifest completion block removed (see note above on jobProgress). */}
 
       {/* Pod grid */}
       <div data-pod-grid style={st.podGrid}>
