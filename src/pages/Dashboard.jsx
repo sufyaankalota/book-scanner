@@ -15,7 +15,8 @@ function AutoRefreshIndicator({ lastUpdated }) {
     </div>
   );
 }
-import { db } from '../firebase';
+import { db, functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 import {
   collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc, deleteDoc,
   query, where, onSnapshot, Timestamp, serverTimestamp, writeBatch,
@@ -389,6 +390,7 @@ export default function Dashboard() {
   // All-job aggregate totals (maintained server-side by onScanWrite trigger).
   // For long-running jobs we cannot subscribe to the full scans collection.
   const [jobAggregate, setJobAggregate] = useState(null);
+  const [recomputing, setRecomputing] = useState(false);
   useEffect(() => {
     if (!job) { setJobAggregate(null); return; }
     const unsub = onSnapshot(doc(db, 'jobs', job.id, 'aggregates', 'totals'), (snap) => {
@@ -739,6 +741,23 @@ export default function Dashboard() {
   // customer manifest, which is misleading when the manifest is 8M+ ISBNs
   // but only ~1M books are physically received.
 
+  // Owner-only: rebuild the server-maintained aggregate counter doc from
+  // scratch. Needed when the onScanWrite trigger missed writes (e.g. it
+  // was deployed after a lot of scans landed) and per-PO totals drifted.
+  const handleRecomputeAggregate = async () => {
+    if (!job || recomputing) return;
+    if (!window.confirm(`Rebuild per-PO and total counts for "${job.meta.name}" from scratch?\n\nThis paginates through every scan in the job. Small jobs take a few seconds; million-scan jobs can take a few minutes.`)) return;
+    setRecomputing(true);
+    try {
+      const fn = httpsCallable(functions, 'recomputeJobAggregate');
+      const res = await fn({ jobId: job.id });
+      toast(`Rebuilt: ${res.data?.totalScanned?.toLocaleString() || 0} scans, ${res.data?.poCount || 0} POs`, 'success', 5000);
+    } catch (err) {
+      toast('Rebuild failed: ' + (err.message || 'unknown error'), 'error', 6000);
+    }
+    setRecomputing(false);
+  };
+
   const handleBillingExport = async () => {
     if (!job) return;
     setExporting(true);
@@ -1040,11 +1059,22 @@ export default function Dashboard() {
           received, making a completion percentage meaningless. */}
       {jobProgress.totalScanned > 0 && (
         <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
             <h3 style={{ color: '#ccc', fontSize: 14, margin: 0 }}>📊 Job Total Scanned</h3>
-            <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
-              {jobProgress.totalScanned.toLocaleString()} scanned to date
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
+                {jobProgress.totalScanned.toLocaleString()} scanned to date
+              </span>
+              {isOwner && (
+                <button
+                  onClick={handleRecomputeAggregate}
+                  disabled={recomputing}
+                  title="Rebuild the per-PO breakdown from scratch (use if numbers look wrong). Takes a few seconds for small jobs, up to a few minutes for million-scan jobs."
+                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #555', backgroundColor: 'transparent', color: '#888', fontSize: 11, fontWeight: 600, cursor: recomputing ? 'wait' : 'pointer', opacity: recomputing ? 0.6 : 1 }}>
+                  {recomputing ? '⏳ Rebuilding…' : '🔄 Rebuild counts'}
+                </button>
+              )}
+            </div>
           </div>
           {job.meta.mode === 'multi' && Object.keys(jobProgress.byPO).length > 1 && (() => {
             const rows = Object.entries(jobProgress.byPO)

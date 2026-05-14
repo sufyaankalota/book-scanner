@@ -599,4 +599,5 @@ exports.exportExceptionsHttp = onRequest({
 const aggregates = require('./aggregates');
 exports.onScanWrite = aggregates.onScanWrite;
 exports.onExceptionWrite = aggregates.onExceptionWrite;
+exports.recomputeJobAggregate = aggregates.recomputeJobAggregate;
 

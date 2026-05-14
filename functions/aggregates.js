@@ -103,3 +103,78 @@ exports.onExceptionWrite = onDocumentWritten({
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 });
+
+// ─── Callable: recomputeJobAggregate ───
+// Full O(N) rebuild of jobs/{jobId}/aggregates/totals. Use when the
+// trigger missed writes (e.g. it was deployed after scans already landed)
+// or when the aggregate doc drifted out of sync with the actual scans.
+// Paginates through all scans + exceptions for the job so it handles
+// jobs with millions of scans without OOM.
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
+exports.recomputeJobAggregate = onCall({
+  region: 'us-east1',
+  memory: '512MiB',
+  timeoutSeconds: 540, // 9 min — enough for ~1M scans at ~2k/sec
+  maxInstances: 2,
+}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const jobId = request.data?.jobId;
+  if (!jobId) throw new HttpsError('invalid-argument', 'jobId is required');
+  const db = getFirestore();
+
+  // Tally counters in memory. byPO is bounded by # of POs (small) so safe.
+  let totalScanned = 0;
+  let totalExceptions = 0; // type=exception
+  let totalManual = 0;
+  let totalAiMatch = 0;
+  let totalManualExceptions = 0; // /exceptions collection
+  const byPO = {};
+  const PAGE = 2000;
+
+  // 1) /scans
+  let lastDoc = null;
+  let scanned = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let q = db.collection('scans').where('jobId', '==', jobId).orderBy('__name__').limit(PAGE);
+    if (lastDoc) q = q.startAfter(lastDoc);
+    // eslint-disable-next-line no-await-in-loop
+    const snap = await q.get();
+    if (snap.empty) break;
+    for (const d of snap.docs) {
+      const s = d.data();
+      scanned++;
+      if (s.type === 'exception') totalExceptions += 1;
+      else { totalScanned += 1; if (s.poName) byPO[s.poName] = (byPO[s.poName] || 0) + 1; }
+      if (s.source === 'manual') totalManual += 1;
+      if (s.source === 'ai-match') totalAiMatch += 1;
+    }
+    lastDoc = snap.docs[snap.docs.length - 1];
+    if (snap.size < PAGE) break;
+  }
+
+  // 2) /exceptions (manual exception logs)
+  lastDoc = null;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let q = db.collection('exceptions').where('jobId', '==', jobId).orderBy('__name__').limit(PAGE);
+    if (lastDoc) q = q.startAfter(lastDoc);
+    // eslint-disable-next-line no-await-in-loop
+    const snap = await q.get();
+    if (snap.empty) break;
+    totalManualExceptions += snap.size;
+    lastDoc = snap.docs[snap.docs.length - 1];
+    if (snap.size < PAGE) break;
+  }
+
+  // Overwrite the aggregate doc with the freshly computed values (use set
+  // without merge so stale byPO keys for renamed/removed POs are dropped).
+  await db.doc(`jobs/${jobId}/aggregates/totals`).set({
+    totalScanned, totalExceptions, totalManual, totalAiMatch,
+    totalManualExceptions, byPO,
+    recomputedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return { ok: true, scanned, totalScanned, totalExceptions, totalManual, totalAiMatch, totalManualExceptions, poCount: Object.keys(byPO).length };
+});
