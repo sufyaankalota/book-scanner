@@ -170,7 +170,22 @@ export function playDisconnectAlarm() {
 // Used for Multi-PO color callouts so operators don't need to look at the screen.
 // Browser TTS support varies — fail silently if unavailable.
 let lastSpoken = { text: '', time: 0 };
-export function speak(text, { rate = 1.1, pitch = 1, dedupMs = 800 } = {}) {
+// Cache a Spanish voice once we find one so we don't iterate every call.
+let cachedVoice = { lang: null, voice: null };
+function pickVoiceFor(langCode) {
+  try {
+    if (cachedVoice.lang === langCode && cachedVoice.voice) return cachedVoice.voice;
+    const all = window.speechSynthesis.getVoices() || [];
+    if (!all.length) return null;
+    const prefix = langCode.split('-')[0].toLowerCase();
+    // Prefer exact locale (es-MX), then any same-language voice, then null.
+    const exact = all.find((v) => v.lang && v.lang.toLowerCase() === langCode.toLowerCase());
+    const sameLang = exact || all.find((v) => v.lang && v.lang.toLowerCase().startsWith(prefix));
+    cachedVoice = { lang: langCode, voice: sameLang || null };
+    return cachedVoice.voice;
+  } catch { return null; }
+}
+export function speak(text, { rate = 1.1, pitch = 1, dedupMs = 800, lang } = {}) {
   try {
     if (!('speechSynthesis' in window)) return;
     const vol = getVolume() / 100;
@@ -183,6 +198,12 @@ export function speak(text, { rate = 1.1, pitch = 1, dedupMs = 800 } = {}) {
     // Cancel queued utterances so callouts stay current
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(t);
+    // Pick locale: explicit > current app language > en-US
+    const appLang = localStorage.getItem('app-lang') || 'en';
+    const targetLang = lang || (appLang === 'es' ? 'es-MX' : 'en-US');
+    u.lang = targetLang;
+    const v = pickVoiceFor(targetLang);
+    if (v) u.voice = v;
     u.rate = rate; u.pitch = pitch; u.volume = vol;
     window.speechSynthesis.speak(u);
   } catch {}
