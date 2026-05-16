@@ -2093,7 +2093,11 @@ export default function Pod() {
         <div className="pod-recent" style={styles.recentScans}>
           <div style={styles.recentTitle}>{t('recentScans')}</div>
           {recentScans.slice(0, 8).map((s, i) => (
-            <div key={s.id} style={{ ...styles.recentRow, opacity: i === 0 ? 1 : 0.5 + (0.5 / (i + 1)) }}>
+            <div key={s.id} style={{
+              ...styles.recentRow,
+              opacity: i === 0 ? 1 : 0.55 + (0.4 / (i + 1)),
+              ...(i === 0 ? { borderLeft: '4px solid #22C55E', backgroundColor: 'rgba(34,197,94,0.06)' } : null),
+            }}>
               {/* AI-match rows show a small cover thumbnail so the operator
                   can correlate the on-screen entry to the physical book they
                   photographed (especially when several books are in flight). */}
@@ -2110,28 +2114,28 @@ export default function Pod() {
                 tabIndex={0}
                 title="Click to copy ISBN"
                 aria-label={`Copy ISBN ${s.isbn} to clipboard`}
-                style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: s.isException ? '#EF4444' : s.poName === 'TRAINING' ? '#818cf8' : '#fff', cursor: 'pointer', userSelect: 'all' }}
+                style={{ fontFamily: 'monospace', fontSize: i === 0 ? 22 : 18, fontWeight: 900, letterSpacing: 0.5, color: s.isException ? '#EF4444' : s.poName === 'TRAINING' ? '#818cf8' : '#fff', cursor: 'pointer', userSelect: 'all' }}
               >
                 {s.isbn}
               </span>
               {s.poName && s.poName !== 'EXCEPTIONS' && s.poName !== 'TRAINING' && (
-                <span style={{ fontSize: 13, fontWeight: 700, color: s.color || '#888' }}>{s.poName}</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: s.color || '#888' }}>{s.poName}</span>
               )}
-              {s.poName === 'TRAINING' && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 700 }}>TRAINING</span>}
-              {s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 700 }}>EXCEPTION</span>}
+              {s.poName === 'TRAINING' && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 700 }}>TRAINING</span>}
+              {s.isException && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 700 }}>EXCEPTION</span>}
               {s.isAiMatch && !s.isException && (
-                <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#1e3a8a', color: '#93C5FD', fontWeight: 700 }}>
+                <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#1e3a8a', color: '#93C5FD', fontWeight: 700 }}>
                   AI{s.aiSeq ? ` #${s.aiSeq}` : ''}
                 </span>
               )}
-              {s.isManual && !s.isAiMatch && !s.isException && <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
+              {s.isManual && !s.isAiMatch && !s.isException && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
               {s.capturedTitle && (s.isAiMatch || s.isException) && (
                 <span title={s.capturedTitle}
-                  style={{ fontSize: 12, color: '#999', fontStyle: 'italic', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  style={{ fontSize: 13, color: '#999', fontStyle: 'italic', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   "{s.capturedTitle}"
                 </span>
               )}
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#777', fontWeight: 500 }}>{s.time.toLocaleTimeString()}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 13, color: '#777', fontWeight: 600 }}>{s.time.toLocaleTimeString()}</span>
             </div>
           ))}
         </div>
@@ -2609,20 +2613,20 @@ export default function Pod() {
                 ? t('alreadyScannedTimes', { n: duplicateConfirm.count })
                 : t('duplicateJustScanned')}
             </p>
-            <p style={{ color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', margin: '8px 0 20px', padding: '10px 16px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
+            <p style={{ color: '#fff', fontSize: 30, fontWeight: 800, fontFamily: 'monospace', letterSpacing: 1, margin: '8px 0 20px', padding: '12px 20px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
             <p style={{ color: '#999', fontSize: 15, margin: '0 0 24px', fontWeight: 500 }}>
               {duplicateConfirm.overScan ? t('duplicateDifferentCopy') : t('duplicateDifferentCopy')}
             </p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
               <button onClick={confirmDuplicate}
-                style={{ padding: '14px 28px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}
+                style={{ padding: '20px 32px', minHeight: 64, borderRadius: 12, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}
                 title="Press Y or Enter">
-                ✓ {duplicateConfirm.overScan ? t('yesScanIt') : t('scanAgain')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Y</kbd>
+                ✓ {duplicateConfirm.overScan ? t('yesScanIt') : t('scanAgain')} <kbd style={{ ...kbdHintStyle, marginLeft: 8 }}>Y</kbd>
               </button>
               <button onClick={cancelDuplicate}
-                style={{ padding: '14px 28px', borderRadius: 10, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}
+                style={{ padding: '20px 32px', minHeight: 64, borderRadius: 12, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}
                 title="Press N or Esc">
-                ✕ {t('skip')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>N</kbd>
+                ✕ {t('skip')} <kbd style={{ ...kbdHintStyle, marginLeft: 8 }}>N</kbd>
               </button>
             </div>
           </div>
@@ -2732,18 +2736,23 @@ const styles = {
     color: '#fff', fontSize: 13, fontWeight: 700,
   },
   dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+  // Header action buttons sized to WCAG 44x44 minimum so gloved/wet hands
+  // on a tablet hit them reliably.
   undoBtn: {
-    padding: '8px 14px', borderRadius: 6, border: '1px solid var(--border, #666)',
-    backgroundColor: 'var(--bg-input, #333)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+    padding: '10px 16px', borderRadius: 6, border: '1px solid var(--border, #666)',
+    backgroundColor: 'var(--bg-input, #333)', color: 'var(--text-secondary, #ccc)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    minHeight: 44, minWidth: 44,
   },
   settingsBtn: {
-    padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border, #444)',
-    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 16, cursor: 'pointer',
+    padding: '10px 14px', borderRadius: 6, border: '1px solid var(--border, #444)',
+    backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 18, cursor: 'pointer',
+    minHeight: 44, minWidth: 44,
   },
   pauseBtn: {
-    padding: '8px 14px', borderRadius: 6,
+    padding: '10px 16px', borderRadius: 6,
     border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.1)',
-    color: '#EAB308', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    color: '#EAB308', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+    minHeight: 44, minWidth: 44,
   },
   hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0, top: -100, left: -100 },
   statsRow: {
@@ -2797,7 +2806,9 @@ const styles = {
     overflowY: 'auto', width: '100%',
   },
   recentTitle: { padding: '10px 14px', borderBottom: '1px solid var(--border, #333)', color: '#999', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
-  recentRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderBottom: '1px solid #222', flexWrap: 'nowrap', overflow: 'hidden' },
+  // Most-recent row is highlighted (subtle accent border) so operators can
+  // verify the latest scan at arm's length without leaning in.
+  recentRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid #222', flexWrap: 'nowrap', overflow: 'hidden', minHeight: 44 },
   pauseOverlay: {
     position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',

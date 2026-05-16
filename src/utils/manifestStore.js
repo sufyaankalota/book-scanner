@@ -188,8 +188,11 @@ export function clearTitleIndexCache(parentPath) {
  */
 export async function backfillManifestChunks(parentPath, numChunks, onProgress) {
   if (!numChunks) throw new Error('backfillManifestChunks requires numChunks');
-  // Lazy import to avoid pulling isbn helper into hot scan path
-  const { isbnAlternates } = await import('./isbn');
+  // isbnAlternates is statically imported at top of file (hot scan path already
+  // needs it elsewhere). Re-importing dynamically here split the module across
+  // chunks; Vite was warning that the dynamic import would not move the module
+  // into another chunk anyway. Using the static binding directly keeps the
+  // bundler graph clean and avoids a runtime await.
 
   // 1. Read all chunks
   const chunkData = new Map(); // idx -> { id, isbns }

@@ -112,23 +112,42 @@ export function playColorBeep(hex) {
 // operator can tell by ear that an AI cover-match panel has appeared and
 // needs their attention. Different from playSuccessBeep (regular scan) and
 // playColorBeep (PO color callout) so it doesn't get confused with either.
+//
+// Warehouse noise (forklifts, packing line) is dominated by 100–500 Hz rumble
+// which masks pure high tones. We layer a brief low-frequency sawtooth pulse
+// under the high notes so the chime cuts through machinery noise and reaches
+// operators across the room. Each note is also slightly longer (0.18s) so a
+// glance away doesn't miss it.
 export function playAiReadyChime() {
   try {
     const vol = getVolume() / 100;
     if (vol === 0) return;
     const ctx = getAudioContext();
+    const t0 = ctx.currentTime;
     const notes = [784, 988, 1175]; // G5, B5, D6
     notes.forEach((freq, i) => {
+      const start = t0 + i * 0.11;
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
-      g.gain.setValueAtTime(0.25 * vol, ctx.currentTime + i * 0.08);
-      g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.12);
+      osc.frequency.setValueAtTime(freq, start);
+      g.gain.setValueAtTime(0.32 * vol, start);
+      g.gain.exponentialRampToValueAtTime(0.01, start + 0.18);
       osc.connect(g); g.connect(ctx.destination);
-      osc.start(ctx.currentTime + i * 0.08);
-      osc.stop(ctx.currentTime + i * 0.08 + 0.12);
+      osc.start(start);
+      osc.stop(start + 0.18);
     });
+    // Low-frequency carrier so the chime is audible above warehouse rumble.
+    // 150 Hz sawtooth, ducked under the melody, spans the full chime length.
+    const low = ctx.createOscillator();
+    const lowG = ctx.createGain();
+    low.type = 'sawtooth';
+    low.frequency.setValueAtTime(150, t0);
+    lowG.gain.setValueAtTime(0.18 * vol, t0);
+    lowG.gain.exponentialRampToValueAtTime(0.01, t0 + 0.45);
+    low.connect(lowG); lowG.connect(ctx.destination);
+    low.start(t0);
+    low.stop(t0 + 0.45);
   } catch {}
 }
 
