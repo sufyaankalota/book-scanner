@@ -848,30 +848,32 @@ export default function Pod() {
     };
   }, [phase === PHASE_OPERATOR, podId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Firestore scan count ───
+  // ─── Firestore scan count (per-operator, today) ───
+  // We scope this query to the *current operator* so that:
+  //   1) the Pod's "Total Scanned" / pace numbers match this operator's
+  //      row on Today's Leaderboard (previously the Pod was pod-wide so
+  //      Operator B inherited Operator A's count after a switch);
+  //   2) switching operators on the same pod gives an immediate clean slate
+  //      without any client-side reset gymnastics — the listener naturally
+  //      re-queries with the new scannerId.
+  // We still need the podId filter (Firestore can't index on scannerId+jobId
+  // alone here without an extra composite index) — both filters are cheap
+  // because there's an existing index on jobId+podId+timestamp.
   useEffect(() => {
-    if (!job) return;
+    if (!job || !operatorName) { setFirestoreCount(0); setManualEntryCount(0); setAutoExceptionCount(0); setPace(0); return; }
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const q = query(
       collection(db, 'scans'), where('jobId', '==', job.id),
-      where('podId', '==', podId), where('timestamp', '>=', Timestamp.fromDate(today))
+      where('podId', '==', podId),
+      where('scannerId', '==', operatorName),
+      where('timestamp', '>=', Timestamp.fromDate(today))
     );
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => d.data());
-      // Match dashboard's bucketing exactly:
-      //   regular  = type='standard' AND no source
-      //   manual   = source='manual'
-      //   aiMatch  = source='ai-match'
-      //   autoExc  = type='exception' AND no manual/ai-match source
-      const regularCount = docs.filter((d) => d.type === 'standard' && !d.source).length;
       const manualCount = docs.filter((d) => d.source === 'manual').length;
       const autoExcCount = docs.filter((d) => d.type === 'exception' && d.source !== 'manual' && d.source !== 'ai-match').length;
-      // Total Scans must match the Kiosk's per-pod count (all /scans docs for
-      // this pod today, any type/source). Manual & exception sub-counts are
-      // still shown separately as their own stats below.
       setFirestoreCount(docs.length);
       setManualEntryCount(manualCount);
-      // Count auto-exceptions (not-in-manifest, excluding manual entries)
       setAutoExceptionCount(autoExcCount);
       const now = Date.now();
       const startRef = scanStartTimeRef.current || now;
@@ -886,7 +888,7 @@ export default function Pod() {
       else if (elapsed > 2) setPace(0);
     });
     return unsub;
-  }, [job, podId]);
+  }, [job, podId, operatorName]);
 
   // ─── Manual exception count ───
   useEffect(() => {
@@ -2027,6 +2029,41 @@ export default function Pod() {
             }}>
               {text}
             </span>
+          </div>
+        );
+      })()}
+
+      {/* Daily-goal pace nudge — reminds the operator they're trending below
+          the 1,800/day minimum so they can pick up the pace before EOD.
+          Quiet for the first 30 minutes of a shift (numbers aren't meaningful
+          yet) and once they've already beaten the minimum. */}
+      {(() => {
+        if (totalScans >= PER_POD_DAILY_MIN) return null;
+        if (!scanStartTimeRef.current) return null;
+        const elapsedMs = Date.now() - scanStartTimeRef.current;
+        if (elapsedMs < 30 * 60 * 1000) return null; // first half-hour: too noisy
+        // Assume a standard 8-hour shift from first scan; cap remaining at 0.
+        const SHIFT_MS = 8 * 60 * 60 * 1000;
+        const remainingMs = SHIFT_MS - elapsedMs;
+        if (remainingMs <= 0) return null; // shift over — no point nagging
+        const remainingHrs = remainingMs / 3600000;
+        const projected = totalScans + pace * remainingHrs;
+        const needed = Math.ceil((PER_POD_DAILY_MIN - totalScans) / remainingHrs);
+        // Only nag if they're meaningfully off-pace (>5% short of projection).
+        if (projected >= PER_POD_DAILY_MIN * 0.95) return null;
+        return (
+          <div style={{
+            backgroundColor: 'rgba(234,179,8,0.12)',
+            border: '2px solid #EAB308',
+            borderRadius: 10,
+            padding: '10px 16px',
+            marginBottom: 8,
+            color: '#FDE68A',
+            fontSize: 15,
+            fontWeight: 700,
+            textAlign: 'center',
+          }}>
+            {t('behindDailyPace', { goal: PER_POD_DAILY_MIN.toLocaleString(), needed: needed.toLocaleString(), pace: pace.toLocaleString() })}
           </div>
         );
       })()}

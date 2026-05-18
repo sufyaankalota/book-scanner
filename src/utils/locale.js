@@ -167,6 +167,9 @@ const strings = {
     giftCardEarned: '🎁 GIFT CARD EARNED! {count} scans today',
     moreForGiftCard: '🎁 {n} more for a gift card ({target})',
     toMinimum: '🎯 {n} to minimum ({min}) · {bonus} = gift card',
+    // Daily-goal pace nudge (shown on Pod when projected EOD < 1800)
+    behindDailyPace: '⚠️ Behind pace for {goal} — you need {needed}/hr from here (current {pace}/hr)',
+    onTrackDailyPace: '✅ On track for {goal} — keep it up!',
     // Duplicate modal
     alreadyScanned: 'Already Scanned',
     alreadyScannedTimes: 'This ISBN has been scanned {n} time(s) already in this job',
@@ -345,6 +348,8 @@ const strings = {
     giftCardEarned: '🎁 ¡TARJETA DE REGALO GANADA! {count} escaneos hoy',
     moreForGiftCard: '🎁 {n} más para una tarjeta de regalo ({target})',
     toMinimum: '🎯 {n} para el mínimo ({min}) · {bonus} = tarjeta de regalo',
+    behindDailyPace: '⚠️ Atrasado para {goal} — necesitas {needed}/hr desde ahora (actual {pace}/hr)',
+    onTrackDailyPace: '✅ En camino para {goal} — ¡sigue así!',
     alreadyScanned: 'Ya Escaneado',
     alreadyScannedTimes: 'Este ISBN ya ha sido escaneado {n} vez(ces) en este trabajo',
     yesScanIt: 'Sí, Escanear',
