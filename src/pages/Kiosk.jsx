@@ -62,7 +62,17 @@ export default function Kiosk() {
     return unsub;
   }, []);
 
-  // Scans data
+  // Scans data — re-subscribes when the local calendar day flips so the
+  // `timestamp >= today` window doesn't get stranded on yesterday's midnight
+  // when the Kiosk is left running overnight.
+  const [dayKey, setDayKey] = useState(() => new Date().toDateString());
+  useEffect(() => {
+    const i = setInterval(() => {
+      const k = new Date().toDateString();
+      setDayKey((prev) => (prev === k ? prev : k));
+    }, 60000);
+    return () => clearInterval(i);
+  }, []);
   useEffect(() => {
     if (!job) return;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -99,7 +109,7 @@ export default function Kiosk() {
       setLeaderboard(grouped.map((g, i) => ({ name: g.name, count: g.count, rank: i + 1 })));
     });
     return unsub;
-  }, [job]);
+  }, [job, dayKey]);
 
   const totalScans = Object.values(podData).reduce((sum, p) => sum + p.count, 0);
   const totalPace = Object.values(podData).reduce((sum, p) => sum + p.pace, 0);
@@ -373,7 +383,7 @@ export default function Kiosk() {
           <div style={{ ...k.section, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <h2 style={k.sectionTitle}>{'🏅 Leaderboard'}</h2>
             <div style={{ ...k.leaderboard, flex: 1, overflow: 'auto', minHeight: 0 }}>
-              {leaderboard.slice(0, 10).map((l) => (
+              {leaderboard.map((l) => (
                 <div key={l.name} style={{
                   ...k.leaderRow,
                   ...(l.rank <= 3 ? { background: l.rank === 1 ? 'linear-gradient(90deg, rgba(234,179,8,0.12), transparent)' : l.rank === 2 ? 'linear-gradient(90deg, rgba(156,163,175,0.10), transparent)' : 'linear-gradient(90deg, rgba(217,119,6,0.10), transparent)' } : {}),

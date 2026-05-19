@@ -283,6 +283,20 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [presenceRaw]);
 
+  // Re-subscribe to today's scans/exceptions when the local calendar day
+  // flips. Without this, a Dashboard left open overnight stays bound to
+  // yesterday's `>= midnight` window and either misses today's scans or
+  // shows a stale snapshot that supervisors interpret as "the leaderboard
+  // isn't updating".
+  const [dayKey, setDayKey] = useState(() => new Date().toDateString());
+  useEffect(() => {
+    const i = setInterval(() => {
+      const k = new Date().toDateString();
+      setDayKey((prev) => (prev === k ? prev : k));
+    }, 60000);
+    return () => clearInterval(i);
+  }, []);
+
   // Today's scans
   useEffect(() => {
     if (!job) return;
@@ -350,7 +364,7 @@ export default function Dashboard() {
       }
     });
     return unsub;
-  }, [job, notificationsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [job, notificationsEnabled, dayKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Exceptions
   useEffect(() => {
@@ -364,7 +378,7 @@ export default function Dashboard() {
       allExceptionsRef.current = exs;
     });
     return unsub;
-  }, [job]);
+  }, [job, dayKey]);
 
   // Shifts
   useEffect(() => {

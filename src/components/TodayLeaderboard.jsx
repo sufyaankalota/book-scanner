@@ -21,6 +21,17 @@ export default function TodayLeaderboard({ job, compact = false, canMerge = fals
   const [targetName, setTargetName] = useState('');
   const [merging, setMerging] = useState(false);
   const [mergeMsg, setMergeMsg] = useState('');
+  // Re-subscribe when the local calendar day flips so the `timestamp >= today`
+  // listener doesn't get stranded on yesterday's midnight when the page is
+  // left open overnight (Kiosk / Dashboard).
+  const [dayKey, setDayKey] = useState(() => new Date().toDateString());
+  useEffect(() => {
+    const i = setInterval(() => {
+      const k = new Date().toDateString();
+      setDayKey((prev) => (prev === k ? prev : k));
+    }, 60000);
+    return () => clearInterval(i);
+  }, []);
 
   useEffect(() => {
     if (!job?.id) return;
@@ -34,7 +45,7 @@ export default function TodayLeaderboard({ job, compact = false, canMerge = fals
       setScans(snap.docs.map((d) => d.data()));
     });
     return unsub;
-  }, [job?.id]);
+  }, [job?.id, dayKey]);
 
   const stats = useMemo(() => {
     if (!scans.length) {
@@ -55,12 +66,15 @@ export default function TodayLeaderboard({ job, compact = false, canMerge = fals
       else if (ageMin <= 120) prevHour += 1;
     }
     const all = Object.values(byOp).sort((a, b) => b.count - a.count);
-    const leaders = all.slice(0, 5);
+    // Compact mode (Home page) keeps the short top-5 list; full mode
+    // (Dashboard) shows every operator with scans today so supervisors can
+    // see the entire crew at a glance.
+    const leaders = compact ? all.slice(0, 5) : all;
     // % drop in pace vs previous hour. >25% drop = alert-worthy.
     // Need at least 30 scans in prevHour for the comparison to be meaningful.
     const paceDrop = prevHour >= 30 ? Math.round(((prevHour - lastHour) / prevHour) * 100) : 0;
     return { total: scans.length, leaders, all, lastHour, prevHour, paceDrop };
-  }, [scans]);
+  }, [scans, compact]);
 
   if (!job) return null;
 
@@ -136,7 +150,7 @@ export default function TodayLeaderboard({ job, compact = false, canMerge = fals
       {rowsToShow.length === 0 ? (
         <div style={styles.empty}>No scans yet today — be the first!</div>
       ) : (
-        <div style={styles.list}>
+        <div style={{ ...styles.list, maxHeight: compact ? undefined : 480, overflowY: compact ? undefined : 'auto' }}>
           {rowsToShow.map((l, i) => (
             <div
               key={l.key || l.name}
@@ -157,7 +171,7 @@ export default function TodayLeaderboard({ job, compact = false, canMerge = fals
                   style={{ width: 16, height: 16, cursor: 'pointer' }}
                 />
               ) : (
-                <span style={styles.rank}>{['🥇', '🥈', '🥉', '4️⃣', '5️⃣'][i]}</span>
+                <span style={styles.rank}>{i < 3 ? ['🥇', '🥈', '🥉'][i] : `#${i + 1}`}</span>
               )}
               <span style={styles.name}>{l.name}</span>
               <span style={styles.count}>{l.count.toLocaleString()}</span>
