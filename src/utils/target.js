@@ -16,9 +16,8 @@ export const PER_PERSON_DAILY_TARGET = 1800;
 // and off through the day.
 export const CREW_DAILY_GOAL = 25000;
 
-export function computeDailyTarget(job) {
-  const pods = job?.meta?.pods?.length || 0;
-  return pods * PER_POD_DAILY_TARGET;
+export function computeDailyTarget(/* job */) {
+  return CREW_DAILY_GOAL;
 }
 
 // Crew-wide daily target shown on the leaderboard. Fixed at 25,000.
