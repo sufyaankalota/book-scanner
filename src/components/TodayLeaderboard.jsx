@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
-import { computeDailyTarget } from '../utils/target';
+import { computeCrewDailyTarget } from '../utils/target';
 import { normalizeOperatorKey, displayOperatorName } from '../utils/operator';
 
 /**
@@ -78,7 +78,10 @@ export default function TodayLeaderboard({ job, compact = false, canMerge = fals
 
   if (!job) return null;
 
-  const target = computeDailyTarget(job);
+  // Crew-based daily goal: 1,800 × number of distinct operators who have
+  // scanned today. Falls back to pod count before the first scan so the
+  // chip is never "0 of 0".
+  const target = computeCrewDailyTarget(job, stats.all.length);
   const pct = target > 0 ? Math.round((stats.total / target) * 100) : 0;
 
   const toggleSelected = (key, name) => {
