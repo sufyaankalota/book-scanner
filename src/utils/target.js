@@ -14,7 +14,7 @@ export const PER_PERSON_DAILY_TARGET = 1800;
 // Flat warehouse-wide daily goal shown on the leaderboard. Easier for
 // supervisors than a per-person calc that wobbles as operators sign on
 // and off through the day.
-export const CREW_DAILY_GOAL = 25000;
+export const CREW_DAILY_GOAL = 30000;
 
 export function computeDailyTarget(/* job */) {
   return CREW_DAILY_GOAL;
