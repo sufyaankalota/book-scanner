@@ -256,12 +256,17 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
 
-// gpt-4o pricing as of 2025-2026 (subject to change):
-//   input  ~$2.50 / 1M tokens
-//   output ~$10.00 / 1M tokens
-//   image (1024x1024 high detail) ~765 tokens
-const PRICE_INPUT_PER_TOKEN  = 2.50  / 1_000_000;
-const PRICE_OUTPUT_PER_TOKEN = 10.00 / 1_000_000;
+// Vision model. Switched 2026-05-27 from 'gpt-4o' to 'gpt-4o-mini' for
+// ~2-3x faster wall-clock and ~95% lower cost. Quality is close on clean
+// covers; if stylized/angled covers degrade noticeably, flip back to 'gpt-4o'.
+const VISION_MODEL = 'gpt-4o-mini';
+
+// gpt-4o-mini pricing as of 2026 (subject to change):
+//   input  ~$0.15 / 1M tokens
+//   output ~$0.60 / 1M tokens
+// (gpt-4o was $2.50 / $10.00)
+const PRICE_INPUT_PER_TOKEN  = 0.15 / 1_000_000;
+const PRICE_OUTPUT_PER_TOKEN = 0.60 / 1_000_000;
 
 function extractIsbn13(text) {
   if (!text) return null;
@@ -302,7 +307,7 @@ async function callVision({ imageBase64, mode }) {
     ? imageBase64
     : `data:image/jpeg;base64,${imageBase64}`;
   const body = {
-    model: 'gpt-4o',
+    model: VISION_MODEL,
     messages: [{
       role: 'user',
       content: [
@@ -366,7 +371,7 @@ async function callVision({ imageBase64, mode }) {
       confidence: Number(parsed.confidence) || 0,
     };
   }
-  return { result, usage, cost, model: 'gpt-4o' };
+  return { result, usage, cost, model: VISION_MODEL };
 }
 
 async function logAiUsage({ mode, podId, jobId, usage, cost, success }) {
@@ -375,7 +380,7 @@ async function logAiUsage({ mode, podId, jobId, usage, cost, success }) {
       mode,
       podId: podId || null,
       jobId: jobId || null,
-      model: 'gpt-4o',
+      model: VISION_MODEL,
       promptTokens: usage.prompt_tokens || 0,
       completionTokens: usage.completion_tokens || 0,
       costUsd: Number(cost.toFixed(6)),
