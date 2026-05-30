@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  collection, getDocs, query, where, Timestamp,
+  collection, getDocs, query, where, Timestamp, limit as qLimit,
 } from 'firebase/firestore';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -53,10 +53,12 @@ export default function Reports() {
   const { show: toast } = useToast();
   const [jobs, setJobs] = useState([]);
   const [jobId, setJobId] = useState('all');
-  const [preset, setPreset] = useState('thisWeek');
-  const [customStart, setCustomStart] = useState(dateInputValue(getRangePreset('thisWeek').start));
-  const [customEnd, setCustomEnd] = useState(dateInputValue(new Date(getRangePreset('thisWeek').end.getTime() - 86400000)));
+  const [preset, setPreset] = useState('today');
+  const [customStart, setCustomStart] = useState(dateInputValue(getRangePreset('today').start));
+  const [customEnd, setCustomEnd] = useState(dateInputValue(new Date(getRangePreset('today').end.getTime() - 86400000)));
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [truncated, setTruncated] = useState(false);
   const [scans, setScans] = useState([]);
   const [exceptions, setExceptions] = useState([]);
   const [aiUsage, setAiUsage] = useState([]);
@@ -96,6 +98,8 @@ export default function Reports() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
+    setTruncated(false);
     (async () => {
       try {
         const tsStart = Timestamp.fromDate(start);
@@ -103,9 +107,13 @@ export default function Reports() {
         const filters = [where('timestamp', '>=', tsStart), where('timestamp', '<', tsEnd)];
         const jobFilter = jobId !== 'all' ? [where('jobId', '==', jobId)] : [];
 
-        const qScans = query(collection(db, 'scans'), ...jobFilter, ...filters);
-        const qExc = query(collection(db, 'exceptions'), ...jobFilter, ...filters);
-        const qAi = query(collection(db, 'ai-usage'), ...jobFilter, ...filters);
+        // Hard cap so a wide All-Jobs range can't hang the browser.
+        // (Tune up if your warehouse needs it; UI warns when hit.)
+        const HARD_LIMIT = 100_000;
+
+        const qScans = query(collection(db, 'scans'), ...jobFilter, ...filters, qLimit(HARD_LIMIT));
+        const qExc = query(collection(db, 'exceptions'), ...jobFilter, ...filters, qLimit(HARD_LIMIT));
+        const qAi = query(collection(db, 'ai-usage'), ...jobFilter, ...filters, qLimit(HARD_LIMIT));
 
         // dailyPay uses a string `date` field (YYYY-MM-DD), not Timestamp
         const startKey = dayKey(start);
@@ -116,16 +124,37 @@ export default function Reports() {
           : query(collection(db, 'dailyPay'),
               where('date', '>=', startKey), where('date', '<=', endKey));
 
-        const [sSnap, eSnap, aSnap, pSnap] = await Promise.all([
+        // allSettled so a missing index on one collection doesn't block the rest.
+        const [sRes, eRes, aRes, pRes] = await Promise.allSettled([
           getDocs(qScans), getDocs(qExc), getDocs(qAi), getDocs(qPay),
         ]);
         if (cancelled) return;
-        setScans(sSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setExceptions(eSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setAiUsage(aSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setPay(pSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+        const errors = [];
+        const grab = (res, label) => {
+          if (res.status === 'fulfilled') return res.value.docs.map((d) => ({ id: d.id, ...d.data() }));
+          console.error(`Reports: ${label} query failed`, res.reason);
+          errors.push(`${label}: ${res.reason?.message || res.reason}`);
+          return [];
+        };
+        const sDocs = grab(sRes, 'scans');
+        const eDocs = grab(eRes, 'exceptions');
+        const aDocs = grab(aRes, 'ai-usage');
+        const pDocs = grab(pRes, 'dailyPay');
+
+        setScans(sDocs);
+        setExceptions(eDocs);
+        setAiUsage(aDocs);
+        setPay(pDocs);
+        if (sDocs.length >= HARD_LIMIT || eDocs.length >= HARD_LIMIT || aDocs.length >= HARD_LIMIT) {
+          setTruncated(true);
+        }
+        if (errors.length) setLoadError(errors.join(' — '));
       } catch (err) {
-        if (!cancelled) toast('Load failed: ' + err.message, 'error');
+        if (!cancelled) {
+          setLoadError(err.message || 'Load failed');
+          toast('Load failed: ' + err.message, 'error');
+        }
         console.error(err);
       } finally {
         if (!cancelled) setLoading(false);
@@ -371,6 +400,19 @@ export default function Reports() {
       </div>
 
       {loading && <p style={st.loading}>Loading…</p>}
+      {loadError && !loading && (
+        <div style={st.errorBox}>
+          <strong>Some queries failed.</strong> {loadError}
+          <div style={{ marginTop: 8, fontSize: 12, color: '#fca5a5' }}>
+            If the message mentions “requires an index,” open the URL in the browser console to create it, then reload.
+          </div>
+        </div>
+      )}
+      {truncated && !loading && (
+        <div style={st.warnBox}>
+          ⚠️ Result truncated at 100,000 rows. Pick a job or narrow the date range for accurate totals.
+        </div>
+      )}
 
       {/* KPI cards */}
       <div style={st.kpiGrid}>
@@ -554,6 +596,14 @@ const st = {
   },
   rangeLabel: { fontSize: 13, color: '#888', padding: '10px 0', fontFamily: 'ui-monospace, monospace' },
   loading: { color: '#888', textAlign: 'center', padding: 24 },
+  errorBox: {
+    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
+    color: '#fca5a5', padding: 14, borderRadius: 10, marginBottom: 16, fontSize: 13, lineHeight: 1.5,
+  },
+  warnBox: {
+    background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+    color: '#fcd34d', padding: 12, borderRadius: 10, marginBottom: 16, fontSize: 13,
+  },
   kpiGrid: {
     display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: 12, marginBottom: 24,
