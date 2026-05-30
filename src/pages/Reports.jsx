@@ -4,8 +4,8 @@ import {
   collection, getDocs, query, where, Timestamp, limit as qLimit, orderBy, startAfter,
 } from 'firebase/firestore';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
@@ -108,34 +108,67 @@ export default function Reports() {
     setTruncated(false);
     (async () => {
       try {
-        const tsStart = Timestamp.fromDate(start);
-        const tsEnd = Timestamp.fromDate(end);
-        const filters = [where('timestamp', '>=', tsStart), where('timestamp', '<', tsEnd)];
         const jobFilter = jobId !== 'all' ? [where('jobId', '==', jobId)] : [];
 
-        // Firestore caps a single query at 10k rows, so we paginate in pages of
-        // PAGE_SIZE up to HARD_LIMIT total per collection. UI warns when hit.
+        // Firestore caps a single query at 10k rows. For multi-day ranges we
+        // split into per-day windows and fetch them in parallel — much faster
+        // than serial cursor pagination at 15k–20k scans/day.
         const HARD_LIMIT = 100_000;
         const PAGE_SIZE = 10_000;
-        const fetchPaged = async (collName) => {
+
+        // Build day windows covering [start, end)
+        const dayWindows = [];
+        {
+          const d = new Date(start);
+          d.setHours(0, 0, 0, 0);
+          while (d < end) {
+            const next = new Date(d); next.setDate(next.getDate() + 1);
+            dayWindows.push([new Date(d), next > end ? end : next]);
+            d.setDate(d.getDate() + 1);
+          }
+        }
+        // Cap parallel fan-out so we don't slam Firestore on a huge custom range
+        const MAX_PARALLEL = 12;
+
+        const fetchDay = async (collName, dStart, dEnd) => {
           const out = [];
           let cursor = null;
-          while (out.length < HARD_LIMIT) {
+          const dayFilters = [
+            where('timestamp', '>=', Timestamp.fromDate(dStart)),
+            where('timestamp', '<', Timestamp.fromDate(dEnd)),
+          ];
+          while (true) {
             const parts = [
-              collection(db, collName),
-              ...jobFilter,
-              ...filters,
+              collection(db, collName), ...jobFilter, ...dayFilters,
               orderBy('timestamp', 'asc'),
               ...(cursor ? [startAfter(cursor)] : []),
               qLimit(PAGE_SIZE),
             ];
             const snap = await getDocs(query(...parts));
             if (snap.empty) break;
-            for (const d of snap.docs) out.push({ id: d.id, ...d.data() });
+            for (const dDoc of snap.docs) out.push({ id: dDoc.id, ...dDoc.data() });
             if (snap.docs.length < PAGE_SIZE) break;
             cursor = snap.docs[snap.docs.length - 1];
           }
           return out;
+        };
+
+        const fetchPaged = async (collName) => {
+          if (dayWindows.length === 0) return [];
+          // Special-case single-day so we don't add a layer of overhead
+          if (dayWindows.length === 1) {
+            return fetchDay(collName, dayWindows[0][0], dayWindows[0][1]);
+          }
+          const all = [];
+          for (let i = 0; i < dayWindows.length; i += MAX_PARALLEL) {
+            const batch = dayWindows.slice(i, i + MAX_PARALLEL);
+            const results = await Promise.all(
+              batch.map(([s, e]) => fetchDay(collName, s, e))
+            );
+            for (const r of results) all.push(...r);
+            if (all.length >= HARD_LIMIT) break;
+          }
+          return all.slice(0, HARD_LIMIT);
         };
 
         // dailyPay uses a string `date` field (YYYY-MM-DD), not Timestamp
@@ -260,6 +293,42 @@ export default function Reports() {
       .map(([pod, count]) => ({ pod, count }))
       .sort((a, b) => b.count - a.count);
   }, [scans]);
+
+  // ─── By-operator productivity (chart-ready, top 15) ───
+  const byOperator = useMemo(() => {
+    const m = new Map();
+    scans.forEach((s) => {
+      const name = (s.scannerId || 'unknown').toString().trim() || 'unknown';
+      const key = name.toLowerCase();
+      if (!m.has(key)) m.set(key, { operator: name, standard: 0, exceptions: 0, total: 0 });
+      const row = m.get(key);
+      const isException = s.type === 'exception' || s.source === 'manual' || s.source === 'ai-match';
+      if (isException) row.exceptions += 1; else row.standard += 1;
+      row.total += 1;
+    });
+    return Array.from(m.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 15);
+  }, [scans]);
+
+  // ─── AI usage per day (calls / cost / success) ───
+  const aiDaily = useMemo(() => {
+    const m = new Map();
+    const ensure = (k) => {
+      if (!m.has(k)) m.set(k, { date: k, calls: 0, successes: 0, cost: 0 });
+      return m.get(k);
+    };
+    aiUsage.forEach((u) => {
+      const ts = u.timestamp?.toDate?.(); if (!ts) return;
+      const row = ensure(dayKey(ts));
+      row.calls += 1;
+      if (u.success) row.successes += 1;
+      row.cost += Number(u.costUsd) || 0;
+    });
+    return Array.from(m.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((r) => ({ ...r, cost: Math.round(r.cost * 10000) / 10000, successRate: r.calls ? Math.round((r.successes / r.calls) * 100) : 0 }));
+  }, [aiUsage]);
 
   // ─── Top performers ───
   const topPerformers = useMemo(() => {
@@ -447,7 +516,7 @@ export default function Reports() {
         <Kpi label="Total Units" value={fmtNum(metrics.totalUnits)} sub={`${fmtNum(metrics.standardCount)} std + ${fmtNum(metrics.exceptionUnits)} exc`} color="#3B82F6" />
         <Kpi label="Revenue" value={fmtMoney(metrics.revenue)} sub={`$0.50 / $0.85 rates`} color="#10B981" />
         <Kpi label="Labor Cost" value={fmtMoney(metrics.labor)} sub={pay.length ? `${pay.length} days logged` : 'No payroll logged'} color="#F59E0B" />
-        <Kpi label="AI Cost" value={fmtMoney(metrics.aiCost)} sub={`${fmtNum(metrics.aiCalls)} calls`} color="#8B5CF6" />
+        <Kpi label="AI Cost" value={fmtMoney(metrics.aiCost)} sub={`${fmtNum(metrics.aiCalls)} calls · ${fmtNum(metrics.aiMatchCount)} assists`} color="#8B5CF6" />
         <Kpi label="Margin" value={fmtMoney(metrics.margin)} sub={metrics.revenue ? `${((metrics.margin / metrics.revenue) * 100).toFixed(1)}% of revenue` : '—'} color={metrics.margin >= 0 ? '#10B981' : '#EF4444'} />
         <Kpi label="Exception Rate" value={fmtPct(metrics.exceptionRate)} sub={`${fmtNum(metrics.exceptionUnits)} exception units`} color="#EC4899" />
       </div>
@@ -485,19 +554,25 @@ export default function Reports() {
       <div style={st.card}>
         <h2 style={st.cardTitle}>Daily Productivity & Revenue</h2>
         {daily.length === 0 ? <p style={st.empty}>No scans in this range.</p> : (
-          <div style={{ width: '100%', height: 320 }}>
+          <div style={{ width: '100%', height: 340 }}>
             <ResponsiveContainer>
-              <BarChart data={daily} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <ComposedChart data={daily} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10B981" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                 <XAxis dataKey="date" stroke="#888" fontSize={12} />
-                <YAxis yAxisId="left" stroke="#3B82F6" fontSize={12} />
-                <YAxis yAxisId="right" orientation="right" stroke="#10B981" fontSize={12} />
-                <Tooltip contentStyle={{ background: '#161616', border: '1px solid #333' }} />
+                <YAxis yAxisId="units" stroke="#3B82F6" fontSize={12} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+                <YAxis yAxisId="rev" orientation="right" stroke="#10B981" fontSize={12} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}`} />
+                <Tooltip contentStyle={{ background: '#161616', border: '1px solid #333' }} formatter={(v, n) => n === 'Revenue $' ? fmtMoney(v) : fmtNum(v)} />
                 <Legend />
-                <Bar yAxisId="left" dataKey="standard" stackId="units" fill="#3B82F6" name="Standard" />
-                <Bar yAxisId="left" dataKey="exceptions" stackId="units" fill="#EC4899" name="Exceptions" />
-                <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2} name="Revenue $" dot={false} />
-              </BarChart>
+                <Bar yAxisId="units" dataKey="standard" stackId="units" fill="#3B82F6" name="Standard" barSize={28} radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="units" dataKey="exceptions" stackId="units" fill="#EC4899" name="Exceptions" barSize={28} radius={[4, 4, 0, 0]} />
+                <Area yAxisId="rev" type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2.5} fill="url(#revGrad)" name="Revenue $" />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         )}
@@ -525,19 +600,21 @@ export default function Reports() {
         )}
       </div>
 
-      {/* Two-column grid: By Pod + Top Performers */}
+      {/* Two-column grid: By Operator + Top Performers */}
       <div style={st.twoCol}>
         <div style={st.card}>
-          <h2 style={st.cardTitle}>By Pod</h2>
-          {byPod.length === 0 ? <p style={st.empty}>No pod data.</p> : (
-            <div style={{ width: '100%', height: 280 }}>
+          <h2 style={st.cardTitle}>By Operator (Top 15)</h2>
+          {byOperator.length === 0 ? <p style={st.empty}>No operator data.</p> : (
+            <div style={{ width: '100%', height: Math.max(280, byOperator.length * 28) }}>
               <ResponsiveContainer>
-                <BarChart data={byPod} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                  <XAxis dataKey="pod" stroke="#888" fontSize={12} />
-                  <YAxis stroke="#888" fontSize={12} />
-                  <Tooltip contentStyle={{ background: '#161616', border: '1px solid #333' }} />
-                  <Bar dataKey="count" fill="#3B82F6" name="Scans" />
+                <BarChart data={byOperator} layout="vertical" margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" horizontal={false} />
+                  <XAxis type="number" stroke="#888" fontSize={12} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+                  <YAxis type="category" dataKey="operator" stroke="#888" fontSize={12} width={120} />
+                  <Tooltip contentStyle={{ background: '#161616', border: '1px solid #333' }} formatter={(v) => fmtNum(v)} />
+                  <Legend />
+                  <Bar dataKey="standard" stackId="o" fill="#3B82F6" name="Standard" />
+                  <Bar dataKey="exceptions" stackId="o" fill="#EC4899" name="Exceptions" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -573,6 +650,30 @@ export default function Reports() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* AI daily trend */}
+      <div style={st.card}>
+        <h2 style={st.cardTitle}>AI Calls & Cost Per Day</h2>
+        <p style={{ ...st.paySub, marginTop: -8, marginBottom: 12 }}>
+          {fmtNum(metrics.aiCalls)} calls · {fmtNum(metrics.aiMatchCount)} resulted in AI-matched scans · {fmtMoney(metrics.aiCost)} total cost
+        </p>
+        {aiDaily.length === 0 ? <p style={st.empty}>No AI calls in this range.</p> : (
+          <div style={{ width: '100%', height: 260 }}>
+            <ResponsiveContainer>
+              <ComposedChart data={aiDaily} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                <XAxis dataKey="date" stroke="#888" fontSize={12} />
+                <YAxis yAxisId="c" stroke="#8B5CF6" fontSize={12} />
+                <YAxis yAxisId="$" orientation="right" stroke="#10B981" fontSize={12} tickFormatter={(v) => `$${v.toFixed(2)}`} />
+                <Tooltip contentStyle={{ background: '#161616', border: '1px solid #333' }} formatter={(v, n) => n === 'Cost $' ? fmtMoney(v) : fmtNum(v)} />
+                <Legend />
+                <Bar yAxisId="c" dataKey="calls" fill="#8B5CF6" name="Calls" barSize={24} radius={[4, 4, 0, 0]} />
+                <Line yAxisId="$" type="monotone" dataKey="cost" stroke="#10B981" strokeWidth={2} name="Cost $" dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* AI Usage table */}
