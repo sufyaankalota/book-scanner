@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   collection, getDocs, query, where, Timestamp, limit as qLimit, orderBy, startAfter,
-  getCountFromServer, getAggregateFromServer, count, sum,
+  getCountFromServer,
 } from 'firebase/firestore';
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
@@ -132,11 +132,19 @@ export default function Reports() {
   }, [preset, customStart, customEnd]);
 
   // Fetch data when filters change
+  const reqIdRef = React.useRef(0);
   useEffect(() => {
+    const myReqId = ++reqIdRef.current;
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
     setTruncated(false);
+    // Clear stale data so visuals don't show old numbers while we refetch
+    setDailyAgg([]);
+    setScans([]);
+    setAiUsage([]);
+    setPay([]);
+    setSummary({ standardScans: 0, exceptionScans: 0, manualScans: 0, aiMatchScans: 0, loggedExceptions: 0, aiCalls: 0, aiCost: 0 });
     (async () => {
       try {
         const jobFilter = jobId !== 'all' ? [where('jobId', '==', jobId)] : [];
@@ -163,11 +171,10 @@ export default function Reports() {
         const rangeQ = (name, extra = []) => query(
           collection(db, name), ...jobFilter, ...rangeFilters, ...extra,
         );
-        const safeCount = async (q) => {
+        const safeCount = async (q, label) => {
           try { return (await getCountFromServer(q)).data().count; }
-          catch (e) { throw e; }
+          catch (e) { console.warn(`[Reports] count(${label}) failed:`, e.message); throw e; }
         };
-        const safeAgg = async (q, spec) => (await getAggregateFromServer(q, spec)).data();
 
         // dailyPay query (string date field)
         const startKey = dayKey(start);
@@ -178,36 +185,20 @@ export default function Reports() {
           : query(collection(db, 'dailyPay'),
               where('date', '>=', startKey), where('date', '<=', endKey));
 
-        // ai-usage docs (small collection — fetch fully for model breakdown)
+        // ai-usage docs (small collection — fetch fully, derive everything client-side)
         const qAi = query(collection(db, 'ai-usage'), ...jobFilter, ...rangeFilters);
 
-        // ─── Per-day aggregate fetcher ───
-        // Returns { date, scans, exceptions, aiCalls, aiCost } per day in one
-        // parallel batch per day (3 round-trips per day, all parallel).
-        const fetchDayAgg = async (dStart, dEnd) => {
+        // ─── Per-day scans count (one round-trip per day, all parallel) ───
+        const fetchDayScansCount = async ([dStart, dEnd]) => {
           const dayFilters = [
             where('timestamp', '>=', Timestamp.fromDate(dStart)),
             where('timestamp', '<', Timestamp.fromDate(dEnd)),
           ];
           const scansQ = query(collection(db, 'scans'), ...jobFilter, ...dayFilters);
-          const excQ   = query(collection(db, 'exceptions'), ...jobFilter, ...dayFilters);
-          const aiQ    = query(collection(db, 'ai-usage'), ...jobFilter, ...dayFilters);
-          const [sCount, eCount, aAgg] = await Promise.all([
-            safeCount(scansQ).catch(() => 0),
-            safeCount(excQ).catch(() => 0),
-            safeAgg(aiQ, { calls: count(), cost: sum('costUsd') }).catch(() => ({ calls: 0, cost: 0 })),
-          ]);
-          return {
-            date: dayKey(dStart),
-            scans: sCount,
-            exceptions: eCount,
-            aiCalls: aAgg.calls || 0,
-            aiCost: aAgg.cost || 0,
-          };
+          const c = await safeCount(scansQ, `scans day=${dayKey(dStart)}`).catch(() => 0);
+          return { date: dayKey(dStart), scans: c, exceptions: 0, aiCalls: 0, aiCost: 0 };
         };
-
-        // Fan out all days at once (aggregate queries are cheap and parallel-friendly)
-        const dailyPromise = Promise.all(dayWindows.map(([s, e]) => fetchDayAgg(s, e)));
+        const dailyPromise = Promise.all(dayWindows.map(fetchDayScansCount));
 
         // ─── Optional scan-doc fetch for operator/pod breakdown ───
         const HARD_LIMIT = 100_000;
@@ -240,12 +231,11 @@ export default function Reports() {
 
         // ─── Range-wide breakdown counts (need composite indexes; soft-fail) ───
         const rangeSummaryPromise = Promise.all([
-          safeCount(rangeQ('scans', [where('type', '==', 'standard')])).catch(() => null),
-          safeCount(rangeQ('scans', [where('type', '==', 'exception')])).catch(() => null),
-          safeCount(rangeQ('scans', [where('source', '==', 'manual')])).catch(() => null),
-          safeCount(rangeQ('scans', [where('source', '==', 'ai-match')])).catch(() => null),
-          safeCount(rangeQ('exceptions')).catch(() => 0),
-          safeAgg(rangeQ('ai-usage'), { calls: count(), cost: sum('costUsd') }).catch(() => ({ calls: 0, cost: 0 })),
+          safeCount(rangeQ('scans', [where('type', '==', 'standard')]), 'scans.type=standard').catch(() => null),
+          safeCount(rangeQ('scans', [where('type', '==', 'exception')]), 'scans.type=exception').catch(() => null),
+          safeCount(rangeQ('scans', [where('source', '==', 'manual')]), 'scans.source=manual').catch(() => null),
+          safeCount(rangeQ('scans', [where('source', '==', 'ai-match')]), 'scans.source=ai-match').catch(() => null),
+          safeCount(rangeQ('exceptions'), 'exceptions').catch(() => 0),
         ]);
 
         const [dailyArr, scanDocs, payRes, aiRes, rangeBits] = await Promise.all([
@@ -255,37 +245,40 @@ export default function Reports() {
           getDocs(qAi).catch((e) => { console.error('ai-usage fetch failed', e); return { docs: [] }; }),
           rangeSummaryPromise,
         ]);
-        if (cancelled) return;
+        // Drop stale responses if filters changed while we were waiting
+        if (cancelled || reqIdRef.current !== myReqId) return;
 
-        const [stdC, excC, manC, aimC, logExcC, aiAgg] = rangeBits;
+        const [stdC, excC, manC, aimC, logExcC] = rangeBits;
         const indexHints = [];
         if (stdC == null) indexHints.push('scans by type');
         if (manC == null) indexHints.push('scans by source');
-        // Backfill from per-day totals if breakdown queries failed
         const totalScansFromDaily = dailyArr.reduce((s, r) => s + (r.scans || 0), 0);
-        const totalExcFromDaily = dailyArr.reduce((s, r) => s + (r.exceptions || 0), 0);
+
+        // Compute AI metrics from the docs we already have — always correct
+        const aiDocs = aiRes.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const aiCallsTotal = aiDocs.length;
+        const aiCostTotal = aiDocs.reduce((s, u) => s + (Number(u.costUsd) || 0), 0);
 
         setDailyAgg(dailyArr.sort((a, b) => a.date.localeCompare(b.date)));
         setScans(scanDocs);
         setPay(payRes.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setAiUsage(aiRes.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setAiUsage(aiDocs);
         setSummary({
           standardScans: stdC ?? Math.max(0, totalScansFromDaily - (excC ?? 0)),
           exceptionScans: excC ?? 0,
           manualScans: manC ?? 0,
           aiMatchScans: aimC ?? 0,
-          loggedExceptions: logExcC ?? totalExcFromDaily,
-          aiCalls: aiAgg.calls || 0,
-          aiCost: aiAgg.cost || 0,
+          loggedExceptions: logExcC ?? 0,
+          aiCalls: aiCallsTotal,
+          aiCost: aiCostTotal,
         });
         if (indexHints.length) {
-          setLoadError(`Range breakdown unavailable (${indexHints.join(', ')}) — open the Firestore index URL in the browser console to create the index, then reload.`);
+          setLoadError(`Range breakdown still indexing (${indexHints.join(', ')}) — totals shown will be approximate until Firestore finishes building the new indexes (~5 min). Refresh to retry.`);
         }
       } catch (err) {
-        if (!cancelled) {
-          setLoadError(err.message || 'Load failed');
-          toast('Load failed: ' + err.message, 'error');
-        }
+        if (cancelled || reqIdRef.current !== myReqId) return;
+        setLoadError(err.message || 'Load failed');
+        toast('Load failed: ' + err.message, 'error');
         console.error(err);
       } finally {
         if (!cancelled) setLoading(false);
@@ -385,16 +378,21 @@ export default function Reports() {
       .slice(0, 15);
   }, [scans]);
 
-  // ─── AI per-day rollup (from daily aggregates) ───
+  // ─── AI per-day rollup (from ai-usage docs — always correct) ───
   const aiDaily = useMemo(() => {
-    return dailyAgg
-      .map((r) => ({
-        date: r.date,
-        calls: r.aiCalls || 0,
-        cost: Math.round((r.aiCost || 0) * 10000) / 10000,
-      }))
-      .filter((r) => r.calls > 0 || r.cost > 0);
-  }, [dailyAgg]);
+    const m = new Map();
+    aiUsage.forEach((u) => {
+      const ts = u.timestamp?.toDate?.(); if (!ts) return;
+      const k = dayKey(ts);
+      if (!m.has(k)) m.set(k, { date: k, calls: 0, cost: 0 });
+      const row = m.get(k);
+      row.calls += 1;
+      row.cost += Number(u.costUsd) || 0;
+    });
+    return Array.from(m.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((r) => ({ ...r, cost: Math.round(r.cost * 10000) / 10000 }));
+  }, [aiUsage]);
 
   // ─── Top performers (scan docs; small ranges only) ───
   const topPerformers = useMemo(() => {
