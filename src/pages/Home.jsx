@@ -172,6 +172,10 @@ export default function Home() {
           <span style={styles.navIcon}>💰</span>
           <span>Billing</span>
         </Link>
+        <Link to="/reports" style={styles.navLink}>
+          <span style={styles.navIcon}>📈</span>
+          <span>Reports</span>
+        </Link>
         <Link to="/portal" style={styles.navLink}>
           <span style={styles.navIcon}>📦</span>
           <span>Portal</span>
