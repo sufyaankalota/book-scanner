@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  collection, getDocs, query, where, Timestamp, limit as qLimit,
+  collection, getDocs, query, where, Timestamp, limit as qLimit, orderBy, startAfter,
 } from 'firebase/firestore';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -113,13 +113,30 @@ export default function Reports() {
         const filters = [where('timestamp', '>=', tsStart), where('timestamp', '<', tsEnd)];
         const jobFilter = jobId !== 'all' ? [where('jobId', '==', jobId)] : [];
 
-        // Hard cap so a wide All-Jobs range can't hang the browser.
-        // (Tune up if your warehouse needs it; UI warns when hit.)
+        // Firestore caps a single query at 10k rows, so we paginate in pages of
+        // PAGE_SIZE up to HARD_LIMIT total per collection. UI warns when hit.
         const HARD_LIMIT = 100_000;
-
-        const qScans = query(collection(db, 'scans'), ...jobFilter, ...filters, qLimit(HARD_LIMIT));
-        const qExc = query(collection(db, 'exceptions'), ...jobFilter, ...filters, qLimit(HARD_LIMIT));
-        const qAi = query(collection(db, 'ai-usage'), ...jobFilter, ...filters, qLimit(HARD_LIMIT));
+        const PAGE_SIZE = 10_000;
+        const fetchPaged = async (collName) => {
+          const out = [];
+          let cursor = null;
+          while (out.length < HARD_LIMIT) {
+            const parts = [
+              collection(db, collName),
+              ...jobFilter,
+              ...filters,
+              orderBy('timestamp', 'asc'),
+              ...(cursor ? [startAfter(cursor)] : []),
+              qLimit(PAGE_SIZE),
+            ];
+            const snap = await getDocs(query(...parts));
+            if (snap.empty) break;
+            for (const d of snap.docs) out.push({ id: d.id, ...d.data() });
+            if (snap.docs.length < PAGE_SIZE) break;
+            cursor = snap.docs[snap.docs.length - 1];
+          }
+          return out;
+        };
 
         // dailyPay uses a string `date` field (YYYY-MM-DD), not Timestamp
         const startKey = dayKey(start);
@@ -132,13 +149,18 @@ export default function Reports() {
 
         // allSettled so a missing index on one collection doesn't block the rest.
         const [sRes, eRes, aRes, pRes] = await Promise.allSettled([
-          getDocs(qScans), getDocs(qExc), getDocs(qAi), getDocs(qPay),
+          fetchPaged('scans'),
+          fetchPaged('exceptions'),
+          fetchPaged('ai-usage'),
+          getDocs(qPay),
         ]);
         if (cancelled) return;
 
         const errors = [];
-        const grab = (res, label) => {
-          if (res.status === 'fulfilled') return res.value.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const grab = (res, label, isSnap = false) => {
+          if (res.status === 'fulfilled') {
+            return isSnap ? res.value.docs.map((d) => ({ id: d.id, ...d.data() })) : res.value;
+          }
           console.error(`Reports: ${label} query failed`, res.reason);
           errors.push(`${label}: ${res.reason?.message || res.reason}`);
           return [];
@@ -146,7 +168,7 @@ export default function Reports() {
         const sDocs = grab(sRes, 'scans');
         const eDocs = grab(eRes, 'exceptions');
         const aDocs = grab(aRes, 'ai-usage');
-        const pDocs = grab(pRes, 'dailyPay');
+        const pDocs = grab(pRes, 'dailyPay', true);
 
         setScans(sDocs);
         setExceptions(eDocs);
