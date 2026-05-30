@@ -6,11 +6,11 @@
 // and a precomputed `totalPay`. Readers should prefer `roles` when present.
 
 export const ROLES = [
-  { key: 'openers',     label: 'Openers',     defaultRate: 16 },
-  { key: 'runners',     label: 'Runners',     defaultRate: 15 },
-  { key: 'floaters',    label: 'Floaters',    defaultRate: 16 },
-  { key: 'supervisors', label: 'Supervisors', defaultRate: 22 },
-  { key: 'scanners',    label: 'Scanners',    defaultRate: 15 },
+  { key: 'openers',     label: 'Openers',     defaultRate: 19 },
+  { key: 'runners',     label: 'Runners',     defaultRate: 19 },
+  { key: 'floaters',    label: 'Floaters',    defaultRate: 19 },
+  { key: 'supervisors', label: 'Supervisors', defaultRate: 19 },
+  { key: 'scanners',    label: 'Scanners',    defaultRate: 19 },
 ];
 
 export const ROLE_KEYS = ROLES.map((r) => r.key);
