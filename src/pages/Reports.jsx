@@ -11,6 +11,9 @@ import * as XLSX from 'xlsx';
 import { db } from '../firebase';
 import { useToast } from '../components/Toast';
 import { downloadBlob } from '../utils/export';
+import RolePayEditor from '../components/RolePayEditor';
+import { dailyPayTotal } from '../utils/roles';
+import { useAuth } from '../contexts/AuthContext';
 
 const STANDARD_RATE = 0.50;
 const EXCEPTION_RATE = 0.85;
@@ -51,6 +54,7 @@ const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
 
 export default function Reports() {
   const { show: toast } = useToast();
+  const { currentUser } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [jobId, setJobId] = useState('all');
   const [preset, setPreset] = useState('today');
@@ -59,6 +63,8 @@ export default function Reports() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [truncated, setTruncated] = useState(false);
+  const [payEditDate, setPayEditDate] = useState(() => dateInputValue(new Date()));
+  const [payRefreshKey, setPayRefreshKey] = useState(0);
   const [scans, setScans] = useState([]);
   const [exceptions, setExceptions] = useState([]);
   const [aiUsage, setAiUsage] = useState([]);
@@ -161,7 +167,7 @@ export default function Reports() {
       }
     })();
     return () => { cancelled = true; };
-  }, [jobId, start, end]); // eslint-disable-line
+  }, [jobId, start, end, payRefreshKey]); // eslint-disable-line
 
   // ─── Derived metrics ───
   const metrics = useMemo(() => {
@@ -174,7 +180,7 @@ export default function Reports() {
     const revenue = standardCount * STANDARD_RATE + exceptionUnits * EXCEPTION_RATE;
     const aiCost = aiUsage.reduce((s, u) => s + (Number(u.costUsd) || 0), 0);
     const aiCalls = aiUsage.length;
-    const labor = pay.reduce((s, p) => s + (Number(p.totalPay) || 0), 0);
+    const labor = pay.reduce((s, p) => s + dailyPayTotal(p), 0);
     const margin = revenue - labor - aiCost;
     const exceptionRate = totalUnits ? (exceptionUnits / totalUnits) : 0;
     const aiUsageRate = totalUnits ? (aiCalls / totalUnits) : 0;
@@ -208,7 +214,7 @@ export default function Reports() {
     pay.forEach((p) => {
       if (!p.date) return;
       const row = ensure(p.date);
-      row.labor += Number(p.totalPay) || 0;
+      row.labor += dailyPayTotal(p);
     });
     return Array.from(byDay.values())
       .sort((a, b) => a.date.localeCompare(b.date))
@@ -424,6 +430,35 @@ export default function Reports() {
         <Kpi label="Exception Rate" value={fmtPct(metrics.exceptionRate)} sub={`${fmtNum(metrics.exceptionUnits)} exception units`} color="#EC4899" />
       </div>
 
+      {/* Daily Labor editor (role-aggregated payroll) */}
+      <div style={st.card}>
+        <div style={st.payHeader}>
+          <div>
+            <h2 style={{ ...st.cardTitle, margin: 0 }}>Daily Labor</h2>
+            <p style={st.paySub}>
+              Enter # on shift, hours, and rate per role. Margin updates after save.
+              {jobId === 'all' && ' Pick a specific job to edit.'}
+            </p>
+          </div>
+          <label style={st.payDateLabel}>
+            <span style={st.label}>Date</span>
+            <input type="date" value={payEditDate}
+              onChange={(e) => setPayEditDate(e.target.value)}
+              style={st.input} />
+          </label>
+        </div>
+        {jobId === 'all' ? (
+          <p style={st.empty}>Select a single job above to enter labor for a day.</p>
+        ) : (
+          <RolePayEditor
+            jobId={jobId}
+            date={payEditDate}
+            currentUser={currentUser}
+            onSaved={() => setPayRefreshKey((k) => k + 1)}
+          />
+        )}
+      </div>
+
       {/* Daily trend */}
       <div style={st.card}>
         <h2 style={st.cardTitle}>Daily Productivity & Revenue</h2>
@@ -604,6 +639,9 @@ const st = {
     background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
     color: '#fcd34d', padding: 12, borderRadius: 10, marginBottom: 16, fontSize: 13,
   },
+  payHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 14, flexWrap: 'wrap' },
+  paySub: { fontSize: 13, color: '#888', margin: '4px 0 0 0' },
+  payDateLabel: { display: 'flex', flexDirection: 'column', gap: 4 },
   kpiGrid: {
     display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: 12, marginBottom: 24,
