@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { db } from '../firebase';
 import {
-  collection, doc, getDoc, getDocs, addDoc, query, where, orderBy,
+  collection, doc, getDoc, getDocs, setDoc, query, where,
   Timestamp, serverTimestamp,
 } from 'firebase/firestore';
 import { exportBillingXLSX, downloadBlob } from '../utils/export';
 import { logAudit } from '../utils/audit';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Standalone billing page — works for ANY job (active or closed).
@@ -18,6 +19,7 @@ import { useToast } from '../components/Toast';
  */
 export default function Billing() {
   const { show: toast } = useToast();
+  const { currentUser } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState('');
@@ -30,6 +32,7 @@ export default function Billing() {
   const [exporting, setExporting] = useState(false);
   const [reports, setReports] = useState([]);
   const [loadingReports, setLoadingReports] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Load all jobs (active + closed)
   useEffect(() => {
@@ -77,7 +80,21 @@ export default function Billing() {
       }
       setLoadingReports(false);
     })();
-  }, [selectedJobId, exporting]);
+  }, [selectedJobId, refreshKey]);
+
+  // Snap any picked date to the Monday of that week so the export window is
+  // always Mon–Sun. Prevents silent date-range drift when picking a Tue/Wed/etc.
+  const snapToMonday = (isoDate) => {
+    const d = new Date(isoDate + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return isoDate;
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  };
+  const onBillingWeekChange = (v) => {
+    const snapped = snapToMonday(v);
+    if (snapped !== v) toast(`Snapped to week starting Monday ${snapped}`, 'info');
+    setBillingWeek(snapped);
+  };
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId);
   const weekStartDate = new Date(billingWeek + 'T00:00:00');
@@ -85,10 +102,30 @@ export default function Billing() {
 
   const handleBillingExport = async () => {
     if (!selectedJob) { toast('Pick a job first', 'error'); return; }
+    const weekStart = weekStartDate;
+    const weekEnd = weekEndDate;
+
+    // Deterministic doc id prevents accidental duplicate invoices for the same week.
+    const weekKey = billingWeek; // YYYY-MM-DD (already snapped to Monday)
+    const reportId = `${selectedJob.id}_${weekKey}`;
+    const reportRef = doc(db, 'billing-reports', reportId);
+
     setExporting(true);
     try {
-      const weekStart = weekStartDate;
-      const weekEnd = weekEndDate;
+      // Check for existing report and confirm overwrite
+      const existing = await getDoc(reportRef);
+      if (existing.exists()) {
+        const e = existing.data();
+        const by = e.createdBy?.name || e.createdBy?.email || 'unknown';
+        const when = e.createdAt?.toDate?.()?.toLocaleString?.() || 'earlier';
+        const ok = window.confirm(
+          `A billing report for ${weekStart.toLocaleDateString()} – ${new Date(weekEnd.getTime() - 86400000).toLocaleDateString()} already exists.\n\n` +
+          `Created by: ${by}\nCreated at: ${when}\nTotal: $${(e.totalAmount || 0).toFixed(2)} (${e.totalUnits || 0} units)\n\n` +
+          `OVERWRITE this existing report with a fresh export?`
+        );
+        if (!ok) { setExporting(false); return; }
+      }
+
       const q1 = query(collection(db, 'scans'), where('jobId', '==', selectedJob.id),
         where('timestamp', '>=', Timestamp.fromDate(weekStart)),
         where('timestamp', '<', Timestamp.fromDate(weekEnd)));
@@ -114,13 +151,37 @@ export default function Billing() {
       // Auto-download for the operator
       downloadBlob(buf, fileName);
 
-      // Save report to Firestore (so it shows up in Customer Portal too)
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-      await addDoc(collection(db, 'billing-reports'), {
+      // Use chunked base64 conversion to avoid stack-overflow on large buffers
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      const base64 = btoa(bin);
+
+      // Firestore doc limit is 1 MiB. Base64 inflates by ~33%, so warn if the
+      // serialized report would not fit. Don't silently truncate.
+      const approxDocBytes = base64.length + 2048; // base64 + metadata overhead
+      const FIRESTORE_DOC_LIMIT = 1_048_576;
+      const tooLarge = approxDocBytes > FIRESTORE_DOC_LIMIT * 0.95;
+      if (tooLarge) {
+        const ok = window.confirm(
+          `This week's XLSX is ${(approxDocBytes / 1024).toFixed(0)} KB which exceeds Firestore's 1 MiB document limit.\n\n` +
+          `The file has already been downloaded to your computer. ` +
+          `If you continue, the report metadata (totals, who/when) will be saved but the file blob will NOT be stored — the customer portal will show the totals but not have a re-download link.\n\n` +
+          `Continue?`
+        );
+        if (!ok) { setExporting(false); return; }
+      }
+
+      // Deterministic write
+      await setDoc(reportRef, {
         jobId: selectedJob.id,
         jobName: selectedJob.meta?.name || 'Unknown',
         weekStart: Timestamp.fromDate(weekStart),
         weekEnd: Timestamp.fromDate(weekEnd),
+        weekKey,
         standardCount,
         exceptionCount,
         manualCount,
@@ -129,22 +190,41 @@ export default function Billing() {
         totalUnits: standardCount + exceptionCount,
         totalAmount,
         fileName,
-        fileData: base64,
+        fileData: tooLarge ? null : base64,
+        fileOmitted: tooLarge,
+        createdBy: {
+          id: currentUser?.id || null,
+          name: currentUser?.name || null,
+          email: currentUser?.email || null,
+          role: currentUser?.role || null,
+        },
         createdAt: serverTimestamp(),
       });
-      logAudit('billing_export', {
+
+      logAudit('billing.export', {
         jobId: selectedJob.id,
+        reportId,
         weekStart: weekStart.toISOString(),
         weekEnd: weekEnd.toISOString(),
         scans: scans.length,
         exceptions: excs.length,
+        totalAmount,
+        overwrote: existing.exists(),
+        fileOmitted: tooLarge,
       });
-      toast(`Billed ${standardCount + exceptionCount} units`, 'success');
+      toast(`Billed ${standardCount + exceptionCount} units · $${totalAmount.toFixed(2)}`, 'success');
+      setRefreshKey((k) => k + 1);
     } catch (err) {
+      console.error('Billing export failed', err);
       toast('Billing export failed: ' + err.message, 'error');
     }
     setExporting(false);
   };
+
+  // Permanent deletion is intentionally not exposed in the client. Firestore
+  // rules block all deletes on billing-reports; an admin must remove via the
+  // Firebase console. This is deliberate after the portal incident where an
+  // unrestricted delete button caused a week's report to vanish.
 
   const downloadReport = (r) => {
     try {
@@ -189,9 +269,9 @@ export default function Billing() {
         )}
 
         <label style={{ ...st.label, marginTop: 18 }}>Week starting (Monday)</label>
-        <input type="date" value={billingWeek} onChange={(e) => setBillingWeek(e.target.value)} style={st.input} />
+        <input type="date" value={billingWeek} onChange={(e) => onBillingWeekChange(e.target.value)} style={st.input} />
         <p style={st.hint}>
-          📅 {weekStartDate.toLocaleDateString()} – {new Date(weekEndDate.getTime() - 86400000).toLocaleDateString()} (7 days)
+          📅 {weekStartDate.toLocaleDateString()} – {new Date(weekEndDate.getTime() - 86400000).toLocaleDateString()} (Mon–Sun)
         </p>
 
         <button onClick={handleBillingExport} disabled={exporting || !selectedJob}
@@ -212,17 +292,26 @@ export default function Billing() {
             {reports.map((r) => {
               const ws = r.weekStart?.toDate?.()?.toLocaleDateString?.() || '?';
               const we = r.weekEnd?.toDate ? new Date(r.weekEnd.toDate().getTime() - 86400000).toLocaleDateString() : '?';
+              const createdBy = r.createdBy?.name || r.createdBy?.email || (r.createdBy ? 'unknown' : 'legacy');
+              const createdAt = r.createdAt?.toDate?.()?.toLocaleString?.() || '—';
               return (
                 <div key={r.id} style={st.reportRow}>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{ws} – {we}</div>
                     <div style={{ color: '#888', fontSize: 12, marginTop: 2 }}>
                       {r.standardCount} standard · {r.exceptionCount} exceptions · ${r.totalAmount?.toFixed?.(2) || '?'}
                     </div>
+                    <div style={{ color: '#666', fontSize: 11, marginTop: 4 }}>
+                      Exported by {createdBy} · {createdAt}
+                      {r.fileOmitted && <span style={{ color: '#F59E0B' }}> · file too large to store — re-export to download</span>}
+                    </div>
                   </div>
-                  <button onClick={() => downloadReport(r)} style={st.downloadBtn}>
-                    📥 Download
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => downloadReport(r)} disabled={!r.fileData}
+                      style={{ ...st.downloadBtn, opacity: r.fileData ? 1 : 0.4, cursor: r.fileData ? 'pointer' : 'not-allowed' }}>
+                      📥 Download
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -247,4 +336,5 @@ const st = {
   sectionTitle: { color: '#fff', fontSize: 16, marginTop: 0, marginBottom: 12 },
   reportRow: { display: 'flex', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: 8 },
   downloadBtn: { padding: '8px 14px', borderRadius: 6, border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  deleteBtn: { padding: '8px 10px', borderRadius: 6, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#EF4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
 };

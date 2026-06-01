@@ -1029,10 +1029,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
                         style={{ ...st.smallBtn, padding: '8px 12px' }}>
                         {report.archived ? '↩ Unarchive' : '📦 Archive'}
                       </button>
-                      <button onClick={() => { if (confirm('Delete this report permanently?')) deleteDoc(doc(db, 'billing-reports', report.id)); }}
-                        style={{ ...st.smallBtn, padding: '8px 12px', color: '#EF4444', borderColor: '#7f1d1d' }}>
-                        🗑
-                      </button>
+                      {/* Permanent delete intentionally removed from portal. Admins delete from the Billing page. */}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>

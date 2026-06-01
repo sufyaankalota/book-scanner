@@ -90,12 +90,20 @@ service cloud.firestore {
       allow update, delete: if false; // Audit trail is immutable
     }
 
-    // Billing reports — dashboard creates, portal reads, archive/delete supported
+    // Billing reports — dashboard creates, portal reads. Updates may not
+    // strip identity / audit fields. Deletes are blocked at the rule layer;
+    // the portal previously exposed an unrestricted delete button which
+    // caused reports to disappear. Deletion now requires server-side action.
     match /billing-reports/{reportId} {
       allow read: if true;
       allow create: if request.resource.data.keys().hasAll(['jobId', 'weekStart', 'weekEnd', 'fileName']);
-      allow update: if true;
-      allow delete: if true;
+      allow update: if
+        request.resource.data.jobId == resource.data.jobId &&
+        request.resource.data.weekStart == resource.data.weekStart &&
+        request.resource.data.weekEnd == resource.data.weekEnd &&
+        (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+        (!('createdBy' in resource.data) || request.resource.data.createdBy == resource.data.createdBy);
+      allow delete: if false;
     }
 
     // PO uploads — customer uploads, dashboard/setup reads and attaches to jobs

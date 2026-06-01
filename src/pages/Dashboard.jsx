@@ -777,9 +777,30 @@ export default function Dashboard() {
     if (!job) return;
     setExporting(true);
     try {
-      const weekStart = new Date(billingWeek + 'T00:00:00');
+      // Snap to Monday so the export window is always Mon–Sun
+      const picked = new Date(billingWeek + 'T00:00:00');
+      picked.setDate(picked.getDate() - ((picked.getDay() + 6) % 7));
+      const weekKey = picked.toISOString().slice(0, 10);
+      const weekStart = picked;
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 7);
+
+      // Deterministic id prevents duplicate invoices for the same week
+      const reportId = `${job.id}_${weekKey}`;
+      const reportRef = doc(db, 'billing-reports', reportId);
+      const existing = await getDoc(reportRef);
+      if (existing.exists()) {
+        const e = existing.data();
+        const by = e.createdBy?.name || e.createdBy?.email || 'unknown';
+        const when = e.createdAt?.toDate?.()?.toLocaleString?.() || 'earlier';
+        const ok = window.confirm(
+          `A billing report for the week of ${weekStart.toLocaleDateString()} already exists.\n\n` +
+          `Created by: ${by}\nCreated at: ${when}\nTotal: $${(e.totalAmount || 0).toFixed(2)} (${e.totalUnits || 0} units)\n\n` +
+          `OVERWRITE this existing report with a fresh export?`
+        );
+        if (!ok) { setExporting(false); return; }
+      }
+
       const q1 = query(collection(db, 'scans'), where('jobId', '==', job.id),
         where('timestamp', '>=', Timestamp.fromDate(weekStart)),
         where('timestamp', '<', Timestamp.fromDate(weekEnd)));
@@ -796,14 +817,23 @@ export default function Dashboard() {
       const exceptionCount = manualCount + aiMatchCount + loggedExceptionCount;
       const totalAmount = standardCount * 0.50 + exceptionCount * 0.85;
       const { buf, fileName } = exportBillingXLSX(scans, excs, job.meta, weekStart, weekEnd);
-      // Convert to base64 for Firestore storage
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-      // Save to billing-reports collection for Customer Portal access
-      await addDoc(collection(db, 'billing-reports'), {
+
+      // Chunked base64 conversion (avoids stack overflow on large buffers)
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      const base64 = btoa(bin);
+      const tooLarge = base64.length + 2048 > 1_048_576 * 0.95;
+
+      await setDoc(reportRef, {
         jobId: job.id,
         jobName: job.meta.name || 'Unknown',
         weekStart: Timestamp.fromDate(weekStart),
         weekEnd: Timestamp.fromDate(weekEnd),
+        weekKey,
         standardCount,
         exceptionCount,
         manualCount,
@@ -812,10 +842,22 @@ export default function Dashboard() {
         totalUnits: standardCount + exceptionCount,
         totalAmount,
         fileName,
-        fileData: base64,
+        fileData: tooLarge ? null : base64,
+        fileOmitted: tooLarge,
+        createdBy: {
+          id: currentUser?.id || null,
+          name: currentUser?.name || null,
+          email: currentUser?.email || null,
+          role: currentUser?.role || null,
+        },
         createdAt: serverTimestamp(),
       });
-      logAudit('billing_export', { weekStart: weekStart.toISOString(), weekEnd: weekEnd.toISOString(), scans: scans.length, exceptions: excs.length });
+      logAudit('billing.export', {
+        jobId: job.id, reportId, weekStart: weekStart.toISOString(), weekEnd: weekEnd.toISOString(),
+        scans: scans.length, exceptions: excs.length, totalAmount,
+        overwrote: existing.exists(), fileOmitted: tooLarge,
+      });
+      if (tooLarge) toast('Saved (file too large to store — re-export from Billing page to download).', 'info', 6000);
     } catch (err) { toast('Billing export failed: ' + err.message, 'error'); }
     setExporting(false);
     setShowBilling(false);
