@@ -308,7 +308,8 @@ export default function Billing() {
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={() => downloadReport(r)} disabled={!r.fileData}
-                      style={{ ...st.downloadBtn, opacity: r.fileData ? 1 : 0.4, cursor: r.fileData ? 'pointer' : 'not-allowed' }}>
+                      style={{ ...st.downloadBtn, opacity: r.fileData ? 1 : 0.4, cursor: r.fileData ? 'pointer' : 'not-allowed' }}
+                      title={r.fileData ? 'Download XLSX' : 'File not stored — re-export to download'}>
                       📥 Download
                     </button>
                   </div>
@@ -336,5 +337,4 @@ const st = {
   sectionTitle: { color: '#fff', fontSize: 16, marginTop: 0, marginBottom: 12 },
   reportRow: { display: 'flex', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: 8 },
   downloadBtn: { padding: '8px 14px', borderRadius: 6, border: '1px solid #22C55E', backgroundColor: 'transparent', color: '#22C55E', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  deleteBtn: { padding: '8px 10px', borderRadius: 6, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#EF4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
 };

@@ -1014,7 +1014,15 @@ ${allExcs.map((exc, i) => `<div class="exc">
                       </div>
                       <div style={{ color: '#888', fontSize: 13 }}>
                         Generated: {created ? created.toLocaleDateString() + ' ' + created.toLocaleTimeString() : 'Unknown'}
+                        {report.createdBy?.name || report.createdBy?.email
+                          ? <span style={{ color: '#666' }}> · by {report.createdBy.name || report.createdBy.email}</span>
+                          : null}
                       </div>
+                      {report.fileOmitted && (
+                        <div style={{ color: '#F59E0B', fontSize: 12, marginTop: 4 }}>
+                          ⚠️ File not stored (too large) — contact warehouse for a copy.
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => {
@@ -1022,14 +1030,16 @@ ${allExcs.map((exc, i) => `<div class="exc">
                           const bytes = Uint8Array.from(atob(report.fileData), (c) => c.charCodeAt(0));
                           downloadBlob(bytes, report.fileName);
                         } catch { toast('Download failed', 'error'); }
-                      }} style={{ ...st.smallBtn, padding: '8px 20px' }}>
+                      }}
+                        disabled={!report.fileData}
+                        style={{ ...st.smallBtn, padding: '8px 20px', opacity: report.fileData ? 1 : 0.4, cursor: report.fileData ? 'pointer' : 'not-allowed' }}
+                        title={report.fileData ? 'Download XLSX' : 'File not available'}>
                         📥 Download
                       </button>
                       <button onClick={() => updateDoc(doc(db, 'billing-reports', report.id), { archived: !report.archived })}
                         style={{ ...st.smallBtn, padding: '8px 12px' }}>
                         {report.archived ? '↩ Unarchive' : '📦 Archive'}
                       </button>
-                      {/* Permanent delete intentionally removed from portal. Admins delete from the Billing page. */}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 20, marginTop: 12, flexWrap: 'wrap' }}>
