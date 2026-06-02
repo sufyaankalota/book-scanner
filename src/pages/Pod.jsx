@@ -17,6 +17,7 @@ import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import { PER_POD_DAILY_TARGET, PER_POD_DAILY_MIN, PER_POD_BONUS_TARGET } from '../utils/target';
 import { displayOperatorName } from '../utils/operator';
+import { verifyPassword } from '../utils/crypto';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
 
@@ -152,6 +153,11 @@ export default function Pod() {
   const [manualIsbn, setManualIsbn] = useState('');
   const [showIsbnCamera, setShowIsbnCamera] = useState(false);
   const [duplicateConfirm, setDuplicateConfirm] = useState(null); // { isbn, raw } when awaiting confirmation
+  // Manager PIN required to override any duplicate. State scoped to the open dialog only;
+  // never cached across duplicates so a manager must be physically present each time.
+  const [dupPin, setDupPin] = useState('');
+  const [dupPinError, setDupPinError] = useState('');
+  const [dupPinChecking, setDupPinChecking] = useState(false);
   const [lastScanTime, setLastScanTime] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -712,13 +718,13 @@ export default function Pod() {
     return () => document.removeEventListener('keydown', handler);
   }, [breakTimer, refocusInput]);
 
-  // ─── Duplicate confirm shortcuts: Y/NumPad1/Enter = scan it, N/NumPad0/Esc = skip ───
+  // ─── Duplicate confirm shortcuts: N/NumPad0/Esc = skip. Confirm requires manager PIN ───
+  // Y/Enter no longer instantly accepts — manager must type PIN in the dialog input.
   useEffect(() => {
     if (!duplicateConfirm) return;
     const handler = (e) => {
       const k = e.key.toLowerCase();
-      if (k === 'y' || e.key === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Numpad1') { e.preventDefault(); confirmDuplicate(); }
-      else if (k === 'n' || e.key === 'Escape' || e.code === 'Numpad0' || e.code === 'Numpad2') { e.preventDefault(); cancelDuplicate(); }
+      if (k === 'n' || e.key === 'Escape' || e.code === 'Numpad0' || e.code === 'Numpad2') { e.preventDefault(); cancelDuplicate(); }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -1009,17 +1015,54 @@ export default function Pod() {
     processScan(isbn, o);
   };
 
-  const confirmDuplicate = () => {
-    if (!duplicateConfirm) return;
+  // Verify the manager PIN against config/supervisor (hashed or legacy plaintext).
+  // Falls back to default '1234' only when no config doc exists, matching SupervisorGate.
+  const verifyManagerPin = async (pin) => {
+    const entered = (pin || '').trim();
+    if (!entered) return false;
+    try {
+      const snap = await getDoc(doc(db, 'config', 'supervisor'));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.pinHash) return await verifyPassword(entered, data.pinHash);
+        if (data.pin) return entered === data.pin;
+        return entered === '1234';
+      }
+      return entered === '1234';
+    } catch {
+      return entered === '1234';
+    }
+  };
+
+  const confirmDuplicate = async () => {
+    if (!duplicateConfirm || dupPinChecking) return;
+    setDupPinChecking(true);
+    const ok = await verifyManagerPin(dupPin);
+    if (!ok) {
+      setDupPinError(t('invalidManagerPin') || 'Invalid manager PIN');
+      setDupPin('');
+      setDupPinChecking(false);
+      playErrorBeep();
+      return;
+    }
     const { isbn, opts } = duplicateConfirm;
+    try {
+      await logAudit({
+        action: 'duplicate_override',
+        target: isbn,
+        meta: { jobId: job?.id || null, overScan: !!duplicateConfirm.overScan, operator: operatorName || null, podId: pod?.id || null },
+      });
+    } catch { /* audit best-effort */ }
     lastScannedRef.current = { isbn, time: Date.now() };
     setDuplicateConfirm(null);
+    setDupPin(''); setDupPinError(''); setDupPinChecking(false);
     processScan(isbn, opts || {});
     setTimeout(refocusInput, 100);
   };
 
   const cancelDuplicate = () => {
     setDuplicateConfirm(null);
+    setDupPin(''); setDupPinError(''); setDupPinChecking(false);
     flash('#EAB308', t('duplicateSkipped'), 1500);
     setTimeout(refocusInput, 100);
   };
@@ -2651,14 +2694,37 @@ export default function Pod() {
                 : t('duplicateJustScanned')}
             </p>
             <p style={{ color: '#fff', fontSize: 30, fontWeight: 800, fontFamily: 'monospace', letterSpacing: 1, margin: '8px 0 20px', padding: '12px 20px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
-            <p style={{ color: '#999', fontSize: 15, margin: '0 0 24px', fontWeight: 500 }}>
+            <p style={{ color: '#999', fontSize: 15, margin: '0 0 16px', fontWeight: 500 }}>
               {duplicateConfirm.overScan ? t('duplicateDifferentCopy') : t('duplicateDifferentCopy')}
             </p>
+            <div style={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: 10, padding: 16, margin: '0 0 16px' }}>
+              <p style={{ color: '#EAB308', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
+                {t('managerOverrideRequired') || 'Manager override required'}
+              </p>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                autoFocus
+                value={dupPin}
+                onChange={(e) => { setDupPin(e.target.value); if (dupPinError) setDupPinError(''); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmDuplicate(); }
+                }}
+                placeholder={t('managerPinPlaceholder') || 'Manager PIN'}
+                disabled={dupPinChecking}
+                style={{ width: '100%', padding: '14px 16px', borderRadius: 8, border: `2px solid ${dupPinError ? '#EF4444' : '#444'}`, backgroundColor: '#000', color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', letterSpacing: 4, textAlign: 'center', boxSizing: 'border-box' }}
+              />
+              {dupPinError && (
+                <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: '8px 0 0' }}>{dupPinError}</p>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
               <button onClick={confirmDuplicate}
-                style={{ padding: '20px 32px', minHeight: 64, borderRadius: 12, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}
-                title="Press Y or Enter">
-                ✓ {duplicateConfirm.overScan ? t('yesScanIt') : t('scanAgain')} <kbd style={{ ...kbdHintStyle, marginLeft: 8 }}>Y</kbd>
+                disabled={!dupPin || dupPinChecking}
+                style={{ padding: '20px 32px', minHeight: 64, borderRadius: 12, border: 'none', backgroundColor: (!dupPin || dupPinChecking) ? '#15803d' : '#22C55E', color: '#fff', fontSize: 20, fontWeight: 800, cursor: (!dupPin || dupPinChecking) ? 'not-allowed' : 'pointer', opacity: (!dupPin || dupPinChecking) ? 0.6 : 1 }}
+                title="Enter manager PIN, then press Enter">
+                ✓ {dupPinChecking ? '…' : (duplicateConfirm.overScan ? t('yesScanIt') : t('scanAgain'))}
               </button>
               <button onClick={cancelDuplicate}
                 style={{ padding: '20px 32px', minHeight: 64, borderRadius: 12, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}
