@@ -193,6 +193,18 @@ export default function Pod() {
   const [previousBest, setPreviousBest] = useState(null); // { count, dateLabel } | null
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
+  // Rapid-fire cooldown: any same-ISBN scan within this many ms is silently dropped.
+  // Long enough to catch deliberate inflation (operator re-triggering the same book
+  // 3-5x), short enough to never block a legitimate second copy in real workflow.
+  const RAPID_DUP_COOLDOWN_MS = 10_000;
+  // Visible-but-quiet feedback for cooldown drops — no beep, no count, no modal.
+  const [cooldownToast, setCooldownToast] = useState('');
+  const cooldownToastTimerRef = useRef(null);
+  const showCooldownToast = (msg) => {
+    setCooldownToast(msg);
+    if (cooldownToastTimerRef.current) clearTimeout(cooldownToastTimerRef.current);
+    cooldownToastTimerRef.current = setTimeout(() => setCooldownToast(''), 1500);
+  };
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
   const pairInputRef = useRef(null);
@@ -992,6 +1004,15 @@ export default function Pod() {
       return;
     }
 
+    // Same ISBN as last scan within cooldown — silently drop (no sound, no modal,
+    // no count). This is the primary anti-inflation guard: operators can't pad
+    // their numbers by rapid-firing the same book even with a manager PIN, because
+    // the duplicate prompt never opens during the cooldown window.
+    if (isbn === lastScannedRef.current.isbn && (Date.now() - lastScannedRef.current.time) < RAPID_DUP_COOLDOWN_MS) {
+      showCooldownToast(`🔁 ${isbn} — just scanned, ignored`);
+      return;
+    }
+
     // Same ISBN as last scan — always confirm
     if (isbn === lastScannedRef.current.isbn) {
       playDuplicateBeep();
@@ -1056,7 +1077,7 @@ export default function Pod() {
     lastScannedRef.current = { isbn, time: Date.now() };
     setDuplicateConfirm(null);
     setDupPin(''); setDupPinError(''); setDupPinChecking(false);
-    processScan(isbn, opts || {});
+    processScan(isbn, { ...(opts || {}), duplicateOverride: true });
     setTimeout(refocusInput, 100);
   };
 
@@ -1266,6 +1287,7 @@ export default function Pod() {
     const sourceMeta = source ? { source } : {};
     if (opts.capturedTitle) sourceMeta.capturedTitle = opts.capturedTitle;
     if (typeof opts.matchScore === 'number') sourceMeta.matchScore = opts.matchScore;
+    if (opts.duplicateOverride) sourceMeta.duplicateOverride = true;
     const isAiMatch = source === 'ai-match';
     const now = Date.now();
 
@@ -1812,6 +1834,12 @@ export default function Pod() {
       {flashText && (
         <div style={styles.flashOverlay}>
           <span style={{ ...styles.flashText, color: isLightColor(flashColor) ? '#0a0a0a' : '#fff', textShadow: isLightColor(flashColor) ? '2px 2px 12px rgba(255,255,255,0.6)' : '2px 2px 12px rgba(0,0,0,0.8)' }}>{flashText}</span>
+        </div>
+      )}
+
+      {cooldownToast && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 850, backgroundColor: 'rgba(31,41,55,0.95)', border: '1px solid #4b5563', borderRadius: 10, padding: '10px 18px', color: '#cbd5e1', fontSize: 14, fontWeight: 600, fontFamily: 'monospace', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
+          {cooldownToast}
         </div>
       )}
 

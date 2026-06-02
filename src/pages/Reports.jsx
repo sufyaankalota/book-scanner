@@ -407,17 +407,20 @@ export default function Reports() {
       if (g.docs.length < 2) continue;
       g.docs.sort((a, b) => (a.ts?.getTime() || 0) - (b.ts?.getTime() || 0));
       const key = g.scanner.toLowerCase();
-      if (!perOp.has(key)) perOp.set(key, { scanner: g.scanner, extras: 0, dupeIsbns: 0, totalScans: 0, dupes: [] });
+      if (!perOp.has(key)) perOp.set(key, { scanner: g.scanner, extras: 0, dupeIsbns: 0, totalScans: 0, overrides: 0, dupes: [] });
       const row = perOp.get(key);
       row.extras += g.docs.length - 1;
       row.dupeIsbns += 1;
       row.dupes.push(g);
     }
-    // attach total scans per operator (denominator)
+    // attach total scans + override count per operator
     scans.forEach((s) => {
       const scanner = (s.scannerId || 'unknown').toString().trim() || 'unknown';
       const key = scanner.toLowerCase();
-      if (perOp.has(key)) perOp.get(key).totalScans += 1;
+      if (perOp.has(key)) {
+        perOp.get(key).totalScans += 1;
+        if (s.duplicateOverride) perOp.get(key).overrides += 1;
+      }
     });
     return Array.from(perOp.values()).sort((a, b) => b.extras - a.extras);
   }, [scans]);
@@ -813,6 +816,7 @@ export default function Reports() {
                 <th style={{ ...st.th, textAlign: 'right' }}>Total scans</th>
                 <th style={{ ...st.th, textAlign: 'right' }}>ISBNs scanned 2+ times</th>
                 <th style={{ ...st.th, textAlign: 'right' }}>Extra (duplicate) scans</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>Mgr-approved</th>
                 <th style={{ ...st.th, textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
@@ -827,6 +831,7 @@ export default function Reports() {
                       <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(row.totalScans)}</td>
                       <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(row.dupeIsbns)}</td>
                       <td style={{ ...st.td, textAlign: 'right', color: row.extras > 0 ? '#EF4444' : '#888', fontWeight: 700 }}>{fmtNum(row.extras)}</td>
+                      <td style={{ ...st.td, textAlign: 'right', color: row.overrides > 0 ? '#EAB308' : '#666' }}>{fmtNum(row.overrides)}</td>
                       <td style={{ ...st.td, textAlign: 'right' }}>
                         <button
                           onClick={() => setDupExpanded((p) => ({ ...p, [key]: !p[key] }))}
@@ -842,7 +847,7 @@ export default function Reports() {
                     </tr>
                     {expanded && (
                       <tr>
-                        <td colSpan={5} style={{ ...st.td, background: '#0b1220' }}>
+                        <td colSpan={6} style={{ ...st.td, background: '#0b1220' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                               <tr>
