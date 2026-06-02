@@ -95,6 +95,12 @@ export default function Reports() {
   const [dupPin, setDupPin] = useState('');
   const [dupPinError, setDupPinError] = useState('');
   const [dupBusy, setDupBusy] = useState(false);
+  // Rapid-repeat (same ISBN < 30s) cleanup state
+  const [rapidExpanded, setRapidExpanded] = useState({});
+  const [rapidPinOpen, setRapidPinOpen] = useState(null);
+  const [rapidPin, setRapidPin] = useState('');
+  const [rapidPinError, setRapidPinError] = useState('');
+  const [rapidBusy, setRapidBusy] = useState(false);
   // Range-wide aggregate counts (always fetched, cheap)
   const [summary, setSummary] = useState({
     standardScans: 0, exceptionScans: 0, manualScans: 0, aiMatchScans: 0,
@@ -488,6 +494,64 @@ export default function Reports() {
     }
     return rows.sort((a, z) => z.suspicion - a.suspicion);
   }, [scans]);
+
+  // ─── Rapid same-ISBN repeats (the exact "scan the same book 2-3x fast" glitch) ───
+  // For every (scanner, isbn) pair, walk timestamps in order and count any repeat
+  // that landed within RAPID_WINDOW_MS of the previous scan of THAT SAME ISBN by
+  // THAT SAME SCANNER. This is the inflation pattern we're chasing: it ignores
+  // legitimate second copies scanned hours later, and ignores rapid scanning of
+  // *different* books (which is the velocity card's job).
+  const RAPID_WINDOW_MS = 30_000;
+  const rapidRepeatsByScanner = useMemo(() => {
+    const groups = new Map();
+    scans.forEach((s) => {
+      const isbn = cleanISBN(s.isbn || '');
+      if (!isbn) return;
+      const ts = s.timestamp?.toDate?.();
+      if (!ts) return;
+      const scanner = (s.scannerId || 'unknown').toString().trim() || 'unknown';
+      const k = `${scanner.toLowerCase()}|${isbn}`;
+      if (!groups.has(k)) groups.set(k, { scanner, isbn, items: [] });
+      groups.get(k).items.push({ id: s.id, ts, jobId: s.jobId || '(no-job)' });
+    });
+    const perOp = new Map();
+    for (const g of groups.values()) {
+      if (g.items.length < 2) continue;
+      g.items.sort((a, b) => a.ts - b.ts);
+      for (let i = 1; i < g.items.length; i++) {
+        const dt = g.items[i].ts - g.items[i - 1].ts;
+        if (dt < RAPID_WINDOW_MS) {
+          const key = g.scanner.toLowerCase();
+          if (!perOp.has(key)) perOp.set(key, { scanner: g.scanner, events: [] });
+          perOp.get(key).events.push({
+            isbn: g.isbn,
+            firstTs: g.items[i - 1].ts,
+            repeatTs: g.items[i].ts,
+            gapSec: dt / 1000,
+            firstId: g.items[i - 1].id,
+            repeatId: g.items[i].id,
+            jobId: g.items[i].jobId,
+          });
+        }
+      }
+    }
+    const totals = new Map();
+    scans.forEach((s) => {
+      const scanner = (s.scannerId || 'unknown').toString().trim() || 'unknown';
+      const key = scanner.toLowerCase();
+      totals.set(key, (totals.get(key) || 0) + 1);
+    });
+    return Array.from(perOp.values())
+      .map((row) => ({
+        ...row,
+        rapidCount: row.events.length,
+        affectedIsbns: new Set(row.events.map((e) => e.isbn)).size,
+        totalScans: totals.get(row.scanner.toLowerCase()) || 0,
+        events: row.events.sort((a, b) => a.repeatTs - b.repeatTs),
+      }))
+      .sort((a, b) => b.rapidCount - a.rapidCount);
+  }, [scans]);
+
   const aiDaily = useMemo(() => {
     const m = new Map();
     aiUsage.forEach((u) => {
@@ -658,6 +722,27 @@ export default function Reports() {
     setScans((prev) => prev.filter((s) => !deletedIds.has(s.id)));
     toast(`Removed ${deleted} duplicate scan${deleted === 1 ? '' : 's'} for ${scanner}`, 'success');
     setDupPinOpen(null); setDupPin(''); setDupPinError(''); setDupBusy(false);
+  };
+
+  const removeRapidRepeats = async () => {
+    if (!rapidPinOpen || rapidBusy) return;
+    setRapidBusy(true);
+    const ok = await verifyManagerPin(rapidPin);
+    if (!ok) { setRapidPinError('Invalid manager PIN'); setRapidPin(''); setRapidBusy(false); return; }
+    const { scanner, events } = rapidPinOpen;
+    const ids = Array.from(new Set(events.map((e) => e.repeatId).filter(Boolean)));
+    let deleted = 0;
+    for (const id of ids) {
+      try {
+        await deleteDoc(doc(db, 'scans', id));
+        try { await logAudit({ action: 'rapid_repeat_removed', target: id, meta: { scanner } }); } catch { /* best-effort */ }
+        deleted += 1;
+      } catch (err) { console.error('delete failed', id, err); }
+    }
+    const idSet = new Set(ids);
+    setScans((prev) => prev.filter((s) => !idSet.has(s.id)));
+    toast(`Removed ${deleted} rapid-repeat scan${deleted === 1 ? '' : 's'} for ${scanner}`, 'success');
+    setRapidPinOpen(null); setRapidPin(''); setRapidPinError(''); setRapidBusy(false);
   };
 
   return (
@@ -852,6 +937,111 @@ export default function Reports() {
             </ResponsiveContainer>
           </div>
         )}
+      </div>
+
+      {/* Rapid same-ISBN repeats — THE inflation glitch we're catching */}
+      <div style={st.card}>
+        <div style={st.cardHeader}>
+          <h2 style={st.cardTitle}>🚨 Rapid Same-ISBN Repeats (Inflation Glitch)</h2>
+          <span style={st.cardHint}>
+            {operatorBreakdownDisabled
+              ? `Pick ≤ ${OPERATOR_BREAKDOWN_MAX_DAYS}-day range`
+              : rapidRepeatsByScanner.length
+                ? `${fmtNum(rapidRepeatsByScanner.reduce((s, r) => s + r.rapidCount, 0))} inflated scan${rapidRepeatsByScanner.reduce((s, r) => s + r.rapidCount, 0) === 1 ? '' : 's'} across ${rapidRepeatsByScanner.length} scanner${rapidRepeatsByScanner.length === 1 ? '' : 's'}`
+                : 'None detected ✅'}
+          </span>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>
+          Same operator, same ISBN, scanned again within <strong>30 seconds</strong> of the previous scan.
+          This is the exact glitch where someone scans one book 2-3x in quick succession to pad their numbers.
+          Legitimate second copies of the same ISBN (minutes/hours later) are not counted here.
+        </p>
+        {operatorBreakdownDisabled ? (
+          <p style={st.empty}>Switch to Today or Yesterday to audit rapid repeats.</p>
+        ) : rapidRepeatsByScanner.length === 0 ? (
+          <p style={st.empty}>No rapid same-ISBN repeats in this range. ✅</p>
+        ) : (
+          <table style={st.table}>
+            <thead>
+              <tr>
+                <th style={st.th}>Scanner</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>Total scans</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>Inflated scans</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>ISBNs abused</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>% inflated</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rapidRepeatsByScanner.map((row) => {
+                const key = row.scanner.toLowerCase();
+                const expanded = !!rapidExpanded[key];
+                const pct = row.totalScans ? (row.rapidCount / row.totalScans) : 0;
+                const pctColor = pct > 0.1 ? '#EF4444' : pct > 0.03 ? '#EAB308' : '#10B981';
+                return (
+                  <React.Fragment key={key}>
+                    <tr>
+                      <td style={st.td}>{row.scanner}</td>
+                      <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(row.totalScans)}</td>
+                      <td style={{ ...st.td, textAlign: 'right', color: '#EF4444', fontWeight: 800, fontSize: 16 }}>{fmtNum(row.rapidCount)}</td>
+                      <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(row.affectedIsbns)}</td>
+                      <td style={{ ...st.td, textAlign: 'right', color: pctColor, fontWeight: 700 }}>{(pct * 100).toFixed(1)}%</td>
+                      <td style={{ ...st.td, textAlign: 'right' }}>
+                        <button
+                          onClick={() => setRapidExpanded((p) => ({ ...p, [key]: !p[key] }))}
+                          style={{ marginRight: 8, padding: '6px 10px', borderRadius: 6, border: '1px solid #374151', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 12 }}>
+                          {expanded ? 'Hide' : 'Show events'}
+                        </button>
+                        <button
+                          onClick={() => { setRapidPinOpen({ scanner: row.scanner, events: row.events }); setRapidPin(''); setRapidPinError(''); }}
+                          style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: '#EF4444', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+                          Remove inflated
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr>
+                        <td colSpan={6} style={{ ...st.td, background: '#0b1220' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ ...st.th, fontSize: 11 }}>ISBN</th>
+                                <th style={{ ...st.th, fontSize: 11 }}>First scan</th>
+                                <th style={{ ...st.th, fontSize: 11 }}>Inflated repeat</th>
+                                <th style={{ ...st.th, fontSize: 11, textAlign: 'right' }}>Gap</th>
+                                <th style={{ ...st.th, fontSize: 11 }}>Job</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {row.events.slice(0, 50).map((e, i) => (
+                                <tr key={i}>
+                                  <td style={{ ...st.td, fontFamily: 'monospace' }}>{e.isbn}</td>
+                                  <td style={{ ...st.td, fontSize: 12, color: '#888' }}>{e.firstTs.toLocaleString()}</td>
+                                  <td style={{ ...st.td, fontSize: 12, color: '#fca5a5' }}>{e.repeatTs.toLocaleString()}</td>
+                                  <td style={{ ...st.td, textAlign: 'right', color: '#EF4444', fontWeight: 700 }}>{e.gapSec.toFixed(1)}s</td>
+                                  <td style={{ ...st.td, fontSize: 12, color: '#888' }}>{e.jobId}</td>
+                                </tr>
+                              ))}
+                              {row.events.length > 50 && (
+                                <tr><td colSpan={5} style={{ ...st.td, color: '#888', fontStyle: 'italic' }}>
+                                  …and {row.events.length - 50} more. All will be removed if you click "Remove inflated".
+                                </td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <p style={{ color: '#888', fontSize: 12, margin: '12px 0 0' }}>
+          <strong>Remove inflated</strong> keeps the first scan of each burst and deletes every repeat within 30s.
+          Going forward, the new 10s in-app cooldown prevents this glitch from happening at all.
+        </p>
       </div>
 
       {/* Duplicate scans per scanner — only meaningful for short ranges where we have docs */}
@@ -1112,6 +1302,48 @@ export default function Reports() {
                 disabled={!dupPin || dupBusy}
                 style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: (!dupPin || dupBusy) ? '#7f1d1d' : '#EF4444', color: '#fff', cursor: (!dupPin || dupBusy) ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700, opacity: (!dupPin || dupBusy) ? 0.7 : 1 }}>
                 {dupBusy ? 'Deleting…' : 'Confirm delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rapidPinOpen && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <div style={{ backgroundColor: '#0f172a', border: '2px solid #EF4444', borderRadius: 16, padding: 28, maxWidth: 460, width: '90%' }}>
+            <h2 style={{ color: '#EF4444', margin: '0 0 8px', fontSize: 20, fontWeight: 800 }}>Remove inflated scans</h2>
+            <p style={{ color: '#cbd5e1', margin: '0 0 8px', fontSize: 14 }}>
+              Scanner: <strong>{rapidPinOpen.scanner}</strong>
+            </p>
+            <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 13 }}>
+              {rapidPinOpen.events.length} rapid-repeat scan{rapidPinOpen.events.length === 1 ? '' : 's'} (same ISBN within 30s) will be deleted.
+              The originating scan of each burst is kept.
+            </p>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={rapidPin}
+              onChange={(e) => { setRapidPin(e.target.value); if (rapidPinError) setRapidPinError(''); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); removeRapidRepeats(); }
+                if (e.key === 'Escape') { e.preventDefault(); setRapidPinOpen(null); setRapidPin(''); setRapidPinError(''); }
+              }}
+              placeholder="Manager PIN"
+              disabled={rapidBusy}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: 8, border: `2px solid ${rapidPinError ? '#EF4444' : '#374151'}`, backgroundColor: '#000', color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', letterSpacing: 4, textAlign: 'center', boxSizing: 'border-box' }}
+            />
+            {rapidPinError && <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: '8px 0 0' }}>{rapidPinError}</p>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+              <button onClick={() => { setRapidPinOpen(null); setRapidPin(''); setRapidPinError(''); }}
+                disabled={rapidBusy}
+                style={{ padding: '10px 18px', borderRadius: 8, border: '1px solid #374151', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 14 }}>
+                Cancel
+              </button>
+              <button onClick={removeRapidRepeats}
+                disabled={!rapidPin || rapidBusy}
+                style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: (!rapidPin || rapidBusy) ? '#7f1d1d' : '#EF4444', color: '#fff', cursor: (!rapidPin || rapidBusy) ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700, opacity: (!rapidPin || rapidBusy) ? 0.7 : 1 }}>
+                {rapidBusy ? 'Deleting…' : 'Confirm delete'}
               </button>
             </div>
           </div>
