@@ -1110,6 +1110,24 @@ export default function Pod() {
         setAiProcessing(false);
       }
     }
+    // Strip out candidates whose ISBN has already been scanned in this job.
+    // Operators were picking the wrong row from the AI list and re-scanning a book
+    // that was already accounted for — removing them from the picker entirely is
+    // the only reliable fix. Local set covers same-session; for multi-PO jobs we
+    // also check the server-side marker doc.
+    const checks = await Promise.all(candidates.map(async (c) => {
+      const ci = cleanISBN(c.isbn || '');
+      if (!ci) return false;
+      if (seenIsbnRef.current.has(ci)) return false;
+      if (job?.meta?.mode === 'multi') {
+        try { if (await checkIsbnSeen(ci)) return false; } catch { /* network blip — keep candidate */ }
+      }
+      return true;
+    }));
+    const filteredCandidates = candidates.filter((_, i) => checks[i]);
+    const droppedCount = candidates.length - filteredCandidates.length;
+    candidates = filteredCandidates;
+
     const shown = displayTitle || candidates[0]?.variant || title || coverText || author || '';
     // Assign a sequence number so this AI book is visually tied to its
     // panel + recent-scans row + cover thumbnail. Operators can read it off
@@ -1120,11 +1138,14 @@ export default function Pod() {
     // glance up after every barcode scan.
     playAiReadyChime();
     if (!candidates.length) {
-      flash('#EAB308', 'No likely matches — log exception or type ISBN', 2200);
-      setAiMatchCandidates({ capturedTitle: shown, photo, candidates: [], seq });
+      const msg = droppedCount > 0
+        ? `All ${droppedCount} match${droppedCount === 1 ? '' : 'es'} already scanned — log exception or type ISBN`
+        : 'No likely matches — log exception or type ISBN';
+      flash('#EAB308', msg, 2400);
+      setAiMatchCandidates({ capturedTitle: shown, photo, candidates: [], seq, droppedCount });
       return;
     }
-    setAiMatchCandidates({ capturedTitle: shown, photo, candidates, seq });
+    setAiMatchCandidates({ capturedTitle: shown, photo, candidates, seq, droppedCount });
   };
 
   const handleAiCoverResult = async (data) => {

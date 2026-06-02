@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   collection, getDocs, query, where, Timestamp, limit as qLimit, orderBy, startAfter,
-  getCountFromServer,
+  getCountFromServer, doc, deleteDoc, getDoc,
 } from 'firebase/firestore';
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
@@ -15,6 +15,9 @@ import { downloadBlob } from '../utils/export';
 import RolePayEditor from '../components/RolePayEditor';
 import { dailyPayTotal } from '../utils/roles';
 import { useAuth } from '../contexts/AuthContext';
+import { verifyPassword } from '../utils/crypto';
+import { logAudit } from '../utils/audit';
+import { cleanISBN } from '../utils/isbn';
 
 const STANDARD_RATE = 0.50;
 const EXCEPTION_RATE = 0.85;
@@ -86,6 +89,12 @@ export default function Reports() {
   const [truncated, setTruncated] = useState(false);
   const [payEditDate, setPayEditDate] = useState(() => dateInputValue(new Date()));
   const [payRefreshKey, setPayRefreshKey] = useState(0);
+  // Duplicate-cleanup UI state (per-operator expand + PIN gate + in-flight delete)
+  const [dupExpanded, setDupExpanded] = useState({}); // { [scannerKey]: bool }
+  const [dupPinOpen, setDupPinOpen] = useState(null); // { scanner, dupes } when collecting PIN
+  const [dupPin, setDupPin] = useState('');
+  const [dupPinError, setDupPinError] = useState('');
+  const [dupBusy, setDupBusy] = useState(false);
   // Range-wide aggregate counts (always fetched, cheap)
   const [summary, setSummary] = useState({
     standardScans: 0, exceptionScans: 0, manualScans: 0, aiMatchScans: 0,
@@ -378,6 +387,41 @@ export default function Reports() {
       .slice(0, 15);
   }, [scans]);
 
+  // ─── Duplicate scans per operator (today/yesterday — small ranges only) ───
+  // Groups every scan by (scanner, job, isbn). Any group with > 1 scan means the
+  // book was scanned more than once and the operator collected extra pay for the
+  // duplicate copies. "Extra" = group size − 1 (the count we want to remove).
+  const duplicatesByOperator = useMemo(() => {
+    const groups = new Map(); // key = scanner|job|isbn -> { scanner, jobId, isbn, docs: [{id, ts}] }
+    scans.forEach((s) => {
+      const isbn = cleanISBN(s.isbn || '');
+      if (!isbn) return;
+      const scanner = (s.scannerId || 'unknown').toString().trim() || 'unknown';
+      const jId = s.jobId || '(no-job)';
+      const k = `${scanner.toLowerCase()}|${jId}|${isbn}`;
+      if (!groups.has(k)) groups.set(k, { scanner, jobId: jId, isbn, docs: [] });
+      groups.get(k).docs.push({ id: s.id, ts: s.timestamp?.toDate?.() || null, type: s.type, source: s.source });
+    });
+    const perOp = new Map();
+    for (const g of groups.values()) {
+      if (g.docs.length < 2) continue;
+      g.docs.sort((a, b) => (a.ts?.getTime() || 0) - (b.ts?.getTime() || 0));
+      const key = g.scanner.toLowerCase();
+      if (!perOp.has(key)) perOp.set(key, { scanner: g.scanner, extras: 0, dupeIsbns: 0, totalScans: 0, dupes: [] });
+      const row = perOp.get(key);
+      row.extras += g.docs.length - 1;
+      row.dupeIsbns += 1;
+      row.dupes.push(g);
+    }
+    // attach total scans per operator (denominator)
+    scans.forEach((s) => {
+      const scanner = (s.scannerId || 'unknown').toString().trim() || 'unknown';
+      const key = scanner.toLowerCase();
+      if (perOp.has(key)) perOp.get(key).totalScans += 1;
+    });
+    return Array.from(perOp.values()).sort((a, b) => b.extras - a.extras);
+  }, [scans]);
+
   // ─── AI per-day rollup (from ai-usage docs — always correct) ───
   const aiDaily = useMemo(() => {
     const m = new Map();
@@ -504,6 +548,52 @@ export default function Reports() {
   const fmtMoney = (n) => `$${(Math.round((n || 0) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const fmtNum = (n) => (n || 0).toLocaleString();
   const fmtPct = (n) => `${(n * 100).toFixed(1)}%`;
+
+  // Verify manager PIN against config/supervisor (hashed or legacy plaintext).
+  const verifyManagerPin = async (pin) => {
+    const entered = (pin || '').trim();
+    if (!entered) return false;
+    try {
+      const snap = await getDoc(doc(db, 'config', 'supervisor'));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.pinHash) return await verifyPassword(entered, data.pinHash);
+        if (data.pin) return entered === data.pin;
+        return entered === '1234';
+      }
+      return entered === '1234';
+    } catch { return entered === '1234'; }
+  };
+
+  // For each duplicate group, keep the earliest scan and delete the rest.
+  // Writes an audit entry per deletion so the adjustment is traceable.
+  const removeDuplicateExtras = async () => {
+    if (!dupPinOpen || dupBusy) return;
+    setDupBusy(true);
+    const ok = await verifyManagerPin(dupPin);
+    if (!ok) {
+      setDupPinError('Invalid manager PIN'); setDupPin(''); setDupBusy(false);
+      return;
+    }
+    const { scanner, dupes } = dupPinOpen;
+    const toDelete = [];
+    for (const g of dupes) {
+      // docs already sorted earliest-first in the memo
+      for (let i = 1; i < g.docs.length; i++) toDelete.push({ id: g.docs[i].id, isbn: g.isbn, jobId: g.jobId });
+    }
+    let deleted = 0;
+    for (const d of toDelete) {
+      try {
+        await deleteDoc(doc(db, 'scans', d.id));
+        try { await logAudit({ action: 'duplicate_scan_removed', target: d.id, meta: { scanner, isbn: d.isbn, jobId: d.jobId } }); } catch { /* best-effort */ }
+        deleted += 1;
+      } catch (err) { console.error('delete scan failed', d.id, err); }
+    }
+    const deletedIds = new Set(toDelete.map((d) => d.id));
+    setScans((prev) => prev.filter((s) => !deletedIds.has(s.id)));
+    toast(`Removed ${deleted} duplicate scan${deleted === 1 ? '' : 's'} for ${scanner}`, 'success');
+    setDupPinOpen(null); setDupPin(''); setDupPinError(''); setDupBusy(false);
+  };
 
   return (
     <div style={st.page}>
@@ -699,6 +789,97 @@ export default function Reports() {
         )}
       </div>
 
+      {/* Duplicate scans per scanner — only meaningful for short ranges where we have docs */}
+      <div style={st.card}>
+        <div style={st.cardHeader}>
+          <h2 style={st.cardTitle}>Duplicate Scans by Scanner</h2>
+          <span style={st.cardHint}>
+            {operatorBreakdownDisabled
+              ? `Pick ≤ ${OPERATOR_BREAKDOWN_MAX_DAYS}-day range`
+              : duplicatesByOperator.length
+                ? `${fmtNum(duplicatesByOperator.reduce((s, r) => s + r.extras, 0))} extra scan${duplicatesByOperator.reduce((s, r) => s + r.extras, 0) === 1 ? '' : 's'} across ${duplicatesByOperator.length} scanner${duplicatesByOperator.length === 1 ? '' : 's'}`
+                : 'No duplicates in this range'}
+          </span>
+        </div>
+        {operatorBreakdownDisabled ? (
+          <p style={st.empty}>Switch to Today or Yesterday to audit duplicate scans.</p>
+        ) : duplicatesByOperator.length === 0 ? (
+          <p style={st.empty}>No duplicate ISBNs scanned in this range. ✅</p>
+        ) : (
+          <table style={st.table}>
+            <thead>
+              <tr>
+                <th style={st.th}>Scanner</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>Total scans</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>ISBNs scanned 2+ times</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>Extra (duplicate) scans</th>
+                <th style={{ ...st.th, textAlign: 'right' }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {duplicatesByOperator.map((row) => {
+                const key = row.scanner.toLowerCase();
+                const expanded = !!dupExpanded[key];
+                return (
+                  <React.Fragment key={key}>
+                    <tr>
+                      <td style={st.td}>{row.scanner}</td>
+                      <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(row.totalScans)}</td>
+                      <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(row.dupeIsbns)}</td>
+                      <td style={{ ...st.td, textAlign: 'right', color: row.extras > 0 ? '#EF4444' : '#888', fontWeight: 700 }}>{fmtNum(row.extras)}</td>
+                      <td style={{ ...st.td, textAlign: 'right' }}>
+                        <button
+                          onClick={() => setDupExpanded((p) => ({ ...p, [key]: !p[key] }))}
+                          style={{ marginRight: 8, padding: '6px 10px', borderRadius: 6, border: '1px solid #374151', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 12 }}>
+                          {expanded ? 'Hide' : 'Show ISBNs'}
+                        </button>
+                        <button
+                          onClick={() => { setDupPinOpen({ scanner: row.scanner, dupes: row.dupes }); setDupPin(''); setDupPinError(''); }}
+                          style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: '#EF4444', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+                          Remove extras
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr>
+                        <td colSpan={5} style={{ ...st.td, background: '#0b1220' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ ...st.th, fontSize: 11 }}>ISBN</th>
+                                <th style={{ ...st.th, fontSize: 11 }}>Job</th>
+                                <th style={{ ...st.th, fontSize: 11, textAlign: 'right' }}>Times</th>
+                                <th style={{ ...st.th, fontSize: 11 }}>First</th>
+                                <th style={{ ...st.th, fontSize: 11 }}>Last</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {row.dupes.map((g) => (
+                                <tr key={`${g.jobId}-${g.isbn}`}>
+                                  <td style={{ ...st.td, fontFamily: 'monospace' }}>{g.isbn}</td>
+                                  <td style={{ ...st.td, color: '#888' }}>{g.jobId}</td>
+                                  <td style={{ ...st.td, textAlign: 'right', color: '#EF4444', fontWeight: 700 }}>{g.docs.length}</td>
+                                  <td style={{ ...st.td, color: '#888', fontSize: 12 }}>{g.docs[0].ts ? g.docs[0].ts.toLocaleTimeString() : '—'}</td>
+                                  <td style={{ ...st.td, color: '#888', fontSize: 12 }}>{g.docs[g.docs.length - 1].ts ? g.docs[g.docs.length - 1].ts.toLocaleTimeString() : '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <p style={{ color: '#888', fontSize: 12, margin: '12px 0 0' }}>
+          “Extra” = scan-count minus one per ISBN per job. Clicking <strong>Remove extras</strong> keeps the earliest
+          scan and deletes the rest after a manager PIN. Every deletion is audited.
+        </p>
+      </div>
+
       {/* AI daily trend */}
       <div style={st.card}>
         <div style={st.cardHeader}>
@@ -761,6 +942,49 @@ export default function Reports() {
         Labor pulled from <code>dailyPay</code>; log days on Dashboard → Crew & Pay.
         AI cost pulled from <code>ai-usage</code> (live per-call cost).
       </p>
+
+      {dupPinOpen && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <div style={{ backgroundColor: '#0f172a', border: '2px solid #EF4444', borderRadius: 16, padding: 28, maxWidth: 460, width: '90%' }}>
+            <h2 style={{ color: '#EF4444', margin: '0 0 8px', fontSize: 20, fontWeight: 800 }}>Remove duplicate scans</h2>
+            <p style={{ color: '#cbd5e1', margin: '0 0 8px', fontSize: 14 }}>
+              Scanner: <strong>{dupPinOpen.scanner}</strong>
+            </p>
+            <p style={{ color: '#94a3b8', margin: '0 0 16px', fontSize: 13 }}>
+              {dupPinOpen.dupes.length} ISBN{dupPinOpen.dupes.length === 1 ? '' : 's'} affected ·{' '}
+              {dupPinOpen.dupes.reduce((s, g) => s + g.docs.length - 1, 0)} scan{dupPinOpen.dupes.reduce((s, g) => s + g.docs.length - 1, 0) === 1 ? '' : 's'} will be deleted.
+              The earliest scan of each ISBN is kept.
+            </p>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={dupPin}
+              onChange={(e) => { setDupPin(e.target.value); if (dupPinError) setDupPinError(''); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); removeDuplicateExtras(); }
+                if (e.key === 'Escape') { e.preventDefault(); setDupPinOpen(null); setDupPin(''); setDupPinError(''); }
+              }}
+              placeholder="Manager PIN"
+              disabled={dupBusy}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: 8, border: `2px solid ${dupPinError ? '#EF4444' : '#374151'}`, backgroundColor: '#000', color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', letterSpacing: 4, textAlign: 'center', boxSizing: 'border-box' }}
+            />
+            {dupPinError && <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: '8px 0 0' }}>{dupPinError}</p>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+              <button onClick={() => { setDupPinOpen(null); setDupPin(''); setDupPinError(''); }}
+                disabled={dupBusy}
+                style={{ padding: '10px 18px', borderRadius: 8, border: '1px solid #374151', background: 'transparent', color: '#cbd5e1', cursor: 'pointer', fontSize: 14 }}>
+                Cancel
+              </button>
+              <button onClick={removeDuplicateExtras}
+                disabled={!dupPin || dupBusy}
+                style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: (!dupPin || dupBusy) ? '#7f1d1d' : '#EF4444', color: '#fff', cursor: (!dupPin || dupBusy) ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700, opacity: (!dupPin || dupBusy) ? 0.7 : 1 }}>
+                {dupBusy ? 'Deleting…' : 'Confirm delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
