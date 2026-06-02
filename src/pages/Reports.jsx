@@ -425,7 +425,69 @@ export default function Reports() {
     return Array.from(perOp.values()).sort((a, b) => b.extras - a.extras);
   }, [scans]);
 
-  // ─── AI per-day rollup (from ai-usage docs — always correct) ───
+  // ─── Scan velocity per scanner per day (rapid-fire detection) ───
+  // A real operator picks up a book, orients the barcode, scans, and places it in a
+  // gaylord. The hard physical floor is ~2-3s between scans of different books.
+  // Anyone with a high share of <2s gaps is almost certainly inflating counts by
+  // either (a) re-triggering the same book multiple times before cooldown, or
+  // (b) scanning a strip of barcodes printed on a sheet. Anything ≥3s is normal.
+  //
+  // Group by scanner+day so the same operator on two days shows two rows.
+  const velocityByScanner = useMemo(() => {
+    // bucket scans by scanner|day
+    const buckets = new Map();
+    scans.forEach((s) => {
+      const ts = s.timestamp?.toDate?.();
+      if (!ts) return;
+      const scanner = (s.scannerId || 'unknown').toString().trim() || 'unknown';
+      const day = dayKey(ts);
+      const k = `${scanner.toLowerCase()}|${day}`;
+      if (!buckets.has(k)) buckets.set(k, { scanner, day, items: [] });
+      buckets.get(k).items.push(ts);
+    });
+    const rows = [];
+    for (const b of buckets.values()) {
+      const sorted = b.items.sort((a, z) => a - z);
+      const total = sorted.length;
+      if (total < 2) continue;
+      // gaps in seconds
+      const gaps = [];
+      for (let i = 1; i < sorted.length; i++) gaps.push((sorted[i] - sorted[i - 1]) / 1000);
+      const sub2 = gaps.filter((g) => g < 2).length;
+      const sub3 = gaps.filter((g) => g < 3).length;
+      const sub5 = gaps.filter((g) => g < 5).length;
+      const sortedGaps = [...gaps].sort((a, z) => a - z);
+      const median = sortedGaps[Math.floor(sortedGaps.length / 2)];
+      // Peak 60s sliding window — densest minute of the day for this scanner
+      let peakMin = 0;
+      for (let i = 0; i < sorted.length; i++) {
+        let j = i;
+        while (j < sorted.length && (sorted[j] - sorted[i]) <= 60_000) j++;
+        const count = j - i;
+        if (count > peakMin) peakMin = count;
+      }
+      // Longest burst of consecutive sub-2s gaps (run length)
+      let longestBurst = 0, curBurst = 0;
+      for (const g of gaps) {
+        if (g < 2) { curBurst += 1; if (curBurst > longestBurst) longestBurst = curBurst; }
+        else { curBurst = 0; }
+      }
+      const sub2Pct = total > 1 ? sub2 / (total - 1) : 0;
+      // Suspicion score: weight sub-2s share heavily, peak/min lightly, and burst length
+      const suspicion = Math.round(
+        100 * sub2Pct +                    // 0–100 from share of sub-2s gaps
+        Math.min(40, peakMin / 3) +        // up to +40 for >120 scans/min peaks
+        Math.min(20, longestBurst)         // up to +20 for long bursts
+      );
+      rows.push({
+        scanner: b.scanner, day: b.day, total,
+        median: median ?? 0,
+        sub2, sub3, sub5, sub2Pct,
+        peakMin, longestBurst, suspicion,
+      });
+    }
+    return rows.sort((a, z) => z.suspicion - a.suspicion);
+  }, [scans]);
   const aiDaily = useMemo(() => {
     const m = new Map();
     aiUsage.forEach((u) => {
@@ -883,6 +945,71 @@ export default function Reports() {
           “Extra” = scan-count minus one per ISBN per job. Clicking <strong>Remove extras</strong> keeps the earliest
           scan and deletes the rest after a manager PIN. Every deletion is audited.
         </p>
+      </div>
+
+      {/* Scan velocity — surface rapid-fire patterns across DIFFERENT ISBNs */}
+      <div style={st.card}>
+        <div style={st.cardHeader}>
+          <h2 style={st.cardTitle}>Scan Velocity by Scanner (Rapid-Fire Detection)</h2>
+          <span style={st.cardHint}>
+            {operatorBreakdownDisabled
+              ? `Pick ≤ ${OPERATOR_BREAKDOWN_MAX_DAYS}-day range`
+              : velocityByScanner.length
+                ? `${velocityByScanner.length} scanner-day${velocityByScanner.length === 1 ? '' : 's'} analyzed`
+                : 'No scan data in this range'}
+          </span>
+        </div>
+        {operatorBreakdownDisabled ? (
+          <p style={st.empty}>Switch to Today or Yesterday to audit scan velocity.</p>
+        ) : velocityByScanner.length === 0 ? (
+          <p style={st.empty}>No data.</p>
+        ) : (
+          <>
+            <table style={st.table}>
+              <thead>
+                <tr>
+                  <th style={st.th}>Scanner</th>
+                  <th style={st.th}>Day</th>
+                  <th style={{ ...st.th, textAlign: 'right' }}>Total</th>
+                  <th style={{ ...st.th, textAlign: 'right' }} title="Median seconds between consecutive scans">Median gap</th>
+                  <th style={{ ...st.th, textAlign: 'right' }} title="Scans that arrived less than 2 seconds after the previous one">&lt;2s gaps</th>
+                  <th style={{ ...st.th, textAlign: 'right' }} title="Most scans in any rolling 60-second window">Peak/min</th>
+                  <th style={{ ...st.th, textAlign: 'right' }} title="Longest unbroken run of sub-2s gaps">Longest burst</th>
+                  <th style={{ ...st.th, textAlign: 'right' }} title="Composite suspicion score (higher = more likely fraud). >60 worth investigating.">Suspicion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {velocityByScanner.map((r) => {
+                  const high = r.suspicion >= 60;
+                  const warn = !high && r.suspicion >= 35;
+                  const color = high ? '#EF4444' : warn ? '#EAB308' : '#10B981';
+                  return (
+                    <tr key={`${r.scanner}-${r.day}`}>
+                      <td style={st.td}>{r.scanner}</td>
+                      <td style={{ ...st.td, fontFamily: 'monospace', color: '#94a3b8' }}>{r.day}</td>
+                      <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(r.total)}</td>
+                      <td style={{ ...st.td, textAlign: 'right', color: r.median < 2 ? '#EF4444' : r.median < 4 ? '#EAB308' : '#cbd5e1' }}>{r.median.toFixed(1)}s</td>
+                      <td style={{ ...st.td, textAlign: 'right', color: r.sub2Pct > 0.25 ? '#EF4444' : r.sub2Pct > 0.1 ? '#EAB308' : '#cbd5e1' }}>
+                        {fmtNum(r.sub2)} <span style={{ color: '#888', fontSize: 11 }}>({(r.sub2Pct * 100).toFixed(0)}%)</span>
+                      </td>
+                      <td style={{ ...st.td, textAlign: 'right', color: r.peakMin > 80 ? '#EF4444' : r.peakMin > 50 ? '#EAB308' : '#cbd5e1' }}>{fmtNum(r.peakMin)}</td>
+                      <td style={{ ...st.td, textAlign: 'right', color: r.longestBurst >= 8 ? '#EF4444' : r.longestBurst >= 4 ? '#EAB308' : '#cbd5e1' }}>{fmtNum(r.longestBurst)}</td>
+                      <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color }}>{r.suspicion}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p style={{ color: '#888', fontSize: 12, margin: '12px 0 0', lineHeight: 1.5 }}>
+              <strong style={{ color: '#cbd5e1' }}>How to read this:</strong> a human picking up, orienting and scanning a different book
+              takes ~3-5s minimum. Lots of sub-2s gaps means either a barcode strip or rapid re-triggers.
+              <strong style={{ color: '#EF4444' }}> Red suspicion ≥ 60</strong> = investigate.
+              <strong style={{ color: '#EAB308' }}> Yellow 35-59</strong> = monitor.
+              <strong style={{ color: '#10B981' }}> Green &lt; 35</strong> = normal.
+              Peak/min above ~60 is physically suspicious for non-conveyor workflows.
+            </p>
+          </>
+        )}
       </div>
 
       {/* AI daily trend */}
