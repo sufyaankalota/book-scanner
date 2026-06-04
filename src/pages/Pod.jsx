@@ -6,7 +6,7 @@ import {
   collection, doc, getDocs, getDoc, addDoc, setDoc, deleteDoc, updateDoc,
   query, where, onSnapshot, serverTimestamp, Timestamp, runTransaction,
 } from 'firebase/firestore';
-import { isValidISBN, cleanISBN, detectBarcodeType } from '../utils/isbn';
+import { isValidISBN, cleanISBN, detectBarcodeType, isbnAlternates } from '../utils/isbn';
 import { playErrorBeep, playSuccessBeep, playColorBeep, playDuplicateBeep, playNotInManifestBeep, playAiReadyChime, speak, getVolume, setVolume } from '../utils/audio';
 import { checkMilestone, triggerConfetti, getMilestoneMessage } from '../utils/confetti';
 import { t, getLang, setLang, tColor } from '../utils/locale';
@@ -187,20 +187,6 @@ export default function Pod() {
   const [previousBest, setPreviousBest] = useState(null); // { count, dateLabel } | null
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
-  // Rapid-fire cooldown: any same-ISBN scan within this many ms is silently dropped.
-  // 2s is the physical floor for a human to pick up, orient, scan, and drop a
-  // different copy of the same book from a stack. The trigger-twice / sheet-of-
-  // barcodes glitch produces sub-1s repeats, so 2s kills the abuse without
-  // blocking legitimate back-to-back scans of identical inventory.
-  const RAPID_DUP_COOLDOWN_MS = 2_000;
-  // Visible-but-quiet feedback for cooldown drops — no beep, no count, no modal.
-  const [cooldownToast, setCooldownToast] = useState('');
-  const cooldownToastTimerRef = useRef(null);
-  const showCooldownToast = (msg) => {
-    setCooldownToast(msg);
-    if (cooldownToastTimerRef.current) clearTimeout(cooldownToastTimerRef.current);
-    cooldownToastTimerRef.current = setTimeout(() => setCooldownToast(''), 1500);
-  };
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
   const pairInputRef = useRef(null);
@@ -458,15 +444,51 @@ export default function Pod() {
     return unsub;
   }, [isScanning, podId, operatorName, fromPods]); // eslint-disable-line
 
-  // ─── Job-wide ISBN tracking (used by AI/title picker only; no longer used to block scans) ───
-  // Multiple copies of the same ISBN are allowed — customers ship duplicate inventory.
-  // We still track seen ISBNs so the AI cover-match picker can flag (but not hide)
-  // candidates that have already been scanned in this session.
-  const seenIsbnRef = useRef(new Set()); // ISBNs we've already scanned this session
+  // ─── Job-wide ISBN dedup (HARD BLOCK across pods, shifts, sessions) ───
+  // Source of truth is jobs/{jobId}/scanned-isbns/{isbn} which is maintained
+  // by the onScanWrite Cloud Function. We mirror it into a Set and check on
+  // every scan. Both ISBN-10 and ISBN-13 forms are kept in the set so a book
+  // scanned once as ISBN-13 cannot be re-scanned as its ISBN-10 form.
+  // seenIsbnRef remains — still used by the AI picker for the visual badge.
+  const seenIsbnRef = useRef(new Set());
+  const scannedIsbnsRef = useRef(new Set());
+  const [scannedIsbnsLoaded, setScannedIsbnsLoaded] = useState(false);
 
-  // Reset cache when job changes
+  const isbnDupKeys = (raw) => {
+    const c = cleanISBN(raw || '').toUpperCase();
+    if (!c) return [];
+    const { isbn13, isbn10 } = isbnAlternates(c);
+    const out = new Set([c]);
+    if (isbn13) out.add(isbn13);
+    if (isbn10) out.add(isbn10);
+    return [...out];
+  };
+
+  const isAlreadyScannedForJob = (raw) => {
+    const keys = isbnDupKeys(raw);
+    for (const k of keys) if (scannedIsbnsRef.current.has(k)) return true;
+    return false;
+  };
+
+  // Reset caches + subscribe to scanned-isbns when the job changes.
   useEffect(() => {
     seenIsbnRef.current = new Set();
+    scannedIsbnsRef.current = new Set();
+    setScannedIsbnsLoaded(false);
+    if (!job?.id) return;
+    const unsub = onSnapshot(collection(db, 'jobs', job.id, 'scanned-isbns'), (snap) => {
+      const set = new Set();
+      snap.forEach((d) => {
+        for (const k of isbnDupKeys(d.id)) set.add(k);
+      });
+      scannedIsbnsRef.current = set;
+      setScannedIsbnsLoaded(true);
+    }, () => {
+      // If the listener errors out, fail-open so scanning still works —
+      // optimistic in-session adds will still catch back-to-back dupes.
+      setScannedIsbnsLoaded(true);
+    });
+    return unsub;
   }, [job?.id]);
 
   // ─── Offline pending count (Firestore cache indicator) ───
@@ -972,17 +994,20 @@ export default function Pod() {
       return;
     }
 
-    // Same ISBN as last scan within cooldown — silently drop (no sound, no modal,
-    // no count). This is the only anti-inflation guard: stops the trigger-twice /
-    // sheet-of-barcodes glitch (sub-1s repeats) without blocking legitimate
-    // back-to-back scans of identical inventory (≥2s gap is human-possible).
-    if (isbn === lastScannedRef.current.isbn && (Date.now() - lastScannedRef.current.time) < RAPID_DUP_COOLDOWN_MS) {
-      showCooldownToast(`🔁 ${isbn} — just scanned, ignored`);
+    // HARD duplicate block — a book that's already been scanned for this job
+    // (by ANY pod, ANY shift, in EITHER ISBN-10 or ISBN-13 form) cannot be
+    // scanned again. Source of truth is jobs/{jobId}/scanned-isbns + an
+    // optimistic in-memory mirror so back-to-back dupes get caught before
+    // the Firestore round-trip.
+    if (isAlreadyScannedForJob(isbn)) {
+      playDuplicateBeep();
+      flash('#EF4444', `🚫 ${isbn} — already scanned for this job`, 2500);
       return;
     }
 
     lastScannedRef.current = { isbn, time: Date.now() };
     seenIsbnRef.current.add(isbn);
+    for (const k of isbnDupKeys(isbn)) scannedIsbnsRef.current.add(k);
     processScan(isbn, o);
   };
 
@@ -1042,13 +1067,12 @@ export default function Pod() {
         setAiProcessing(false);
       }
     }
-    // Show all AI candidates — multiple physical copies of the same ISBN are
-    // legitimate inventory. We annotate already-scanned ones with `alreadyScanned`
-    // so the picker can render them with a visible warning badge but still let
-    // the operator pick a second copy.
+    // Annotate already-scanned candidates so the picker can mark them disabled.
+    // Uses the job-wide dedup set (covers cross-pod / cross-shift / ISBN-10↓13
+    // alternates), with the in-session set as a fallback.
     candidates = candidates.map((c) => ({
       ...c,
-      alreadyScanned: !!(c.isbn && seenIsbnRef.current.has(cleanISBN(c.isbn))),
+      alreadyScanned: !!(c.isbn && (isAlreadyScannedForJob(c.isbn) || seenIsbnRef.current.has(cleanISBN(c.isbn)))),
     }));
 
     const shown = displayTitle || candidates[0]?.variant || title || coverText || author || '';
@@ -1108,6 +1132,11 @@ export default function Pod() {
     if (!aiMatchCandidates) return;
     const c = aiMatchCandidates.candidates[idx];
     if (!c) return;
+    if (c.alreadyScanned) {
+      playDuplicateBeep();
+      flash('#EF4444', `🚫 ${c.isbn} — already scanned for this job`, 2500);
+      return;
+    }
     const sel = aiMatchCandidates;
     setAiMatchCandidates(null);
     handleScan(c.isbn, {
@@ -1733,12 +1762,6 @@ export default function Pod() {
       {flashText && (
         <div style={styles.flashOverlay}>
           <span style={{ ...styles.flashText, color: isLightColor(flashColor) ? '#0a0a0a' : '#fff', textShadow: isLightColor(flashColor) ? '2px 2px 12px rgba(255,255,255,0.6)' : '2px 2px 12px rgba(0,0,0,0.8)' }}>{flashText}</span>
-        </div>
-      )}
-
-      {cooldownToast && (
-        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 850, backgroundColor: 'rgba(31,41,55,0.95)', border: '1px solid #4b5563', borderRadius: 10, padding: '10px 18px', color: '#cbd5e1', fontSize: 14, fontWeight: 600, fontFamily: 'monospace', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
-          {cooldownToast}
         </div>
       )}
 
@@ -2413,13 +2436,15 @@ export default function Pod() {
                   {aiMatchCandidates.candidates.map((c, idx) => (
                     <button key={c.isbn}
                       onClick={() => pickAiCandidate(idx)}
-                      style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: c.alreadyScanned ? '1px solid #EAB308' : '1px solid #444', backgroundColor: c.alreadyScanned ? '#2a2412' : '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      disabled={c.alreadyScanned}
+                      title={c.alreadyScanned ? 'Already scanned for this job' : undefined}
+                      style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: c.alreadyScanned ? '1px solid #EF4444' : '1px solid #444', backgroundColor: c.alreadyScanned ? '#2a1212' : '#1a1a1a', color: c.alreadyScanned ? '#888' : '#fff', cursor: c.alreadyScanned ? 'not-allowed' : 'pointer', opacity: c.alreadyScanned ? 0.6 : 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #555', backgroundColor: '#0a0a0a', color: '#EAB308', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{idx + 1}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || `(no title — ${c.isbn})`}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: c.alreadyScanned ? 'line-through' : 'none' }}>{c.title || `(no title — ${c.isbn})`}</div>
                         <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
                           {c.po || '—'} · {c.isbn}
-                          {c.alreadyScanned && <span style={{ marginLeft: 8, color: '#EAB308', fontWeight: 700 }}>· already scanned this session</span>}
+                          {c.alreadyScanned && <span style={{ marginLeft: 8, color: '#EF4444', fontWeight: 700 }}>· already scanned — blocked</span>}
                         </div>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : c.score >= MATCH_AMBIGUOUS ? '#EAB308' : '#888' }}>
