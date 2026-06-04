@@ -17,7 +17,6 @@ import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import { PER_POD_DAILY_TARGET, PER_POD_DAILY_MIN, PER_POD_BONUS_TARGET } from '../utils/target';
 import { displayOperatorName } from '../utils/operator';
-import { verifyPassword } from '../utils/crypto';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
 
@@ -152,12 +151,7 @@ export default function Pod() {
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualIsbn, setManualIsbn] = useState('');
   const [showIsbnCamera, setShowIsbnCamera] = useState(false);
-  const [duplicateConfirm, setDuplicateConfirm] = useState(null); // { isbn, raw } when awaiting confirmation
-  // Manager PIN required to override any duplicate. State scoped to the open dialog only;
-  // never cached across duplicates so a manager must be physically present each time.
-  const [dupPin, setDupPin] = useState('');
-  const [dupPinError, setDupPinError] = useState('');
-  const [dupPinChecking, setDupPinChecking] = useState(false);
+  const [duplicateConfirm, setDuplicateConfirm] = useState(null); // legacy; no longer triggered. Kept so guards stay benign until a follow-up sweep.
   const [lastScanTime, setLastScanTime] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -194,9 +188,11 @@ export default function Pod() {
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
   // Rapid-fire cooldown: any same-ISBN scan within this many ms is silently dropped.
-  // Long enough to catch deliberate inflation (operator re-triggering the same book
-  // 3-5x), short enough to never block a legitimate second copy in real workflow.
-  const RAPID_DUP_COOLDOWN_MS = 10_000;
+  // 2s is the physical floor for a human to pick up, orient, scan, and drop a
+  // different copy of the same book from a stack. The trigger-twice / sheet-of-
+  // barcodes glitch produces sub-1s repeats, so 2s kills the abuse without
+  // blocking legitimate back-to-back scans of identical inventory.
+  const RAPID_DUP_COOLDOWN_MS = 2_000;
   // Visible-but-quiet feedback for cooldown drops — no beep, no count, no modal.
   const [cooldownToast, setCooldownToast] = useState('');
   const cooldownToastTimerRef = useRef(null);
@@ -462,32 +458,15 @@ export default function Pod() {
     return unsub;
   }, [isScanning, podId, operatorName, fromPods]); // eslint-disable-line
 
-  // ─── Job-wide ISBN dedup ───
-  // Long-running jobs (millions of scans) cannot afford a full collection
-  // listener. Instead we check the per-ISBN marker doc maintained server-side
-  // by the onScanWrite trigger, and cache hits in a session Set so we never
-  // pay twice for the same ISBN per pod boot.
-  const seenIsbnRef = useRef(new Set()); // ISBNs we've already confirmed present this session
-  const checkedIsbnRef = useRef(new Set()); // ISBNs we've already queried (hit or miss)
-  const checkIsbnSeen = useCallback(async (isbn) => {
-    if (!job?.id || !isbn) return false;
-    if (seenIsbnRef.current.has(isbn)) return true;
-    if (checkedIsbnRef.current.has(isbn)) return false;
-    checkedIsbnRef.current.add(isbn);
-    try {
-      const snap = await getDoc(doc(db, 'jobs', job.id, 'scanned-isbns', isbn));
-      if (snap.exists()) {
-        seenIsbnRef.current.add(isbn);
-        return true;
-      }
-    } catch { /* offline → treat as unseen, server will eventually catch via trigger */ }
-    return false;
-  }, [job]);
+  // ─── Job-wide ISBN tracking (used by AI/title picker only; no longer used to block scans) ───
+  // Multiple copies of the same ISBN are allowed — customers ship duplicate inventory.
+  // We still track seen ISBNs so the AI cover-match picker can flag (but not hide)
+  // candidates that have already been scanned in this session.
+  const seenIsbnRef = useRef(new Set()); // ISBNs we've already scanned this session
 
   // Reset cache when job changes
   useEffect(() => {
     seenIsbnRef.current = new Set();
-    checkedIsbnRef.current = new Set();
   }, [job?.id]);
 
   // ─── Offline pending count (Firestore cache indicator) ───
@@ -730,18 +709,7 @@ export default function Pod() {
     return () => document.removeEventListener('keydown', handler);
   }, [breakTimer, refocusInput]);
 
-  // ─── Duplicate confirm shortcuts: N/NumPad0/Esc = skip. Confirm requires manager PIN ───
-  // Y/Enter no longer instantly accepts — manager must type PIN in the dialog input.
-  useEffect(() => {
-    if (!duplicateConfirm) return;
-    const handler = (e) => {
-      const k = e.key.toLowerCase();
-      if (k === 'n' || e.key === 'Escape' || e.code === 'Numpad0' || e.code === 'Numpad2') { e.preventDefault(); cancelDuplicate(); }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [duplicateConfirm]);
+  // ─── (Removed) duplicate-confirm keyboard shortcuts ─ dialog no longer fires ───
 
   // ─── End-shift confirm shortcut: Enter/NumPadEnter/NumPad1 confirms, Esc/NumPad0 cancels ───
   useEffect(() => {
@@ -1005,87 +973,30 @@ export default function Pod() {
     }
 
     // Same ISBN as last scan within cooldown — silently drop (no sound, no modal,
-    // no count). This is the primary anti-inflation guard: operators can't pad
-    // their numbers by rapid-firing the same book even with a manager PIN, because
-    // the duplicate prompt never opens during the cooldown window.
+    // no count). This is the only anti-inflation guard: stops the trigger-twice /
+    // sheet-of-barcodes glitch (sub-1s repeats) without blocking legitimate
+    // back-to-back scans of identical inventory (≥2s gap is human-possible).
     if (isbn === lastScannedRef.current.isbn && (Date.now() - lastScannedRef.current.time) < RAPID_DUP_COOLDOWN_MS) {
       showCooldownToast(`🔁 ${isbn} — just scanned, ignored`);
       return;
     }
 
-    // Same ISBN as last scan — always confirm
-    if (isbn === lastScannedRef.current.isbn) {
-      playDuplicateBeep();
-      setDuplicateConfirm({ isbn, opts: o });
-      return;
-    }
-
-    // Job-wide dedup: check per-ISBN marker doc maintained server-side.
-    // For long jobs we can't hold every scan in browser memory.
-    if (job?.meta?.mode === 'multi') {
-      const seen = await checkIsbnSeen(isbn);
-      if (seen) {
-        playDuplicateBeep();
-        setDuplicateConfirm({ isbn, opts: o, overScan: true });
-        return;
-      }
-    }
-
     lastScannedRef.current = { isbn, time: Date.now() };
-    seenIsbnRef.current.add(isbn); // optimistic — next scan of same isbn will warn locally
+    seenIsbnRef.current.add(isbn);
     processScan(isbn, o);
   };
 
   // Verify the manager PIN against config/supervisor (hashed or legacy plaintext).
-  // Falls back to default '1234' only when no config doc exists, matching SupervisorGate.
-  const verifyManagerPin = async (pin) => {
-    const entered = (pin || '').trim();
-    if (!entered) return false;
-    try {
-      const snap = await getDoc(doc(db, 'config', 'supervisor'));
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.pinHash) return await verifyPassword(entered, data.pinHash);
-        if (data.pin) return entered === data.pin;
-        return entered === '1234';
-      }
-      return entered === '1234';
-    } catch {
-      return entered === '1234';
-    }
-  };
+  // (Kept as a stub so any remaining callers compile; duplicate-PIN flow has been removed.)
+  const verifyManagerPin = async () => false;
 
-  const confirmDuplicate = async () => {
-    if (!duplicateConfirm || dupPinChecking) return;
-    setDupPinChecking(true);
-    const ok = await verifyManagerPin(dupPin);
-    if (!ok) {
-      setDupPinError(t('invalidManagerPin') || 'Invalid manager PIN');
-      setDupPin('');
-      setDupPinChecking(false);
-      playErrorBeep();
-      return;
-    }
-    const { isbn, opts } = duplicateConfirm;
-    try {
-      await logAudit({
-        action: 'duplicate_override',
-        target: isbn,
-        meta: { jobId: job?.id || null, overScan: !!duplicateConfirm.overScan, operator: operatorName || null, podId: pod?.id || null },
-      });
-    } catch { /* audit best-effort */ }
-    lastScannedRef.current = { isbn, time: Date.now() };
+  const confirmDuplicate = () => {
+    if (!duplicateConfirm) return;
     setDuplicateConfirm(null);
-    setDupPin(''); setDupPinError(''); setDupPinChecking(false);
-    processScan(isbn, { ...(opts || {}), duplicateOverride: true });
-    setTimeout(refocusInput, 100);
   };
 
   const cancelDuplicate = () => {
     setDuplicateConfirm(null);
-    setDupPin(''); setDupPinError(''); setDupPinChecking(false);
-    flash('#EAB308', t('duplicateSkipped'), 1500);
-    setTimeout(refocusInput, 100);
   };
 
   // ─── AI cover → manifest title fuzzy match ───
@@ -1131,23 +1042,14 @@ export default function Pod() {
         setAiProcessing(false);
       }
     }
-    // Strip out candidates whose ISBN has already been scanned in this job.
-    // Operators were picking the wrong row from the AI list and re-scanning a book
-    // that was already accounted for — removing them from the picker entirely is
-    // the only reliable fix. Local set covers same-session; for multi-PO jobs we
-    // also check the server-side marker doc.
-    const checks = await Promise.all(candidates.map(async (c) => {
-      const ci = cleanISBN(c.isbn || '');
-      if (!ci) return false;
-      if (seenIsbnRef.current.has(ci)) return false;
-      if (job?.meta?.mode === 'multi') {
-        try { if (await checkIsbnSeen(ci)) return false; } catch { /* network blip — keep candidate */ }
-      }
-      return true;
+    // Show all AI candidates — multiple physical copies of the same ISBN are
+    // legitimate inventory. We annotate already-scanned ones with `alreadyScanned`
+    // so the picker can render them with a visible warning badge but still let
+    // the operator pick a second copy.
+    candidates = candidates.map((c) => ({
+      ...c,
+      alreadyScanned: !!(c.isbn && seenIsbnRef.current.has(cleanISBN(c.isbn))),
     }));
-    const filteredCandidates = candidates.filter((_, i) => checks[i]);
-    const droppedCount = candidates.length - filteredCandidates.length;
-    candidates = filteredCandidates;
 
     const shown = displayTitle || candidates[0]?.variant || title || coverText || author || '';
     // Assign a sequence number so this AI book is visually tied to its
@@ -1159,14 +1061,11 @@ export default function Pod() {
     // glance up after every barcode scan.
     playAiReadyChime();
     if (!candidates.length) {
-      const msg = droppedCount > 0
-        ? `All ${droppedCount} match${droppedCount === 1 ? '' : 'es'} already scanned — log exception or type ISBN`
-        : 'No likely matches — log exception or type ISBN';
-      flash('#EAB308', msg, 2400);
-      setAiMatchCandidates({ capturedTitle: shown, photo, candidates: [], seq, droppedCount });
+      flash('#EAB308', 'No likely matches — log exception or type ISBN', 2200);
+      setAiMatchCandidates({ capturedTitle: shown, photo, candidates: [], seq });
       return;
     }
-    setAiMatchCandidates({ capturedTitle: shown, photo, candidates, seq, droppedCount });
+    setAiMatchCandidates({ capturedTitle: shown, photo, candidates, seq });
   };
 
   const handleAiCoverResult = async (data) => {
@@ -2514,11 +2413,14 @@ export default function Pod() {
                   {aiMatchCandidates.candidates.map((c, idx) => (
                     <button key={c.isbn}
                       onClick={() => pickAiCandidate(idx)}
-                      style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: c.alreadyScanned ? '1px solid #EAB308' : '1px solid #444', backgroundColor: c.alreadyScanned ? '#2a2412' : '#1a1a1a', color: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #555', backgroundColor: '#0a0a0a', color: '#EAB308', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{idx + 1}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || `(no title — ${c.isbn})`}</div>
-                        <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{c.po || '—'} · {c.isbn}</div>
+                        <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                          {c.po || '—'} · {c.isbn}
+                          {c.alreadyScanned && <span style={{ marginLeft: 8, color: '#EAB308', fontWeight: 700 }}>· already scanned this session</span>}
+                        </div>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : c.score >= MATCH_AMBIGUOUS ? '#EAB308' : '#888' }}>
                         {Math.round(c.score * 100)}%
@@ -2729,61 +2631,7 @@ export default function Pod() {
           onClose={() => { setShowExceptionModal(false); setExceptionPrefill(null); setTimeout(refocusInput, 100); }} />
       )}
 
-      {/* Duplicate confirmation modal */}
-      {duplicateConfirm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-          <div style={{ backgroundColor: '#1a1a1a', border: `3px solid ${duplicateConfirm.overScan ? '#EF4444' : '#EAB308'}`, borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>{duplicateConfirm.overScan ? '🔴' : '⚠️'}</div>
-            <h2 style={{ color: duplicateConfirm.overScan ? '#EF4444' : '#EAB308', margin: '0 0 8px', fontSize: 24, fontWeight: 800 }}>
-              {duplicateConfirm.overScan ? t('alreadyScanned') : t('duplicateIsbn')}
-            </h2>
-            <p style={{ color: '#ccc', fontSize: 16, margin: '0 0 4px' }}>
-              {duplicateConfirm.overScan
-                ? t('alreadyScannedTimes', { n: duplicateConfirm.count })
-                : t('duplicateJustScanned')}
-            </p>
-            <p style={{ color: '#fff', fontSize: 30, fontWeight: 800, fontFamily: 'monospace', letterSpacing: 1, margin: '8px 0 20px', padding: '12px 20px', backgroundColor: '#222', borderRadius: 8, display: 'inline-block' }}>{duplicateConfirm.isbn}</p>
-            <p style={{ color: '#999', fontSize: 15, margin: '0 0 16px', fontWeight: 500 }}>
-              {duplicateConfirm.overScan ? t('duplicateDifferentCopy') : t('duplicateDifferentCopy')}
-            </p>
-            <div style={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: 10, padding: 16, margin: '0 0 16px' }}>
-              <p style={{ color: '#EAB308', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
-                {t('managerOverrideRequired') || 'Manager override required'}
-              </p>
-              <input
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                autoFocus
-                value={dupPin}
-                onChange={(e) => { setDupPin(e.target.value); if (dupPinError) setDupPinError(''); }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmDuplicate(); }
-                }}
-                placeholder={t('managerPinPlaceholder') || 'Manager PIN'}
-                disabled={dupPinChecking}
-                style={{ width: '100%', padding: '14px 16px', borderRadius: 8, border: `2px solid ${dupPinError ? '#EF4444' : '#444'}`, backgroundColor: '#000', color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', letterSpacing: 4, textAlign: 'center', boxSizing: 'border-box' }}
-              />
-              {dupPinError && (
-                <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: '8px 0 0' }}>{dupPinError}</p>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button onClick={confirmDuplicate}
-                disabled={!dupPin || dupPinChecking}
-                style={{ padding: '20px 32px', minHeight: 64, borderRadius: 12, border: 'none', backgroundColor: (!dupPin || dupPinChecking) ? '#15803d' : '#22C55E', color: '#fff', fontSize: 20, fontWeight: 800, cursor: (!dupPin || dupPinChecking) ? 'not-allowed' : 'pointer', opacity: (!dupPin || dupPinChecking) ? 0.6 : 1 }}
-                title="Enter manager PIN, then press Enter">
-                ✓ {dupPinChecking ? '…' : (duplicateConfirm.overScan ? t('yesScanIt') : t('scanAgain'))}
-              </button>
-              <button onClick={cancelDuplicate}
-                style={{ padding: '20px 32px', minHeight: 64, borderRadius: 12, border: '2px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}
-                title="Press N or Esc">
-                ✕ {t('skip')} <kbd style={{ ...kbdHintStyle, marginLeft: 8 }}>N</kbd>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Duplicate confirmation modal removed — multiple copies of the same ISBN are legitimate inventory. */}
 
       {/* Keyboard shortcuts overlay */}
       {showShortcuts && (
