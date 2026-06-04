@@ -187,6 +187,19 @@ export default function Pod() {
   const [previousBest, setPreviousBest] = useState(null); // { count, dateLabel } | null
 
   const lastScannedRef = useRef({ isbn: '', time: 0 });
+  // Rapid-fire glitch guard: a same-ISBN scan that lands within this many ms
+  // of the previous one is treated as a trigger-bounce or stack-of-barcodes
+  // glitch — silently dropped, no exception, no count. A legitimate physical
+  // duplicate (operator picks up a second copy, orients, pulls trigger) takes
+  // longer than this; those go to the duplicate-as-exception path below.
+  const RAPID_DUP_COOLDOWN_MS = 2_000;
+  const [cooldownToast, setCooldownToast] = useState('');
+  const cooldownToastTimerRef = useRef(null);
+  const showCooldownToast = (msg) => {
+    setCooldownToast(msg);
+    if (cooldownToastTimerRef.current) clearTimeout(cooldownToastTimerRef.current);
+    cooldownToastTimerRef.current = setTimeout(() => setCooldownToast(''), 1500);
+  };
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
   const pairInputRef = useRef(null);
@@ -994,14 +1007,25 @@ export default function Pod() {
       return;
     }
 
-    // HARD duplicate block — a book that's already been scanned for this job
-    // (by ANY pod, ANY shift, in EITHER ISBN-10 or ISBN-13 form) cannot be
-    // counted again. We DO log it as an exception so it's visible in the
-    // customer portal and the operator gets credit for surfacing a real
-    // physical duplicate (without inflating their scan count).
+    // Rapid-fire glitch guard — same ISBN as the previous scan within 2s.
+    // This is the trigger-bounce / sheet-of-barcodes abuse path: silent drop,
+    // no exception, no count. A real physical duplicate from a stack takes
+    // longer than 2s to pick up + orient + trigger, so those fall through to
+    // the duplicate-as-exception path below.
+    if (isbn === lastScannedRef.current.isbn && (Date.now() - lastScannedRef.current.time) < RAPID_DUP_COOLDOWN_MS) {
+      showCooldownToast(`🔁 ${isbn} — rapid repeat, ignored`);
+      return;
+    }
+
+    // HARD duplicate block (legitimate path) — a book that's already been
+    // scanned for this job (any pod, any shift, ISBN-10 or ISBN-13 form) is
+    // logged as an exception. Operator gets credit (exceptions are billable),
+    // the duplicate is visible in the customer portal, but the standard scan
+    // count isn't inflated.
     if (isAlreadyScannedForJob(isbn)) {
       playDuplicateBeep();
       flash('#EF4444', `🚫 ${isbn} — duplicate, logged as exception`, 2500);
+      lastScannedRef.current = { isbn, time: Date.now() };
       addDoc(collection(db, 'exceptions'), {
         jobId: job.id,
         podId,
@@ -1784,6 +1808,12 @@ export default function Pod() {
       {flashText && (
         <div style={styles.flashOverlay}>
           <span style={{ ...styles.flashText, color: isLightColor(flashColor) ? '#0a0a0a' : '#fff', textShadow: isLightColor(flashColor) ? '2px 2px 12px rgba(255,255,255,0.6)' : '2px 2px 12px rgba(0,0,0,0.8)' }}>{flashText}</span>
+        </div>
+      )}
+
+      {cooldownToast && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 850, backgroundColor: 'rgba(31,41,55,0.95)', border: '1px solid #4b5563', borderRadius: 10, padding: '10px 18px', color: '#cbd5e1', fontSize: 14, fontWeight: 600, fontFamily: 'monospace', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
+          {cooldownToast}
         </div>
       )}
 
