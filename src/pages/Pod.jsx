@@ -996,12 +996,23 @@ export default function Pod() {
 
     // HARD duplicate block — a book that's already been scanned for this job
     // (by ANY pod, ANY shift, in EITHER ISBN-10 or ISBN-13 form) cannot be
-    // scanned again. Source of truth is jobs/{jobId}/scanned-isbns + an
-    // optimistic in-memory mirror so back-to-back dupes get caught before
-    // the Firestore round-trip.
+    // counted again. We DO log it as an exception so it's visible in the
+    // customer portal and the operator gets credit for surfacing a real
+    // physical duplicate (without inflating their scan count).
     if (isAlreadyScannedForJob(isbn)) {
       playDuplicateBeep();
-      flash('#EF4444', `🚫 ${isbn} — already scanned for this job`, 2500);
+      flash('#EF4444', `🚫 ${isbn} — duplicate, logged as exception`, 2500);
+      addDoc(collection(db, 'exceptions'), {
+        jobId: job.id,
+        podId,
+        scannerId: scannerName,
+        isbn,
+        title: o.capturedTitle || null,
+        reason: 'Duplicate scan — already scanned for this job',
+        photo: o.capturedPhoto || null,
+        timestamp: serverTimestamp(),
+        source: o.source || 'scan',
+      }).catch(() => {});
       return;
     }
 
@@ -1133,8 +1144,19 @@ export default function Pod() {
     const c = aiMatchCandidates.candidates[idx];
     if (!c) return;
     if (c.alreadyScanned) {
-      playDuplicateBeep();
-      flash('#EF4444', `🚫 ${c.isbn} — already scanned for this job`, 2500);
+      // Route through handleScan so the duplicate is logged as an exception
+      // (same path as a barcode rescan). The hard-block in handleScan will
+      // catch it; the operator sees the duplicate beep + flash.
+      const sel = aiMatchCandidates;
+      setAiMatchCandidates(null);
+      handleScan(c.isbn, {
+        isManual: true,
+        source: 'ai-match',
+        capturedTitle: sel.capturedTitle,
+        matchScore: c.score,
+        capturedPhoto: sel.photo,
+        aiSeq: sel.seq,
+      });
       return;
     }
     const sel = aiMatchCandidates;
@@ -2436,15 +2458,14 @@ export default function Pod() {
                   {aiMatchCandidates.candidates.map((c, idx) => (
                     <button key={c.isbn}
                       onClick={() => pickAiCandidate(idx)}
-                      disabled={c.alreadyScanned}
-                      title={c.alreadyScanned ? 'Already scanned for this job' : undefined}
-                      style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: c.alreadyScanned ? '1px solid #EF4444' : '1px solid #444', backgroundColor: c.alreadyScanned ? '#2a1212' : '#1a1a1a', color: c.alreadyScanned ? '#888' : '#fff', cursor: c.alreadyScanned ? 'not-allowed' : 'pointer', opacity: c.alreadyScanned ? 0.6 : 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      title={c.alreadyScanned ? 'Already scanned for this job — picking will log a duplicate exception' : undefined}
+                      style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: c.alreadyScanned ? '1px solid #EF4444' : '1px solid #444', backgroundColor: c.alreadyScanned ? '#2a1212' : '#1a1a1a', color: c.alreadyScanned ? '#888' : '#fff', cursor: 'pointer', opacity: c.alreadyScanned ? 0.7 : 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #555', backgroundColor: '#0a0a0a', color: '#EAB308', fontSize: 13, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{idx + 1}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: c.alreadyScanned ? 'line-through' : 'none' }}>{c.title || `(no title — ${c.isbn})`}</div>
                         <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
                           {c.po || '—'} · {c.isbn}
-                          {c.alreadyScanned && <span style={{ marginLeft: 8, color: '#EF4444', fontWeight: 700 }}>· already scanned — blocked</span>}
+                          {c.alreadyScanned && <span style={{ marginLeft: 8, color: '#EF4444', fontWeight: 700 }}>· duplicate — will log exception</span>}
                         </div>
                       </div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: c.score >= MATCH_CONFIDENT ? '#22C55E' : c.score >= MATCH_AMBIGUOUS ? '#EAB308' : '#888' }}>
