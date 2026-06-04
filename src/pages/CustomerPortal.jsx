@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import {
   collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
-  query, where, onSnapshot, orderBy, serverTimestamp, writeBatch,
+  query, where, onSnapshot, orderBy, serverTimestamp, writeBatch, Timestamp,
 } from 'firebase/firestore';
 import { parseManifestFile } from '../utils/manifest';
 import { downloadBlob } from '../utils/export';
@@ -34,6 +34,10 @@ export default function CustomerPortal() {
   const [job, setJob] = useState(null);
   const [allScans, setAllScans] = useState([]);
   const [allExceptions, setAllExceptions] = useState([]);
+  // Lifetime aggregates from jobs/{jobId}/aggregates/totals (maintained by
+  // onScanWrite trigger). Used for headline KPI tiles so we don't have to
+  // pull every scan doc into the browser just to count them.
+  const [aggregates, setAggregates] = useState(null);
   const [bols, setBols] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('daily');
@@ -165,7 +169,17 @@ export default function CustomerPortal() {
 
   useEffect(() => {
     if (!authenticated || !job) return;
-    const q = query(collection(db, 'scans'), where('jobId', '==', job.id));
+    // Bound the live listener to the last 14 days. Long-running jobs accumulate
+    // tens of thousands of scan docs; subscribing to the full collection makes
+    // the portal load take 15-30s and pegs the browser on every new scan.
+    // The Daily / Reports tabs only show 7 days by default, so 14 covers the
+    // visible UI with headroom. Lifetime totals come from the aggregates doc.
+    const since = new Date(); since.setDate(since.getDate() - 14); since.setHours(0, 0, 0, 0);
+    const q = query(
+      collection(db, 'scans'),
+      where('jobId', '==', job.id),
+      where('timestamp', '>=', Timestamp.fromDate(since)),
+    );
     return onSnapshot(q, (snap) => {
       setAllScans(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
@@ -173,7 +187,21 @@ export default function CustomerPortal() {
 
   useEffect(() => {
     if (!authenticated || !job) return;
-    const q = query(collection(db, 'exceptions'), where('jobId', '==', job.id));
+    // Lifetime totals — single doc, instant. Maintained by functions/aggregates.js.
+    const ref = doc(db, 'jobs', job.id, 'aggregates', 'totals');
+    return onSnapshot(ref, (snap) => {
+      setAggregates(snap.exists() ? snap.data() : null);
+    });
+  }, [authenticated, job]);
+
+  useEffect(() => {
+    if (!authenticated || !job) return;
+    const since = new Date(); since.setDate(since.getDate() - 14); since.setHours(0, 0, 0, 0);
+    const q = query(
+      collection(db, 'exceptions'),
+      where('jobId', '==', job.id),
+      where('timestamp', '>=', Timestamp.fromDate(since)),
+    );
     return onSnapshot(q, (snap) => {
       setAllExceptions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
@@ -312,27 +340,48 @@ export default function CustomerPortal() {
     .map(([date, excs]) => [date, excs.sort((a, b) => b.time.getTime() - a.time.getTime())]);
   }, [allScans, allExceptions]);
 
-  const totalRegularCount = allScans.filter((s) => bucketOf(s) === 'regular').length;
-  const totalManualCount = allScans.filter((s) => bucketOf(s) === 'manual').length;
-  const totalAiCameraCount = allScans.filter((s) => bucketOf(s) === 'aiCamera').length;
-  const totalLoggedExcCount = allScans.filter((s) => bucketOf(s) === 'exception').length + allExceptions.length;
+  // Lifetime totals from the aggregates doc. Falls back to filtering the
+  // last-14-days slice if the aggregates trigger hasn't backfilled this job yet.
+  const totalRegularCount = aggregates
+    ? Math.max(0, (aggregates.totalScanned || 0) - (aggregates.totalManual || 0) - (aggregates.totalAiMatch || 0))
+    : allScans.filter((s) => bucketOf(s) === 'regular').length;
+  const totalManualCount = aggregates
+    ? (aggregates.totalManual || 0)
+    : allScans.filter((s) => bucketOf(s) === 'manual').length;
+  const totalAiCameraCount = aggregates
+    ? (aggregates.totalAiMatch || 0)
+    : allScans.filter((s) => bucketOf(s) === 'aiCamera').length;
+  const totalLoggedExcCount = aggregates
+    ? (aggregates.totalExceptions || 0)
+    : allScans.filter((s) => bucketOf(s) === 'exception').length + allExceptions.length;
   const totalProcessed = totalRegularCount + totalManualCount + totalAiCameraCount + totalLoggedExcCount;
   const todayKey = new Date().toISOString().slice(0, 10);
   const todayData = dailyBreakdown.find((d) => d.date === todayKey);
 
   // Total job progress
   const jobProgress = useMemo(() => {
-    const standard = allScans.filter((s) => s.type === 'standard');
-    const exceptionScans = allScans.filter((s) => s.type === 'exception');
-    const totalScanned = standard.length;
-    const totalExceptions = exceptionScans.length + allExceptions.length;
+    // Prefer the lifetime aggregates doc; only fall back to in-memory filtering
+    // if the aggregates trigger hasn't backfilled this job yet.
+    const totalScanned = aggregates
+      ? (aggregates.totalScanned || 0)
+      : allScans.filter((s) => s.type === 'standard').length;
+    const totalExceptions = aggregates
+      ? (aggregates.totalExceptions || 0) + allExceptions.length
+      : allScans.filter((s) => s.type === 'exception').length + allExceptions.length;
+    const aggByPO = aggregates?.byPO || null;
     const byPO = {};
-    for (const s of standard) {
-      const po = s.poName || 'Unassigned';
-      if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
-      byPO[po].scanned++;
+    if (aggByPO) {
+      for (const [po, n] of Object.entries(aggByPO)) {
+        byPO[po] = { scanned: n, expected: 0 };
+      }
+    } else {
+      // Fallback: derive from the last-14-days slice (will under-count for older jobs).
+      for (const s of allScans.filter((x) => x.type === 'standard')) {
+        const po = s.poName || 'Unassigned';
+        if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
+        byPO[po].scanned++;
+      }
     }
-    // Use chunked metadata or legacy per-doc manifest for expected counts
     const poCounts = job?.manifestMeta?.chunked ? job.manifestMeta.poCounts : null;
     const totalExpected = poCounts
       ? Object.values(poCounts).reduce((s, n) => s + n, 0)
@@ -354,7 +403,7 @@ export default function CustomerPortal() {
     }
     const pct = totalExpected ? Math.round((totalScanned / totalExpected) * 100) : null;
     return { totalScanned, totalExceptions, totalExpected, pct, byPO };
-  }, [allScans, allExceptions, manifestData, job]);
+  }, [aggregates, allScans, allExceptions, manifestData, job]);
 
   const toDateStr = (ts) => {
     if (!ts) return '';
