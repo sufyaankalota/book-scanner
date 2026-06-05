@@ -459,15 +459,18 @@ export default function Pod() {
     return unsub;
   }, [isScanning, podId, operatorName, fromPods]); // eslint-disable-line
 
-  // ─── Job-wide ISBN dedup (HARD BLOCK across pods, shifts, sessions) ───
-  // Source of truth is jobs/{jobId}/scanned-isbns/{isbn} which is maintained
-  // by the onScanWrite Cloud Function. We mirror it into a Set and check on
-  // every scan. Both ISBN-10 and ISBN-13 forms are kept in the set so a book
-  // scanned once as ISBN-13 cannot be re-scanned as its ISBN-10 form.
-  // seenIsbnRef remains — still used by the AI picker for the visual badge.
+  // ─── Job-wide ISBN dedup ───
+  // REVERTED: Cross-pod dedup was downloading thousands of doc IDs per pod
+  // and freezing Chromebook kiosks even with a background pull. Same-pod
+  // dedup via seenIsbnRef (in-memory, zero network cost) is restored —
+  // this is the behavior pods had before today and it ran instantly.
+  // Rapid-fire glitch guard (lastScannedRef, 2s) still catches same-pod
+  // double/triple scans; the Cloud Function still records every scan to
+  // scanned-isbns so we have a server-side audit if cross-pod dup analysis
+  // is needed later.
   const seenIsbnRef = useRef(new Set());
-  const scannedIsbnsRef = useRef(new Set());
-  const [scannedIsbnsLoaded, setScannedIsbnsLoaded] = useState(false);
+  const scannedIsbnsRef = useRef(new Set()); // kept for compatibility; never populated
+  const [scannedIsbnsLoaded] = useState(true);
 
   const isbnDupKeys = (raw) => {
     const c = cleanISBN(raw || '').toUpperCase();
@@ -479,65 +482,19 @@ export default function Pod() {
     return [...out];
   };
 
+  // Returns true only if the current operator's session has scanned this
+  // ISBN already. No network round-trip.
   const isAlreadyScannedForJob = (raw) => {
     const keys = isbnDupKeys(raw);
-    for (const k of keys) if (scannedIsbnsRef.current.has(k)) return true;
+    for (const k of keys) if (seenIsbnRef.current.has(k)) return true;
     return false;
   };
 
-  // Reset caches + subscribe to scanned-isbns when the job changes.
-  // PERF: the initial pull is NON-BLOCKING. The pod accepts scans the
-  // instant it boots; the dedup set populates in the background. Worst
-  // case: a cross-pod duplicate scanned in the first few seconds after
-  // boot slips through as a regular scan — the Cloud Function still
-  // logs it, and every subsequent attempt is caught normally.
-  // Same-pod dups are always caught by the in-memory seenIsbnRef Set
-  // (zero cost), which is the only check we did before the hard-block
-  // feature was added today.
+  // Reset in-memory seen-set when the job changes (or operator switches —
+  // handled elsewhere where seenIsbnRef is cleared on operator change).
   useEffect(() => {
     seenIsbnRef.current = new Set();
     scannedIsbnsRef.current = new Set();
-    // Mark "loaded" immediately so scanning UI never blocks on this.
-    setScannedIsbnsLoaded(true);
-    if (!job?.id) return;
-    let cancelled = false;
-    let unsub = null;
-
-    const col = collection(db, 'jobs', job.id, 'scanned-isbns');
-
-    // Fire-and-forget background pull. Use requestIdleCallback when
-    // available so we yield to the scanning UI thread first.
-    const startPull = () => {
-      if (cancelled) return;
-      getDocs(col).then((snap) => {
-        if (cancelled) return;
-        // Merge into existing set rather than replace — any optimistic
-        // local adds during the pull window are preserved.
-        snap.forEach((d) => {
-          for (const k of isbnDupKeys(d.id)) scannedIsbnsRef.current.add(k);
-        });
-
-        // Delta listener AFTER initial load. docChanges() gives us just
-        // the diff so cross-pod scans cost ~1 doc each, not 30k.
-        unsub = onSnapshot(col, (s) => {
-          s.docChanges().forEach((change) => {
-            if (change.type !== 'added') return;
-            for (const k of isbnDupKeys(change.doc.id)) scannedIsbnsRef.current.add(k);
-          });
-        }, () => { /* fail-open */ });
-      }).catch(() => { /* fail-open */ });
-    };
-
-    if (typeof window.requestIdleCallback === 'function') {
-      window.requestIdleCallback(startPull, { timeout: 5000 });
-    } else {
-      setTimeout(startPull, 0);
-    }
-
-    return () => {
-      cancelled = true;
-      if (unsub) unsub();
-    };
   }, [job?.id]);
 
   // ─── Offline pending count (Firestore cache indicator) ───
