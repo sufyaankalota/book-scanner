@@ -771,69 +771,59 @@ export default function Pod() {
   }, [showShortcuts]);
 
   // ─── Load active job ───
-  // We deliberately do NOT use where('meta.active','==',true) here. The
-  // pod's persistent local cache can hold a stale empty result for that
-  // indexed query while a fresh job exists on the server, which surfaces
-  // as "No active job" on every pod even though the dashboard sees the
-  // job just fine. Fetching the full jobs list (always small) and filtering
-  // client-side sidesteps the stale cached index.
+  // Indexed query for speed (kiosks have months of closed jobs — pulling
+  // the full collection froze Chromebooks). We bypass the wedged-cache
+  // failure mode by:
+  //   1) firing getDocsFromServer immediately (forces server round-trip,
+  //      ignores cache entirely),
+  //   2) ignoring empty cache-only snapshots in onSnapshot — only an empty
+  //      server snapshot is treated as "no active job",
+  //   3) an 8s timeout so we never strand operators on "Loading…".
   useEffect(() => {
     let cancelled = false;
+    const activeQ = query(collection(db, 'jobs'), where('meta.active', '==', true));
 
-    const applySnap = (snap, source) => {
+    const applySnap = (snap) => {
       if (cancelled) return;
       setJobError(null);
       setJobLoading(false);
-      let pickedDoc = null;
-      snap.forEach((d) => {
-        const data = d.data();
-        if (data?.meta?.active === true) pickedDoc = { id: d.id, data };
-      });
-      if (!pickedDoc) {
-        const open = [];
-        snap.forEach((d) => {
-          const data = d.data();
-          if (!data?.meta?.closedAt && !data?.meta?.queued) open.push({ id: d.id, data });
-        });
-        if (open.length === 1) pickedDoc = open[0];
-      }
-      if (pickedDoc) {
-        const picked = { id: pickedDoc.id, ...pickedDoc.data };
-        setJob((prev) => (prev && prev.id === picked.id && source === 'cache') ? prev : picked);
-        if (picked.meta.mode === 'multi' && !picked.manifestMeta?.chunked) {
-          getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
-            const cache = {};
-            ms.forEach((d) => {
-              const data = d.data();
-              cache[d.id] = data.poName;
-            });
-            setManifestCache(cache);
-          }).catch((err) => {
-            console.error('Failed to load manifest:', err);
-            flash('#EF4444', 'Manifest load failed — retry by reloading the page', 4000);
-          });
-        } else if (picked.manifestMeta?.chunked) {
-          clearChunkCache();
-        }
-      } else {
+      if (snap.empty) {
         setJob(null);
+        return;
+      }
+      const d = snap.docs[0];
+      const picked = { id: d.id, ...d.data() };
+      setJob(picked);
+      if (picked.meta?.mode === 'multi' && !picked.manifestMeta?.chunked) {
+        getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
+          const cache = {};
+          ms.forEach((d) => {
+            const data = d.data();
+            cache[d.id] = data.poName;
+          });
+          setManifestCache(cache);
+        }).catch((err) => {
+          console.error('Failed to load manifest:', err);
+          flash('#EF4444', 'Manifest load failed — retry by reloading the page', 4000);
+        });
+      } else if (picked.manifestMeta?.chunked) {
+        clearChunkCache();
       }
     };
 
-    // 1) Force a server fetch immediately — bypasses any wedged persistent
-    //    cache state that previously caused pods to stick on "Loading…".
-    getDocsFromServer(collection(db, 'jobs'))
-      .then((snap) => applySnap(snap, 'server'))
+    // 1) Server-first fetch — bypasses any wedged persistent cache.
+    getDocsFromServer(activeQ)
+      .then(applySnap)
       .catch((err) => {
-        // Server fetch failed — onSnapshot below will still cover us from
-        // cache; only surface the error if the live listener never resolves.
         console.warn('Initial server fetch failed, relying on cache listener:', err?.message);
       });
 
-    // 2) Live listener for subsequent updates (and as a cache fallback if
-    //    the kiosk is fully offline at boot).
-    const unsub = onSnapshot(collection(db, 'jobs'), (snap) => {
-      applySnap(snap, snap.metadata.fromCache ? 'cache' : 'server');
+    // 2) Live listener — ignore empty CACHE snapshots so a stale cached
+    //    empty result can't override the server fetch above.
+    const unsub = onSnapshot(activeQ, (snap) => {
+      if (cancelled) return;
+      if (snap.empty && snap.metadata.fromCache) return;
+      applySnap(snap);
     }, (err) => {
       if (cancelled) return;
       console.error('Active-job listener failed:', err);
@@ -841,7 +831,7 @@ export default function Pod() {
       setJobLoading(false);
     });
 
-    // 3) Hard safety net — never let pods sit on "Loading…" forever.
+    // 3) Safety net — never stick on "Loading…" forever.
     const fallbackTimer = setTimeout(() => {
       if (cancelled) return;
       setJobLoading((wasLoading) => {
