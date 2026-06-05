@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import {
-  collection, onSnapshot,
+  collection, onSnapshot, getDocsFromServer,
 } from 'firebase/firestore';
 import { usePresence } from '../hooks/usePresence';
 import TodayLeaderboard from '../components/TodayLeaderboard';
@@ -53,32 +53,64 @@ export default function PodSelect() {
   // the dashboard sees the live active job. Fetching the (small) full
   // jobs collection and filtering in JS is reliable.
   useEffect(() => {
+    let cancelled = false;
+    const pick = (snap) => {
+      let picked = null;
+      snap.forEach((d) => {
+        const data = d.data();
+        if (data?.meta?.active === true) picked = { id: d.id, ...data };
+      });
+      if (!picked) {
+        const open = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          if (!data?.meta?.closedAt && !data?.meta?.queued) open.push({ id: d.id, ...data });
+        });
+        if (open.length === 1) picked = open[0];
+      }
+      return picked;
+    };
+
+    // Server-first fetch bypasses any wedged persistent cache.
+    getDocsFromServer(collection(db, 'jobs'))
+      .then((snap) => {
+        if (cancelled) return;
+        setJob(pick(snap));
+        setJobLoading(false);
+        setJobError(null);
+      })
+      .catch((err) => {
+        console.warn('PodSelect server fetch failed, relying on cache:', err?.message);
+      });
+
     const unsub = onSnapshot(
       collection(db, 'jobs'),
       (snap) => {
-        let picked = null;
-        snap.forEach((d) => {
-          const data = d.data();
-          if (data?.meta?.active === true) picked = { id: d.id, ...data };
-        });
-        if (!picked) {
-          const open = [];
-          snap.forEach((d) => {
-            const data = d.data();
-            if (!data?.meta?.closedAt && !data?.meta?.queued) open.push({ id: d.id, ...data });
-          });
-          if (open.length === 1) picked = open[0];
-        }
-        setJob(picked);
+        if (cancelled) return;
+        setJob(pick(snap));
         setJobLoading(false);
         setJobError(null);
       },
       (err) => {
+        if (cancelled) return;
         setJobError(err?.message || 'Failed to load job');
         setJobLoading(false);
       }
     );
-    return unsub;
+
+    const fallbackTimer = setTimeout(() => {
+      if (cancelled) return;
+      setJobLoading((wasLoading) => {
+        if (wasLoading) setJobError('Timed out fetching active job — check connection and reload.');
+        return false;
+      });
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallbackTimer);
+      unsub();
+    };
   }, []);
 
   // Listen to pod presence — handled by usePresence hook above

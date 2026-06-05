@@ -3,7 +3,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { db, functions } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 import {
-  collection, doc, getDocs, getDoc, addDoc, setDoc, deleteDoc, updateDoc,
+  collection, doc, getDocs, getDocsFromServer, getDoc, addDoc, setDoc, deleteDoc, updateDoc,
   query, where, onSnapshot, serverTimestamp, Timestamp, runTransaction,
 } from 'firebase/firestore';
 import { isValidISBN, cleanISBN, detectBarcodeType, isbnAlternates } from '../utils/isbn';
@@ -778,7 +778,10 @@ export default function Pod() {
   // job just fine. Fetching the full jobs list (always small) and filtering
   // client-side sidesteps the stale cached index.
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'jobs'), (snap) => {
+    let cancelled = false;
+
+    const applySnap = (snap, source) => {
+      if (cancelled) return;
       setJobError(null);
       setJobLoading(false);
       let pickedDoc = null;
@@ -786,9 +789,6 @@ export default function Pod() {
         const data = d.data();
         if (data?.meta?.active === true) pickedDoc = { id: d.id, data };
       });
-      // Fallback: if no doc is explicitly active but there's exactly one
-      // un-closed, un-queued job, treat it as active. This recovers from
-      // a corrupted/missing meta.active flag without halting production.
       if (!pickedDoc) {
         const open = [];
         snap.forEach((d) => {
@@ -799,7 +799,7 @@ export default function Pod() {
       }
       if (pickedDoc) {
         const picked = { id: pickedDoc.id, ...pickedDoc.data };
-        setJob(picked);
+        setJob((prev) => (prev && prev.id === picked.id && source === 'cache') ? prev : picked);
         if (picked.meta.mode === 'multi' && !picked.manifestMeta?.chunked) {
           getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
             const cache = {};
@@ -818,12 +818,43 @@ export default function Pod() {
       } else {
         setJob(null);
       }
+    };
+
+    // 1) Force a server fetch immediately — bypasses any wedged persistent
+    //    cache state that previously caused pods to stick on "Loading…".
+    getDocsFromServer(collection(db, 'jobs'))
+      .then((snap) => applySnap(snap, 'server'))
+      .catch((err) => {
+        // Server fetch failed — onSnapshot below will still cover us from
+        // cache; only surface the error if the live listener never resolves.
+        console.warn('Initial server fetch failed, relying on cache listener:', err?.message);
+      });
+
+    // 2) Live listener for subsequent updates (and as a cache fallback if
+    //    the kiosk is fully offline at boot).
+    const unsub = onSnapshot(collection(db, 'jobs'), (snap) => {
+      applySnap(snap, snap.metadata.fromCache ? 'cache' : 'server');
     }, (err) => {
+      if (cancelled) return;
       console.error('Active-job listener failed:', err);
       setJobError(err?.message || 'Failed to load job');
       setJobLoading(false);
     });
-    return unsub;
+
+    // 3) Hard safety net — never let pods sit on "Loading…" forever.
+    const fallbackTimer = setTimeout(() => {
+      if (cancelled) return;
+      setJobLoading((wasLoading) => {
+        if (wasLoading) setJobError('Timed out fetching active job — check connection and reload.');
+        return false;
+      });
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallbackTimer);
+      unsub();
+    };
   }, []);
 
   // ─── Pod lock check (uses 60s threshold to flag stale sessions sooner) ───
