@@ -156,6 +156,12 @@ export default function Pod() {
   const [duplicateConfirm, setDuplicateConfirm] = useState(null); // legacy; no longer triggered. Kept so guards stay benign until a follow-up sweep.
   const [lastScanTime, setLastScanTime] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
+  // Ref mirror so keyboard handlers can read latest recentScans without
+  // listing it as a useEffect dep — listing it caused the keyboard
+  // listener to re-register on every scan, saturating Chrome's event
+  // queue and freezing flashes on busy pods.
+  const recentScansRef = useRef([]);
+  useEffect(() => { recentScansRef.current = recentScans; }, [recentScans]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showIdleWarning, setShowIdleWarning] = useState(false);
 
@@ -584,8 +590,9 @@ export default function Pod() {
             return;
           case 'Numpad0':
             e.preventDefault();
-            if (recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training') {
-              handleUndo();
+            {
+              const rs = recentScansRef.current;
+              if (rs.length > 0 && rs[0].docId && rs[0].docId !== 'training') handleUndo();
             }
             return;
           case 'NumpadDecimal':
@@ -648,8 +655,9 @@ export default function Pod() {
         // Ctrl modifiers so these can't collide with a barcode scan.
         if (k === 'u') {
           e.preventDefault();
-          if (recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training') {
-            handleUndo();
+          {
+            const rs = recentScansRef.current;
+            if (rs.length > 0 && rs[0].docId && rs[0].docId !== 'training') handleUndo();
           }
           return;
         }
@@ -685,10 +693,12 @@ export default function Pod() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-    // handleUndo / handleEndShift are stable in scope and read via closure;
-    // recentScans is read via the latest closure when the user actually presses Ctrl+U.
+    // handleUndo / handleEndShift / refocusInput / recentScans all read via
+    // closure or recentScansRef so we don't need them in deps. Keeping
+    // them out prevents the listener from re-binding on every scan, which
+    // was queueing up rAF work and stalling color flashes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, showTitleSearch, aiMatchCandidates, refocusInput, recentScans, showShortcuts]);
+  }, [isScanning, showExceptionModal, showSwitchOperator, showSettings, showManualEntry, showIsbnCamera, showBreakPicker, showEndShift, duplicateConfirm, showTitleSearch, aiMatchCandidates, showShortcuts]);
 
   // ─── Pause overlay shortcuts ───
   // Visible on the pause screen so operators can pick an action without
