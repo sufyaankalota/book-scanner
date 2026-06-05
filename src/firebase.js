@@ -3,6 +3,7 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  memoryLocalCache,
 } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
@@ -31,12 +32,24 @@ if (missing.length) {
 
 const app = initializeApp(firebaseConfig);
 
-// Use modern persistent cache with multi-tab support
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
+// Try modern persistent cache (multi-tab) first. If IndexedDB is broken on
+// the kiosk (wedged on Chromebooks after long uptime) the SDK will throw
+// here — fall back to in-memory cache so the pod can still talk to
+// Firestore. We do the persistent->memory fallback synchronously by
+// catching the constructor; the SDK validates IDB lazily but persistentMultipleTabManager
+// throws immediately if document/window globals aren't usable.
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
+  });
+} catch (err) {
+  // eslint-disable-next-line no-console
+  console.warn('Persistent Firestore cache unavailable, falling back to memory cache:', err?.message);
+  db = initializeFirestore(app, { localCache: memoryLocalCache() });
+}
 
 const functions = getFunctions(app, 'us-east1');
 

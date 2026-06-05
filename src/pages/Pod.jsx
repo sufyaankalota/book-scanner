@@ -2746,7 +2746,48 @@ export default function Pod() {
           {jobLoading ? (
             <>Loading active job…</>
           ) : jobError ? (
-            <>⚠️ Can't reach Firestore — {jobError}. Check internet, then reload.</>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+              <div>⚠️ Can't reach Firestore — {jobError}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => window.location.reload()}
+                  style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #3B82F6', backgroundColor: '#1e3a8a', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
+                >
+                  🔄 Reload
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      // Wipe IndexedDB caches that wedge the Firestore SDK
+                      // on Chromebook kiosks. Then hard-reload.
+                      if (window.indexedDB?.databases) {
+                        const dbs = await window.indexedDB.databases();
+                        await Promise.all(dbs.map((d) => d.name && new Promise((res) => {
+                          const req = window.indexedDB.deleteDatabase(d.name);
+                          req.onsuccess = req.onerror = req.onblocked = () => res();
+                        })));
+                      } else {
+                        // Older browsers — known Firestore DB names
+                        ['firestore/[DEFAULT]/main', 'firestoreClients/[DEFAULT]'].forEach((n) => {
+                          try { window.indexedDB.deleteDatabase(n); } catch {}
+                        });
+                      }
+                      try { localStorage.clear(); } catch {}
+                      try { sessionStorage.clear(); } catch {}
+                    } catch (e) {
+                      console.error('Cache reset failed:', e);
+                    }
+                    window.location.reload();
+                  }}
+                  style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #DC2626', backgroundColor: '#7f1d1d', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
+                >
+                  🧹 Reset Cache & Reload
+                </button>
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.7 }}>
+                "Reset Cache" wipes the kiosk's local Firestore cache. Safe — server data is untouched.
+              </div>
+            </div>
           ) : (
             <>No active job. <Link to="/setup" style={{ color: '#93c5fd' }}>Go to Setup</Link></>
           )}
