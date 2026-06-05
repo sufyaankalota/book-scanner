@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import {
-  collection, query, where, onSnapshot,
+  collection, onSnapshot,
 } from 'firebase/firestore';
 import { usePresence } from '../hooks/usePresence';
 import TodayLeaderboard from '../components/TodayLeaderboard';
@@ -47,18 +47,29 @@ export default function PodSelect() {
   const [selectedPods, setSelectedPods] = useState(getAssignedPods() || []);
   const [editDeviceName, setEditDeviceName] = useState(getDeviceName());
 
-  // Load active job to get available pods
+  // Load active job to get available pods.
+  // Avoids where('meta.active','==',true) because a stale cached index on
+  // kiosk laptops can persist an empty result for that query even while
+  // the dashboard sees the live active job. Fetching the (small) full
+  // jobs collection and filtering in JS is reliable.
   useEffect(() => {
-    const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(
-      q,
+      collection(db, 'jobs'),
       (snap) => {
-        if (!snap.empty) {
-          const d = snap.docs[0];
-          setJob({ id: d.id, ...d.data() });
-        } else {
-          setJob(null);
+        let picked = null;
+        snap.forEach((d) => {
+          const data = d.data();
+          if (data?.meta?.active === true) picked = { id: d.id, ...data };
+        });
+        if (!picked) {
+          const open = [];
+          snap.forEach((d) => {
+            const data = d.data();
+            if (!data?.meta?.closedAt && !data?.meta?.queued) open.push({ id: d.id, ...data });
+          });
+          if (open.length === 1) picked = open[0];
         }
+        setJob(picked);
         setJobLoading(false);
         setJobError(null);
       },

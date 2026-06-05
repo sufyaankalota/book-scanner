@@ -771,39 +771,54 @@ export default function Pod() {
   }, [showShortcuts]);
 
   // ─── Load active job ───
+  // We deliberately do NOT use where('meta.active','==',true) here. The
+  // pod's persistent local cache can hold a stale empty result for that
+  // indexed query while a fresh job exists on the server, which surfaces
+  // as "No active job" on every pod even though the dashboard sees the
+  // job just fine. Fetching the full jobs list (always small) and filtering
+  // client-side sidesteps the stale cached index.
   useEffect(() => {
-    const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(collection(db, 'jobs'), (snap) => {
       setJobError(null);
       setJobLoading(false);
-      if (!snap.empty) {
-        const d = snap.docs[0];
-        const picked = { id: d.id, ...d.data() };
-        if (picked) {
-          setJob(picked);
-          if (picked.meta.mode === 'multi' && !picked.manifestMeta?.chunked) {
-            getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
-              const cache = {};
-              ms.forEach((d) => {
-                const data = d.data();
-                cache[d.id] = data.poName;
-              });
-              setManifestCache(cache);
-            }).catch((err) => {
-              console.error('Failed to load manifest:', err);
-              flash('#EF4444', 'Manifest load failed — retry by reloading the page', 4000);
+      let pickedDoc = null;
+      snap.forEach((d) => {
+        const data = d.data();
+        if (data?.meta?.active === true) pickedDoc = { id: d.id, data };
+      });
+      // Fallback: if no doc is explicitly active but there's exactly one
+      // un-closed, un-queued job, treat it as active. This recovers from
+      // a corrupted/missing meta.active flag without halting production.
+      if (!pickedDoc) {
+        const open = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          if (!data?.meta?.closedAt && !data?.meta?.queued) open.push({ id: d.id, data });
+        });
+        if (open.length === 1) pickedDoc = open[0];
+      }
+      if (pickedDoc) {
+        const picked = { id: pickedDoc.id, ...pickedDoc.data };
+        setJob(picked);
+        if (picked.meta.mode === 'multi' && !picked.manifestMeta?.chunked) {
+          getDocs(collection(db, 'jobs', picked.id, 'manifest')).then((ms) => {
+            const cache = {};
+            ms.forEach((d) => {
+              const data = d.data();
+              cache[d.id] = data.poName;
             });
-          } else if (picked.manifestMeta?.chunked) {
-            clearChunkCache();
-            // Title-index for AI cover→ISBN match lives server-side
-            // (matchManifestTitle Cloud Function). No client preload needed.
-          }
-        } else setJob(null);
-      } else setJob(null);
+            setManifestCache(cache);
+          }).catch((err) => {
+            console.error('Failed to load manifest:', err);
+            flash('#EF4444', 'Manifest load failed — retry by reloading the page', 4000);
+          });
+        } else if (picked.manifestMeta?.chunked) {
+          clearChunkCache();
+        }
+      } else {
+        setJob(null);
+      }
     }, (err) => {
-      // Surface listener errors instead of silently rendering "No active job"
-      // (which previously masked rules / index / network failures and made
-      // production look broken when it was actually a connection issue).
       console.error('Active-job listener failed:', err);
       setJobError(err?.message || 'Failed to load job');
       setJobLoading(false);
