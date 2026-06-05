@@ -486,24 +486,53 @@ export default function Pod() {
   };
 
   // Reset caches + subscribe to scanned-isbns when the job changes.
+  // PERF: previously rebuilt the full Set on every snapshot, which on a
+  // 30k-book job meant downloading and re-processing every doc on every
+  // single scan from every pod — froze Chromebooks. Now we:
+  //   1) one-shot getDocs for the initial set (no realtime),
+  //   2) attach a delta listener that only processes ADDED docs from
+  //      other pods (Firestore's docChanges() gives us just the diff),
+  //   3) local scans add to the set optimistically so we don't have to
+  //      wait for the server round-trip to dedup the current operator.
   useEffect(() => {
     seenIsbnRef.current = new Set();
     scannedIsbnsRef.current = new Set();
     setScannedIsbnsLoaded(false);
     if (!job?.id) return;
-    const unsub = onSnapshot(collection(db, 'jobs', job.id, 'scanned-isbns'), (snap) => {
+    let cancelled = false;
+    let unsub = null;
+
+    const col = collection(db, 'jobs', job.id, 'scanned-isbns');
+
+    getDocs(col).then((snap) => {
+      if (cancelled) return;
       const set = new Set();
       snap.forEach((d) => {
         for (const k of isbnDupKeys(d.id)) set.add(k);
       });
       scannedIsbnsRef.current = set;
       setScannedIsbnsLoaded(true);
-    }, () => {
-      // If the listener errors out, fail-open so scanning still works —
-      // optimistic in-session adds will still catch back-to-back dupes.
-      setScannedIsbnsLoaded(true);
+
+      // Attach delta listener AFTER initial load so we don't re-process
+      // the full set. Only ADDED docs matter for dedup (we never remove
+      // from the scanned set). includeMetadataChanges stays false so
+      // local cache writes don't bounce.
+      unsub = onSnapshot(col, (s) => {
+        s.docChanges().forEach((change) => {
+          if (change.type !== 'added') return;
+          for (const k of isbnDupKeys(change.doc.id)) scannedIsbnsRef.current.add(k);
+        });
+      }, () => { /* fail-open: optimistic adds still catch in-session dups */ });
+    }).catch(() => {
+      // Server unreachable — fail-open. Optimistic in-session adds still
+      // catch back-to-back dupes on the same pod.
+      if (!cancelled) setScannedIsbnsLoaded(true);
     });
-    return unsub;
+
+    return () => {
+      cancelled = true;
+      if (unsub) unsub();
+    };
   }, [job?.id]);
 
   // ─── Offline pending count (Firestore cache indicator) ───
