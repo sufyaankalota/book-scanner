@@ -486,48 +486,53 @@ export default function Pod() {
   };
 
   // Reset caches + subscribe to scanned-isbns when the job changes.
-  // PERF: previously rebuilt the full Set on every snapshot, which on a
-  // 30k-book job meant downloading and re-processing every doc on every
-  // single scan from every pod — froze Chromebooks. Now we:
-  //   1) one-shot getDocs for the initial set (no realtime),
-  //   2) attach a delta listener that only processes ADDED docs from
-  //      other pods (Firestore's docChanges() gives us just the diff),
-  //   3) local scans add to the set optimistically so we don't have to
-  //      wait for the server round-trip to dedup the current operator.
+  // PERF: the initial pull is NON-BLOCKING. The pod accepts scans the
+  // instant it boots; the dedup set populates in the background. Worst
+  // case: a cross-pod duplicate scanned in the first few seconds after
+  // boot slips through as a regular scan — the Cloud Function still
+  // logs it, and every subsequent attempt is caught normally.
+  // Same-pod dups are always caught by the in-memory seenIsbnRef Set
+  // (zero cost), which is the only check we did before the hard-block
+  // feature was added today.
   useEffect(() => {
     seenIsbnRef.current = new Set();
     scannedIsbnsRef.current = new Set();
-    setScannedIsbnsLoaded(false);
+    // Mark "loaded" immediately so scanning UI never blocks on this.
+    setScannedIsbnsLoaded(true);
     if (!job?.id) return;
     let cancelled = false;
     let unsub = null;
 
     const col = collection(db, 'jobs', job.id, 'scanned-isbns');
 
-    getDocs(col).then((snap) => {
+    // Fire-and-forget background pull. Use requestIdleCallback when
+    // available so we yield to the scanning UI thread first.
+    const startPull = () => {
       if (cancelled) return;
-      const set = new Set();
-      snap.forEach((d) => {
-        for (const k of isbnDupKeys(d.id)) set.add(k);
-      });
-      scannedIsbnsRef.current = set;
-      setScannedIsbnsLoaded(true);
-
-      // Attach delta listener AFTER initial load so we don't re-process
-      // the full set. Only ADDED docs matter for dedup (we never remove
-      // from the scanned set). includeMetadataChanges stays false so
-      // local cache writes don't bounce.
-      unsub = onSnapshot(col, (s) => {
-        s.docChanges().forEach((change) => {
-          if (change.type !== 'added') return;
-          for (const k of isbnDupKeys(change.doc.id)) scannedIsbnsRef.current.add(k);
+      getDocs(col).then((snap) => {
+        if (cancelled) return;
+        // Merge into existing set rather than replace — any optimistic
+        // local adds during the pull window are preserved.
+        snap.forEach((d) => {
+          for (const k of isbnDupKeys(d.id)) scannedIsbnsRef.current.add(k);
         });
-      }, () => { /* fail-open: optimistic adds still catch in-session dups */ });
-    }).catch(() => {
-      // Server unreachable — fail-open. Optimistic in-session adds still
-      // catch back-to-back dupes on the same pod.
-      if (!cancelled) setScannedIsbnsLoaded(true);
-    });
+
+        // Delta listener AFTER initial load. docChanges() gives us just
+        // the diff so cross-pod scans cost ~1 doc each, not 30k.
+        unsub = onSnapshot(col, (s) => {
+          s.docChanges().forEach((change) => {
+            if (change.type !== 'added') return;
+            for (const k of isbnDupKeys(change.doc.id)) scannedIsbnsRef.current.add(k);
+          });
+        }, () => { /* fail-open */ });
+      }).catch(() => { /* fail-open */ });
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(startPull, { timeout: 5000 });
+    } else {
+      setTimeout(startPull, 0);
+    }
 
     return () => {
       cancelled = true;
