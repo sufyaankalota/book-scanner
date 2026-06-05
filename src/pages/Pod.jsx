@@ -112,6 +112,8 @@ export default function Pod() {
   const [podLocked, setPodLocked] = useState(false);
 
   const [job, setJob] = useState(null);
+  const [jobLoading, setJobLoading] = useState(true);
+  const [jobError, setJobError] = useState(null);
   const [manifestCache, setManifestCache] = useState({});
   // Title index for AI cover-photo → ISBN fuzzy match. Loaded lazily once
   // per job. Stays empty if the manifest doesn't include titles.
@@ -772,6 +774,8 @@ export default function Pod() {
   useEffect(() => {
     const q = query(collection(db, 'jobs'), where('meta.active', '==', true));
     const unsub = onSnapshot(q, (snap) => {
+      setJobError(null);
+      setJobLoading(false);
       if (!snap.empty) {
         const d = snap.docs[0];
         const picked = { id: d.id, ...d.data() };
@@ -796,6 +800,13 @@ export default function Pod() {
           }
         } else setJob(null);
       } else setJob(null);
+    }, (err) => {
+      // Surface listener errors instead of silently rendering "No active job"
+      // (which previously masked rules / index / network failures and made
+      // production look broken when it was actually a connection issue).
+      console.error('Active-job listener failed:', err);
+      setJobError(err?.message || 'Failed to load job');
+      setJobLoading(false);
     });
     return unsub;
   }, []);
@@ -2696,7 +2707,13 @@ export default function Pod() {
 
       {!job && (
         <div style={styles.warning}>
-          No active job. <Link to="/setup" style={{ color: '#93c5fd' }}>Go to Setup</Link>
+          {jobLoading ? (
+            <>Loading active job…</>
+          ) : jobError ? (
+            <>⚠️ Can't reach Firestore — {jobError}. Check internet, then reload.</>
+          ) : (
+            <>No active job. <Link to="/setup" style={{ color: '#93c5fd' }}>Go to Setup</Link></>
+          )}
         </div>
       )}
 
