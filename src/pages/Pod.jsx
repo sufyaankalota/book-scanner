@@ -496,6 +496,52 @@ export default function Pod() {
     return false;
   };
 
+  // ─── Cross-pod ISBN dedup (point-read against scanned-isbns/{isbn}) ───
+  // Same-pod check (seenIsbnRef above) runs FIRST and is free. This is the
+  // network fallback that catches dups created by other pods. It's a single
+  // Firestore document-ID lookup (~15-50ms warm, often edge-cached), capped
+  // at 250ms with fail-open: if wifi is dragging, accept the scan rather
+  // than block the line. Soft indicator surfaces lag count to the floor.
+  const XPOD_TIMEOUT_MS = 250;
+  const [xpodLag, setXpodLag] = useState(0); // sliding count, decays after 60s
+  const checkCrossPodDup = useCallback(async (rawIsbn, jobId) => {
+    if (!jobId || !rawIsbn) return { exists: false };
+    const keys = isbnDupKeys(rawIsbn);
+    if (!keys.length) return { exists: false };
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    const fetchAll = Promise.all(
+      keys.map((k) =>
+        getDoc(doc(db, 'jobs', jobId, 'scanned-isbns', k))
+          .then((snap) => (snap.exists() ? { key: k, data: snap.data() } : null))
+          .catch(() => null),
+      ),
+    );
+    const timeout = new Promise((resolve) => setTimeout(() => resolve('__t__'), XPOD_TIMEOUT_MS));
+    const result = await Promise.race([fetchAll, timeout]);
+    const ms = Math.round(((typeof performance !== 'undefined') ? performance.now() : Date.now()) - t0);
+    if (result === '__t__') {
+      // eslint-disable-next-line no-console
+      console.warn('[xpod] timeout', ms, 'ms', rawIsbn);
+      setXpodLag((n) => n + 1);
+      setTimeout(() => setXpodLag((n) => Math.max(0, n - 1)), 60_000);
+      return { exists: false, timedOut: true };
+    }
+    const hit = result.find(Boolean);
+    if (ms > 80) {
+      // eslint-disable-next-line no-console
+      console.log('[xpod]', ms, 'ms', hit ? 'HIT' : 'miss');
+    }
+    if (!hit) return { exists: false };
+    const data = hit.data || {};
+    return {
+      exists: true,
+      byPod: data.podId || null,
+      byScanner: data.scannerId || null,
+      atTime: data.atClient?.toDate?.() || data.firstSeen?.toDate?.() || null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reset in-memory seen-set when the job changes (or operator switches —
   // handled elsewhere where seenIsbnRef is cleared on operator change).
   useEffect(() => {
@@ -1088,9 +1134,51 @@ export default function Pod() {
       return;
     }
 
+    // CROSS-POD duplicate block — same job, different pod already scanned
+    // it. Single Firestore point-read (15-50ms warm), 250ms fail-open.
+    if (job?.id) {
+      const xpod = await checkCrossPodDup(isbn, job.id);
+      if (xpod.exists) {
+        playDuplicateBeep();
+        const podLabel = xpod.byPod && xpod.byPod !== podId ? `Pod ${xpod.byPod}` : 'another pod';
+        const timeStr = xpod.atTime
+          ? new Date(xpod.atTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '';
+        flash('#EF4444', `🚫 ${isbn} — already on ${podLabel}${timeStr ? ' at ' + timeStr : ''}`, 3500);
+        lastScannedRef.current = { isbn, time: Date.now() };
+        // Mirror locally so a same-pod re-scan in this session is caught
+        // instantly without another network round-trip.
+        seenIsbnRef.current.add(isbn);
+        for (const k of isbnDupKeys(isbn)) scannedIsbnsRef.current.add(k);
+        addDoc(collection(db, 'exceptions'), {
+          jobId: job.id,
+          podId,
+          scannerId: scannerName,
+          isbn,
+          title: o.capturedTitle || null,
+          reason: `Cross-pod duplicate — already scanned on ${podLabel}`,
+          photo: o.capturedPhoto || null,
+          timestamp: serverTimestamp(),
+          source: o.source || 'scan',
+        }).catch(() => {});
+        return;
+      }
+    }
+
     lastScannedRef.current = { isbn, time: Date.now() };
     seenIsbnRef.current.add(isbn);
     for (const k of isbnDupKeys(isbn)) scannedIsbnsRef.current.add(k);
+    // Write our own dedup marker so other pods see this scan immediately
+    // (closes the onScanWrite trigger lag window of ~100-500ms). Merge:true
+    // commutes safely with the trigger's increment-style write.
+    if (job?.id) {
+      setDoc(doc(db, 'jobs', job.id, 'scanned-isbns', isbn), {
+        podId,
+        scannerId: scannerName,
+        atClient: serverTimestamp(),
+        jobId: job.id,
+      }, { merge: true }).catch(() => {});
+    }
     processScan(isbn, o);
   };
 
@@ -1151,12 +1239,31 @@ export default function Pod() {
       }
     }
     // Annotate already-scanned candidates so the picker can mark them disabled.
-    // Uses the job-wide dedup set (covers cross-pod / cross-shift / ISBN-10↓13
-    // alternates), with the in-session set as a fallback.
-    candidates = candidates.map((c) => ({
-      ...c,
-      alreadyScanned: !!(c.isbn && (isAlreadyScannedForJob(c.isbn) || seenIsbnRef.current.has(cleanISBN(c.isbn)))),
-    }));
+    // Same-pod check is instant (in-memory seenIsbnRef); cross-pod check is a
+    // parallel batch of point reads against scanned-isbns/{isbn}, fail-open
+    // on timeout so the picker still appears even with degraded wifi.
+    const candIsbns = candidates.map((c) => (c.isbn ? cleanISBN(c.isbn) : '')).filter(Boolean);
+    let xpodHits = new Set();
+    if (job?.id && candIsbns.length) {
+      const xpodResults = await Promise.allSettled(
+        candIsbns.map((isbn) => checkCrossPodDup(isbn, job.id)),
+      );
+      candIsbns.forEach((isbn, i) => {
+        const r = xpodResults[i];
+        if (r.status === 'fulfilled' && r.value?.exists) xpodHits.add(isbn);
+      });
+    }
+    candidates = candidates.map((c) => {
+      const ci = c.isbn ? cleanISBN(c.isbn) : '';
+      return {
+        ...c,
+        alreadyScanned: !!(c.isbn && (
+          isAlreadyScannedForJob(c.isbn) ||
+          seenIsbnRef.current.has(ci) ||
+          xpodHits.has(ci)
+        )),
+      };
+    });
 
     const shown = displayTitle || candidates[0]?.variant || title || coverText || author || '';
     // Assign a sequence number so this AI book is visually tied to its
@@ -1830,6 +1937,14 @@ export default function Pod() {
       </div>
 
       {!isOnline && <div style={styles.offlineBanner}>{t('offlineBanner')}</div>}
+      {isOnline && xpodLag > 0 && (
+        <div
+          title="Cross-pod duplicate checks are timing out — wifi may be slow. Scans still accepted; dupes will be caught after the fact."
+          style={{ backgroundColor: '#78350f', border: '1px solid #F59E0B', borderRadius: 8, padding: '8px 14px', marginBottom: 8, color: '#fde68a', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
+        >
+          ⚠️ Cross-pod dedup lag — {xpodLag} recent check{xpodLag === 1 ? '' : 's'} timed out (wifi slow)
+        </div>
+      )}
       {showIdleWarning && !isPaused && <div style={styles.idleWarning}>{t('idleWarning')}</div>}
 
       {/* Supervisor message */}

@@ -24,10 +24,15 @@ service cloud.firestore {
         allow write: if false;
       }
 
-      // Server-maintained per-ISBN dedup markers (onScanWrite trigger)
+      // Per-ISBN dedup markers. The onScanWrite trigger maintains the
+      // canonical record, but pods also write their own marker
+      // (merge:true) on every accepted scan so cross-pod dedup checks see
+      // a hit immediately instead of waiting on trigger lag (~100-500ms).
+      // Both writes commute via merge.
       match /scanned-isbns/{isbn} {
         allow read: if true;
-        allow write: if false;
+        allow create, update: if true;
+        allow delete: if false;
       }
     }
 
