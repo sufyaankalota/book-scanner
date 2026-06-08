@@ -502,9 +502,15 @@ export default function Pod() {
   // Firestore document-ID lookup (~15-50ms warm, often edge-cached), capped
   // at 250ms with fail-open: if wifi is dragging, accept the scan rather
   // than block the line. Soft indicator surfaces lag count to the floor.
+  // KILL SWITCH: flip to true to re-enable. Disabled 2026-06-08 — was
+  // causing the same slowness pattern we hit before (multiple pods lagging
+  // simultaneously). Suspected culprits: 2x getDoc per scan (ISBN-10 + 13
+  // alternates), setXpodLag triggering React re-renders, queued setTimeouts.
+  const XPOD_ENABLED = false;
   const XPOD_TIMEOUT_MS = 250;
   const [xpodLag, setXpodLag] = useState(0); // sliding count, decays after 60s
   const checkCrossPodDup = useCallback(async (rawIsbn, jobId) => {
+    if (!XPOD_ENABLED) return { exists: false };
     if (!jobId || !rawIsbn) return { exists: false };
     const keys = isbnDupKeys(rawIsbn);
     if (!keys.length) return { exists: false };
@@ -1168,10 +1174,9 @@ export default function Pod() {
     lastScannedRef.current = { isbn, time: Date.now() };
     seenIsbnRef.current.add(isbn);
     for (const k of isbnDupKeys(isbn)) scannedIsbnsRef.current.add(k);
-    // Write our own dedup marker so other pods see this scan immediately
-    // (closes the onScanWrite trigger lag window of ~100-500ms). Merge:true
-    // commutes safely with the trigger's increment-style write.
-    if (job?.id) {
+    // Client-side dedup marker write disabled with XPOD_ENABLED kill switch.
+    // The CF onScanWrite trigger still maintains the canonical doc.
+    if (XPOD_ENABLED && job?.id) {
       setDoc(doc(db, 'jobs', job.id, 'scanned-isbns', isbn), {
         podId,
         scannerId: scannerName,
