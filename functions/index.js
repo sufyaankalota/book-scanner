@@ -606,3 +606,7 @@ exports.onExceptionWrite = aggregates.onExceptionWrite;
 exports.recomputeJobAggregate = aggregates.recomputeJobAggregate;
 exports.mergeScannerName = aggregates.mergeScannerName;
 
+// ─── Customer portal: full-job XLSX export (scans + exceptions, any range) ───
+const jobReport = require('./jobReport');
+exports.exportJobReport = jobReport.exportJobReport;
+

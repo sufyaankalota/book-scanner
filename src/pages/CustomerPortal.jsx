@@ -70,6 +70,15 @@ export default function CustomerPortal() {
   const [showArchived, setShowArchived] = useState(false);
   // Reports tab – default to last 7 days
   const [reportsShowAll, setReportsShowAll] = useState(false);
+  // Full Job Export (calls exportJobReport CF — pulls directly from Firestore
+  // so it covers the entire job lifetime, not just the live 60-day window).
+  const [exportStart, setExportStart] = useState('');
+  const [exportEnd, setExportEnd] = useState('');
+  const [exportPO, setExportPO] = useState('');
+  const [exportType, setExportType] = useState('both');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [resettingCache, setResettingCache] = useState(false);
   // Branding
   const [brandLogo, setBrandLogo] = useState('');
   const [manifestData, setManifestData] = useState({});
@@ -709,6 +718,90 @@ ${allExcs.map((exc, i) => `<div class="exc">
     setLoginEmail('');
   };
 
+  // Full-job export via Cloud Function. Build the URL with the active filters
+  // and let the browser handle the download. We pre-check with a fetch so
+  // we can surface the "too large" 413 path inline instead of a broken
+  // download dialog.
+  const handleFullJobExport = async () => {
+    if (!job?.id) { setExportError('No active job'); return; }
+    setExporting(true);
+    setExportError('');
+    try {
+      const params = new URLSearchParams({ jobId: job.id, type: exportType });
+      if (exportStart) params.set('startDate', exportStart);
+      if (exportEnd) params.set('endDate', exportEnd);
+      if (exportPO.trim()) params.set('poName', exportPO.trim());
+      const url = `https://us-east1-book-scanner-277a3.cloudfunctions.net/exportJobReport?${params.toString()}`;
+      const resp = await fetch(url);
+      if (resp.status === 413) {
+        const j = await resp.json().catch(() => ({}));
+        setExportError(j.error || 'Report exceeded the row cap — please narrow the date range.');
+        return;
+      }
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}));
+        setExportError(j.error || `Export failed (HTTP ${resp.status})`);
+        return;
+      }
+      const blob = await resp.blob();
+      const cd = resp.headers.get('Content-Disposition') || '';
+      const m = /filename="?([^";]+)"?/.exec(cd);
+      const fileName = m ? m[1] : `${(job?.meta?.name || 'job').replace(/[^a-z0-9_-]+/gi, '_')}_export.xlsx`;
+      downloadBlob(blob, fileName);
+      toast(`Downloaded ${fileName}`);
+    } catch (err) {
+      console.error('Full-job export failed:', err);
+      setExportError(err.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Wipe local cache (IndexedDB, localStorage, sessionStorage, service
+  // workers) and reload. Mirrors the pod-side reset to recover from wedged
+  // Firestore persistence — the symptom the customer reported as "cache
+  // issues". Skips the auth key path: a full wipe forces a re-login, which
+  // is the desired behavior for a true clean-slate reset.
+  const handleResetCache = async () => {
+    if (!confirm('Reset local cache?\n\nThis clears the browser cache for this portal and reloads. You will need to sign in again.')) return;
+    setResettingCache(true);
+    try {
+      // 1) Unregister service workers
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+      } catch (e) { console.warn('SW unregister failed:', e); }
+      // 2) Clear all IndexedDB databases (Firestore persistence lives here)
+      try {
+        if (indexedDB.databases) {
+          const dbs = await indexedDB.databases();
+          await Promise.all((dbs || []).map((d) => new Promise((resolve) => {
+            if (!d?.name) return resolve();
+            const req = indexedDB.deleteDatabase(d.name);
+            req.onsuccess = req.onerror = req.onblocked = () => resolve();
+          })));
+        } else {
+          // Older Safari — guess at the known Firestore DB names
+          ['firestore/[DEFAULT]/book-scanner-277a3/main', 'firebaseLocalStorageDb'].forEach((n) => {
+            try { indexedDB.deleteDatabase(n); } catch (_) { /* noop */ }
+          });
+        }
+      } catch (e) { console.warn('IDB clear failed:', e); }
+      // 3) Clear browser storage
+      try { localStorage.clear(); } catch (_) { /* noop */ }
+      try { sessionStorage.clear(); } catch (_) { /* noop */ }
+      // 4) Hard reload (location.reload(true) is deprecated; cache-busting query works fine)
+      const sep = window.location.href.includes('?') ? '&' : '?';
+      window.location.href = `${window.location.pathname}${sep}_cb=${Date.now()}`;
+    } catch (err) {
+      console.error('Reset cache failed:', err);
+      alert('Reset failed: ' + (err.message || err));
+      setResettingCache(false);
+    }
+  };
+
   // LOGIN SCREEN
   if (!authenticated) {
     return (
@@ -765,7 +858,16 @@ ${allExcs.map((exc, i) => `<div class="exc">
             </select>
           )}
         </div>
-        <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={handleResetCache}
+            disabled={resettingCache}
+            style={{ ...st.logoutBtn, background: '#1a1a1a', color: '#fbbf24', borderColor: '#3b2f0a' }}
+            title="Clears local browser cache (IndexedDB, localStorage, service workers) and reloads. Use this if the portal seems stuck or stale.">
+            {resettingCache ? '…' : '🧹 Reset Cache'}
+          </button>
+          <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
+        </div>
       </div>
 
       {job && (
@@ -1136,6 +1238,68 @@ ${allExcs.map((exc, i) => `<div class="exc">
 
       {activeTab === 'reports' && (
         <div>
+          {/* Full-job export — pulls directly from Firestore via the
+              exportJobReport Cloud Function, so it covers the entire job
+              lifetime (not just the live 60-day subscription window). */}
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>📊 Full Job Export (Beginning of Job → Today)</h3>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>
+              Generate a custom XLSX directly from the database. Leave dates blank to cover the entire job. Use the PO filter to narrow to a single purchase order.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: '#aaa', fontSize: 12, fontWeight: 600 }}>Start date</span>
+                <input type="date" value={exportStart} onChange={(e) => setExportStart(e.target.value)} style={st.input} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: '#aaa', fontSize: 12, fontWeight: 600 }}>End date</span>
+                <input type="date" value={exportEnd} onChange={(e) => setExportEnd(e.target.value)} style={st.input} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: '#aaa', fontSize: 12, fontWeight: 600 }}>PO (optional)</span>
+                <input
+                  type="text"
+                  list="po-export-list"
+                  value={exportPO}
+                  onChange={(e) => setExportPO(e.target.value)}
+                  placeholder="e.g. PO-12345"
+                  style={st.input}
+                />
+                <datalist id="po-export-list">
+                  {Object.keys(jobProgress?.byPO || {}).sort().map((po) => (
+                    <option key={po} value={po} />
+                  ))}
+                </datalist>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ color: '#aaa', fontSize: 12, fontWeight: 600 }}>Report type</span>
+                <select value={exportType} onChange={(e) => setExportType(e.target.value)} style={st.input}>
+                  <option value="both">Scans + Exceptions</option>
+                  <option value="scans">Scans only</option>
+                  <option value="exceptions">Exceptions only</option>
+                </select>
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleFullJobExport}
+                disabled={exporting || !job?.id}
+                style={{
+                  background: '#2563eb', color: '#fff', border: 'none',
+                  borderRadius: 6, padding: '10px 16px', fontSize: 14, fontWeight: 700,
+                  cursor: exporting ? 'wait' : 'pointer', opacity: exporting ? 0.6 : 1,
+                }}>
+                {exporting ? '⏳ Generating…' : '⬇️ Download XLSX'}
+              </button>
+              <span style={{ color: '#666', fontSize: 12 }}>
+                Reports are capped at 250,000 rows. Narrow the date range if you hit the cap.
+              </span>
+            </div>
+            {exportError && (
+              <p style={{ color: '#EF4444', marginTop: 10, fontSize: 13 }}>{exportError}</p>
+            )}
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <button onClick={() => setReportsShowAll(!reportsShowAll)}
               style={{ ...st.smallBtn, color: reportsShowAll ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
