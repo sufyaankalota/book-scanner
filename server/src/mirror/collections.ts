@@ -10,8 +10,17 @@ function toDate(v: unknown): Date | null {
   return typeof ts.toDate === 'function' ? ts.toDate() : null;
 }
 
+// Postgres TEXT and JSONB both reject 0x00 bytes inside string values. Some
+// Firestore docs (especially exception payloads) contain stray NULs from
+// upstream scanner SDKs. Strip them everywhere we hand strings to Prisma.
+function stripNul(v: string): string {
+  return v.includes('\u0000') ? v.replace(/\u0000/g, '') : v;
+}
+
 function s(v: unknown): string | null {
-  return typeof v === 'string' && v.length > 0 ? v : null;
+  if (typeof v !== 'string' || v.length === 0) return null;
+  const cleaned = stripNul(v);
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 function n(v: unknown): number | null {
@@ -22,11 +31,25 @@ function b(v: unknown): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
+function sanitizeJson(v: unknown): unknown {
+  if (typeof v === 'string') return stripNul(v);
+  if (v === null || v === undefined) return v;
+  if (Array.isArray(v)) return v.map(sanitizeJson);
+  if (typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[stripNul(k)] = sanitizeJson(val);
+    }
+    return out;
+  }
+  return v;
+}
+
 // Prisma nullable JSON requires `Prisma.JsonNull` to write SQL NULL; passing
 // `null` is a type error. Use this helper for every JSONB column.
 function j(v: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
   if (v === null || v === undefined) return Prisma.JsonNull;
-  return v as Prisma.InputJsonValue;
+  return sanitizeJson(v) as Prisma.InputJsonValue;
 }
 
 /** scans/{scanId} → Postgres Scan row */
