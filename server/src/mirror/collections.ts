@@ -251,8 +251,11 @@ export function mirrorDailySummaries(db: Firestore) {
       byPO: j(d.byPO),
       firestoreUpdatedAt: new Date(),
     };
+    // Use the compound unique key — Firestore sometimes has multiple docs
+    // for the same (jobId, date) pair under different IDs (legacy data),
+    // and the @@unique constraint would reject an insert under a new id.
     await prisma.dailySummary.upsert({
-      where: { id: doc.id },
+      where: { jobId_date: { jobId, date } },
       create: { id: doc.id, ...data },
       update: data,
     });
