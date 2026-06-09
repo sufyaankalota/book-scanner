@@ -31,6 +31,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { computeDailyTarget } from '../utils/target';
 import { normalizeOperatorKey, displayOperatorName, groupByOperator } from '../utils/operator';
 import RolePayEditor from '../components/RolePayEditor';
+import { useJobAggregate } from '../hooks/useJobAggregate';
+import { isScanEngineConfigured } from '../lib/scanEngine';
 
 export default function Dashboard() {
   const { show: toast } = useToast();
@@ -404,15 +406,22 @@ export default function Dashboard() {
 
   // All-job aggregate totals (maintained server-side by onScanWrite trigger).
   // For long-running jobs we cannot subscribe to the full scans collection.
+  // Prefer scan-engine polling; fall back to a direct Firestore listener so
+  // environments without VITE_SCAN_ENGINE_URL keep working unchanged.
   const [jobAggregate, setJobAggregate] = useState(null);
   const [recomputing, setRecomputing] = useState(false);
+  const pgAggregate = useJobAggregate(job?.id || null);
   useEffect(() => {
-    if (!job) { setJobAggregate(null); return; }
+    if (isScanEngineConfigured) {
+      setJobAggregate(pgAggregate);
+      return undefined;
+    }
+    if (!job) { setJobAggregate(null); return undefined; }
     const unsub = onSnapshot(doc(db, 'jobs', job.id, 'aggregates', 'totals'), (snap) => {
       setJobAggregate(snap.exists() ? snap.data() : null);
     });
     return unsub;
-  }, [job]);
+  }, [job, pgAggregate]);
 
   // Auto-export scheduling
   useEffect(() => {
