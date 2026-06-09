@@ -17,6 +17,12 @@ const schema = z.object({
   FIREBASE_PROJECT_ID: z.string().optional(),
   // Shared secret guarding /api/portal/* read endpoints. Required in prod.
   PORTAL_API_KEY: z.string().optional(),
+  // Dedup service — shared secret for /api/dedup + /ws/dedup. Falls back to
+  // PORTAL_API_KEY when unset so we don't need two keys in single-tenant setups.
+  DEDUP_API_KEY: z.string().optional(),
+  // Default TTL (seconds) on a dedup claim. After this the barcode can be
+  // re-scanned. 24h is the safe default for a daily-job workflow.
+  DEDUP_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
 });
 
 const parsed = schema.parse(process.env);
@@ -24,6 +30,7 @@ const parsed = schema.parse(process.env);
 export const config = {
   ...parsed,
   corsOrigins: parsed.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+  dedupApiKey: parsed.DEDUP_API_KEY ?? parsed.PORTAL_API_KEY,
   isProd: parsed.NODE_ENV === 'production',
 } as const;
 
