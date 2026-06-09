@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Per-collection cursor for the Firestore → Postgres mirror. The mirror
+// worker picks up where it left off after a restart so we never re-process
+// or miss documents. Models for the mirrored data itself (Scan, Exception,
+// JobAggregate, etc.) land in subsequent migrations once the bootstrap
+// deploy is green.
+model SyncState {
+  collection String   @id
+  cursor     String?
+  lastRunAt  DateTime @updatedAt
+  rowsTotal  BigInt   @default(0)
+  notes      String?
+}
