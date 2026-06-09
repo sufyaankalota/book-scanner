@@ -15,6 +15,8 @@ const schema = z.object({
   // Base64-encoded service-account JSON. Decoded at startup.
   FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
   FIREBASE_PROJECT_ID: z.string().optional(),
+  // Shared secret guarding /api/portal/* read endpoints. Required in prod.
+  PORTAL_API_KEY: z.string().optional(),
 });
 
 const parsed = schema.parse(process.env);

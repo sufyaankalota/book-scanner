@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import { config } from './config';
 import { healthRouter } from './api/health';
+import { portalRouter } from './api/portal';
 import { logger } from './lib/logger';
 import { startAllMirrors } from './mirror';
 
@@ -26,6 +27,7 @@ app.use(
 );
 
 app.use(healthRouter());
+app.use('/api/portal', portalRouter());
 
 app.get('/', (_req, res) => {
   res.json({ service: 'prepfort-scan-engine', status: 'ok' });
