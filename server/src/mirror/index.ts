@@ -5,6 +5,7 @@ import {
   mirrorDailySummaries,
   mirrorExceptions,
   mirrorJobs,
+  mirrorPresence,
   mirrorScans,
 } from './collections';
 
@@ -31,6 +32,7 @@ export function startAllMirrors(): Handle | null {
     mirrorExceptions(db),
     mirrorAggregates(db),
     mirrorDailySummaries(db),
+    mirrorPresence(db),
   ];
 
   return {

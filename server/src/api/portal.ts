@@ -270,5 +270,19 @@ export function portalRouter(): Router {
     res.json({ summaries });
   });
 
+  // GET /api/portal/presence
+  // Returns all pod heartbeat rows. Replaces the portal's 10s-poll Firestore
+  // listener on the entire `presence` collection. Adds a computed `isOnline`
+  // flag (true when lastSeen is within the staleness window).
+  r.get('/presence', async (_req: Request, res: Response) => {
+    const rows = await prisma.presence.findMany({ orderBy: { podId: 'asc' } });
+    const cutoff = Date.now() - 30_000; // 30s grace — heartbeat is every 10s
+    const pods = rows.map((p) => ({
+      ...p,
+      isOnline: p.online && p.lastSeen ? p.lastSeen.getTime() >= cutoff : false,
+    }));
+    res.json({ pods });
+  });
+
   return r;
 }

@@ -284,3 +284,29 @@ export function mirrorDailySummaries(db: Firestore) {
     });
   });
 }
+
+/** presence/{podId} → Presence row. One doc per pod, overwritten every ~10s. */
+export function mirrorPresence(db: Firestore) {
+  return snapshotMirror(db, 'presence', async (doc: DocumentSnapshot) => {
+    const d = doc.data();
+    if (!d) return;
+    const data = {
+      podId: doc.id,
+      scanners: Array.isArray(d.scanners) ? d.scanners.map((x) => String(x)) : [],
+      operator: s(d.operator),
+      status: s(d.status),
+      online: b(d.online) ?? false,
+      onBreak: b(d.onBreak) ?? false,
+      breakSecondsRemaining: n(d.breakSecondsRemaining),
+      lastSeen: toDate(d.lastSeen),
+      message: s(d.message),
+      notes: s(d.notes),
+      firestoreUpdatedAt: new Date(),
+    };
+    await prisma.presence.upsert({
+      where: { podId: doc.id },
+      create: data,
+      update: data,
+    });
+  });
+}

@@ -149,3 +149,22 @@ model DailySummary {
   @@unique([jobId, date])
   @@index([jobId, date])
 }
+
+// Pod heartbeat snapshot. One row per pod; pods overwrite every ~10s while
+// online. lastSeen is the cursor the portal uses to decide if a pod is alive.
+model Presence {
+  podId                 String   @id
+  scanners              String[]
+  operator              String?
+  status                String?  // operator | pair_scanner | ready | scanning | paused | offline
+  online                Boolean  @default(false)
+  onBreak               Boolean  @default(false)
+  breakSecondsRemaining Int?
+  lastSeen              DateTime?
+  message               String?
+  notes                 String?
+  firestoreUpdatedAt    DateTime @default(now())
+
+  @@index([lastSeen])
+  @@index([online])
+}
