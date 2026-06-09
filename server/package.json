@@ -15,12 +15,14 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
+    "backfill": "tsx src/scripts/backfill.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "firebase-admin": "^12.7.0",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.2",
     "pino": "^9.5.0",

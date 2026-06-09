@@ -7,15 +7,145 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Per-collection cursor for the Firestore → Postgres mirror. The mirror
-// worker picks up where it left off after a restart so we never re-process
-// or miss documents. Models for the mirrored data itself (Scan, Exception,
-// JobAggregate, etc.) land in subsequent migrations once the bootstrap
-// deploy is green.
+// ---------------------------------------------------------------------------
+// Firestore → Postgres mirror state
+// ---------------------------------------------------------------------------
+// Per-collection cursor for the mirror. The mirror worker picks up where it
+// left off after a restart so we never re-process or miss documents.
 model SyncState {
   collection String   @id
   cursor     String?
   lastRunAt  DateTime @updatedAt
   rowsTotal  BigInt   @default(0)
   notes      String?
+}
+
+// ---------------------------------------------------------------------------
+// Mirrored Firestore data
+// ---------------------------------------------------------------------------
+// IDs match the Firestore document IDs verbatim so the mirror can do simple
+// upserts (`prisma.scan.upsert({ where: { id }, ... })`) without a lookup
+// table. firestoreUpdatedAt tracks the last server-side change we saw so we
+// can ignore stale events that arrive out of order.
+
+model Job {
+  id                 String   @id
+  name               String?
+  mode               String?  // "single" | "multi"
+  active             Boolean  @default(false)
+  queued             Boolean  @default(false)
+  location           String?
+  dailyTarget        Int?
+  workingHours       Float?
+  pods               String[] // assigned pod IDs
+  floaters           Int?
+  runners            Int?
+  supervisors        Int?
+  poColors           Json?    // { [poName]: hex } — opaque, portal renders as-is
+  poNumbers          Json?    // { [poName]: number }
+  exceptionColor     String?
+  exceptionNumber    Int?
+  manifestChunked    Boolean  @default(false)
+  manifestNumChunks  Int?
+  manifestHasTitles  Boolean?
+  sourceUploadId     String?
+  createdAt          DateTime?
+  activatedAt        DateTime?
+  closedAt           DateTime?
+  firestoreUpdatedAt DateTime @default(now())
+
+  scans       Scan[]
+  exceptions  Exception[]
+  aggregate   JobAggregate?
+  dailies     DailySummary[]
+
+  @@index([active])
+  @@index([closedAt])
+}
+
+// Every barcode scan from a pod. Highest write volume — expect millions of rows
+// per long-running job. Indexes match the portal/export query shapes:
+//   * (jobId, timestamp)        — date-range fetches
+//   * (jobId, poName, timestamp) — per-PO drilldowns
+//   * (jobId, type, timestamp)   — split standard vs exception
+//   * (jobId, source, timestamp) — billing tier rollups
+model Scan {
+  id                 String   @id
+  jobId              String
+  podId              String
+  scannerId          String
+  isbn               String
+  poName             String?
+  type               String   // "standard" | "exception"
+  source             String?  // null | "manual" | "ai-match"
+  capturedTitle      String?
+  matchScore         Float?
+  duplicateOverride  Boolean?
+  timestamp          DateTime
+  firestoreUpdatedAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, timestamp])
+  @@index([jobId, poName, timestamp])
+  @@index([jobId, type, timestamp])
+  @@index([jobId, source, timestamp])
+  @@index([jobId, scannerId, timestamp])
+  @@index([isbn])
+}
+
+// Manually-logged exceptions (operator marks book as no-match/damaged/etc).
+// Auto-exceptions (ISBN not in manifest) live in `scans` with type="exception".
+model Exception {
+  id                 String   @id
+  jobId              String
+  podId              String
+  scannerId          String?
+  isbn               String?
+  title              String?
+  reason             String
+  hasPhoto           Boolean  @default(false) // photo blob itself stays in Firestore
+  timestamp          DateTime
+  firestoreUpdatedAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, timestamp])
+}
+
+// Mirror of `jobs/{jobId}/aggregates/totals` — small per-job rollup doc the
+// portal reads for KPI tiles. One row per job.
+model JobAggregate {
+  jobId                 String   @id
+  totalScanned          Int      @default(0)
+  totalExceptions       Int      @default(0)
+  totalManual           Int      @default(0)
+  totalAiMatch          Int      @default(0)
+  totalManualExceptions Int      @default(0)
+  byPO                  Json?    // { [poName]: count }
+  updatedAt             DateTime?
+  recomputedAt          DateTime?
+  firestoreUpdatedAt    DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+// Per-day summary the portal "Reports" tab renders. Sourced from the
+// `daily-summaries` collection. id = Firestore doc id (typically
+// "${jobId}_${YYYY-MM-DD}").
+model DailySummary {
+  id                 String   @id
+  jobId              String
+  date               String   // ISO date YYYY-MM-DD (kept as string to match Firestore)
+  totalScans         Int      @default(0)
+  totalExceptions    Int      @default(0)
+  totalManual        Int      @default(0)
+  totalAiMatch       Int      @default(0)
+  byPO               Json?    // { [poName]: count }
+  firestoreUpdatedAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, date])
+  @@index([jobId, date])
 }
