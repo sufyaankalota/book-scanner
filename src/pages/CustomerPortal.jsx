@@ -169,12 +169,12 @@ export default function CustomerPortal() {
 
   useEffect(() => {
     if (!authenticated || !job) return;
-    // Bound the live listener to the last 14 days. Long-running jobs accumulate
+    // Bound the live listener to the last 60 days. Long-running jobs accumulate
     // tens of thousands of scan docs; subscribing to the full collection makes
     // the portal load take 15-30s and pegs the browser on every new scan.
-    // The Daily / Reports tabs only show 7 days by default, so 14 covers the
-    // visible UI with headroom. Lifetime totals come from the aggregates doc.
-    const since = new Date(); since.setDate(since.getDate() - 14); since.setHours(0, 0, 0, 0);
+    // Lifetime totals come from the aggregates doc; older per-scan detail
+    // (>60 days) is not currently exposed in the UI.
+    const since = new Date(); since.setDate(since.getDate() - 60); since.setHours(0, 0, 0, 0);
     const q = query(
       collection(db, 'scans'),
       where('jobId', '==', job.id),
@@ -196,7 +196,7 @@ export default function CustomerPortal() {
 
   useEffect(() => {
     if (!authenticated || !job) return;
-    const since = new Date(); since.setDate(since.getDate() - 14); since.setHours(0, 0, 0, 0);
+    const since = new Date(); since.setDate(since.getDate() - 60); since.setHours(0, 0, 0, 0);
     const q = query(
       collection(db, 'exceptions'),
       where('jobId', '==', job.id),
@@ -341,7 +341,7 @@ export default function CustomerPortal() {
   }, [allScans, allExceptions]);
 
   // Lifetime totals from the aggregates doc. Falls back to filtering the
-  // last-14-days slice if the aggregates trigger hasn't backfilled this job yet.
+  // last-60-days slice if the aggregates trigger hasn't backfilled this job yet.
   const totalRegularCount = aggregates
     ? Math.max(0, (aggregates.totalScanned || 0) - (aggregates.totalManual || 0) - (aggregates.totalAiMatch || 0))
     : allScans.filter((s) => bucketOf(s) === 'regular').length;
@@ -375,7 +375,7 @@ export default function CustomerPortal() {
         byPO[po] = { scanned: n, expected: 0 };
       }
     } else {
-      // Fallback: derive from the last-14-days slice (will under-count for older jobs).
+      // Fallback: derive from the last-60-days slice (will under-count for older jobs).
       for (const s of allScans.filter((x) => x.type === 'standard')) {
         const po = s.poName || 'Unassigned';
         if (!byPO[po]) byPO[po] = { scanned: 0, expected: 0 };
