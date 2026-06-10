@@ -19,7 +19,8 @@ const isoDate = z
   .refine((s) => !Number.isNaN(Date.parse(s)), { message: 'invalid ISO date' });
 
 const listScansQuery = z.object({
-  jobId: z.string().min(1),
+  // jobId is optional so the Reports page can query across all jobs.
+  jobId: z.string().min(1).optional(),
   since: isoDate.optional(),
   until: isoDate.optional(),
   type: z.enum(['standard', 'exception']).optional(),
@@ -41,7 +42,8 @@ const listExceptionsQuery = z.object({
 });
 
 const summaryQuery = z.object({
-  jobId: z.string().min(1),
+  // jobId is optional so the Reports page can query across all jobs.
+  jobId: z.string().min(1).optional(),
   start: isoDate,
   end: isoDate,
 });
@@ -59,7 +61,10 @@ const dailyBreakdownQuery = z.object({
 });
 
 const operatorsQuery = z.object({
-  jobId: z.string().min(1),
+  // jobId optional so Reports can query across all jobs.
+  jobId: z.string().min(1).optional(),
+  since: isoDate.optional(),
+  until: isoDate.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -180,34 +185,42 @@ export function portalRouter(): Router {
       return;
     }
 
+    const baseWhere = {
+      ...(jobId ? { jobId } : {}),
+      timestamp: { gte: startDate, lte: endDate },
+    } as const;
+
     // Two queries: per-day buckets, and aggregate splits by type/source.
     const [perDay, byType, bySource, exceptionsCount] = await Promise.all([
       prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
         SELECT date_trunc('day', "timestamp") AS day, COUNT(*) AS count
         FROM "Scan"
-        WHERE "jobId" = ${jobId}
-          AND "timestamp" >= ${startDate}
+        WHERE "timestamp" >= ${startDate}
           AND "timestamp" <= ${endDate}
+          AND (${jobId ?? null}::text IS NULL OR "jobId" = ${jobId ?? null})
         GROUP BY 1
         ORDER BY 1
       `,
       prisma.scan.groupBy({
         by: ['type'],
-        where: { jobId, timestamp: { gte: startDate, lte: endDate } },
+        where: baseWhere,
         _count: { _all: true },
       }),
       prisma.scan.groupBy({
         by: ['source'],
-        where: { jobId, timestamp: { gte: startDate, lte: endDate } },
+        where: baseWhere,
         _count: { _all: true },
       }),
       prisma.exception.count({
-        where: { jobId, timestamp: { gte: startDate, lte: endDate } },
+        where: {
+          ...(jobId ? { jobId } : {}),
+          timestamp: { gte: startDate, lte: endDate },
+        },
       }),
     ]);
 
     res.json({
-      jobId,
+      jobId: jobId ?? null,
       range: { start, end },
       perDay: perDay.map((p) => ({ day: p.day.toISOString().slice(0, 10), count: Number(p.count) })),
       byType: Object.fromEntries(byType.map((r) => [r.type, r._count._all])),
@@ -387,17 +400,20 @@ export function portalRouter(): Router {
     res.json({ jobId, range: { start, end }, breakdown });
   });
 
-  // GET /api/portal/operators?jobId=
-  // Per-operator totals (scans + exceptions) across a job's lifetime. Replaces
+  // GET /api/portal/operators?jobId=&since=&until=
+  // Per-operator totals (scans + exceptions). jobId optional (cross-job
+  // rollup). since/until optional for range-bounded queries. Replaces
   // JobHistory's habit of pulling every scan doc just to GROUP BY scannerId
-  // in-browser.
+  // in-browser, and powers the Reports per-operator breakdown.
   r.get('/operators', async (req: Request, res: Response) => {
     const parsed = operatorsQuery.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_query', issues: parsed.error.issues });
       return;
     }
-    const { jobId } = parsed.data;
+    const { jobId, since, until } = parsed.data;
+    const sinceDate = since ? new Date(since) : null;
+    const untilDate = until ? new Date(until) : null;
     const rows = await prisma.$queryRaw<
       Array<{ scanner_id: string; scans: bigint; exceptions: bigint }>
     >`
@@ -406,7 +422,10 @@ export function portalRouter(): Router {
         COUNT(*) AS scans,
         COUNT(*) FILTER (WHERE type = 'exception') AS exceptions
       FROM "Scan"
-      WHERE "jobId" = ${jobId} AND "scannerId" IS NOT NULL AND "scannerId" <> ''
+      WHERE "scannerId" IS NOT NULL AND "scannerId" <> ''
+        AND (${jobId ?? null}::text IS NULL OR "jobId" = ${jobId ?? null})
+        AND (${sinceDate}::timestamptz IS NULL OR "timestamp" >= ${sinceDate})
+        AND (${untilDate}::timestamptz IS NULL OR "timestamp" <= ${untilDate})
       GROUP BY "scannerId"
       ORDER BY 2 DESC
     `;
@@ -415,7 +434,7 @@ export function portalRouter(): Router {
       scans: Number(row.scans),
       exceptions: Number(row.exceptions),
     }));
-    res.json({ jobId, operators });
+    res.json({ jobId: jobId ?? null, operators });
   });
 
   return r;

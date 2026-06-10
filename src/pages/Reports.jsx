@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { verifyPassword } from '../utils/crypto';
 import { logAudit } from '../utils/audit';
 import { cleanISBN } from '../utils/isbn';
+import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 
 const STANDARD_RATE = 0.50;
 const EXCEPTION_RATE = 0.85;
@@ -181,17 +182,7 @@ export default function Reports() {
         const canShowOperators = numDays <= OPERATOR_BREAKDOWN_MAX_DAYS;
         setOperatorBreakdownDisabled(!canShowOperators);
 
-        // ─── Range-wide aggregates (KPI cards) ───
-        // Each is one Firestore round-trip with zero doc transfer.
-        const rangeQ = (name, extra = []) => query(
-          collection(db, name), ...jobFilter, ...rangeFilters, ...extra,
-        );
-        const safeCount = async (q, label) => {
-          try { return (await getCountFromServer(q)).data().count; }
-          catch (e) { console.warn(`[Reports] count(${label}) failed:`, e.message); throw e; }
-        };
-
-        // dailyPay query (string date field)
+        // dailyPay query (string date field) — same regardless of source
         const startKey = dayKey(start);
         const endKey = dayKey(new Date(end.getTime() - 86400000));
         const qPay = jobId !== 'all'
@@ -202,6 +193,94 @@ export default function Reports() {
 
         // ai-usage docs (small collection — fetch fully, derive everything client-side)
         const qAi = query(collection(db, 'ai-usage'), ...jobFilter, ...rangeFilters);
+
+        // ─── Scan-engine fast path ───
+        // When configured, replace N per-day Firestore count queries + 5
+        // range-wide count queries with a single SQL aggregation on Postgres,
+        // and the per-day scan-doc fetch with keyset pagination on the
+        // mirror. Works for cross-job (jobId === 'all') too.
+        if (isScanEngineConfigured) {
+          const summaryArgs = {
+            jobId: jobId !== 'all' ? jobId : undefined,
+            start: start.toISOString(),
+            end: end.toISOString(),
+          };
+          const HARD_LIMIT = 100_000;
+          const PAGE_SIZE = 5_000;
+          const scansPromise = canShowOperators ? (async () => {
+            const out = [];
+            let cursor;
+            while (out.length < HARD_LIMIT) {
+              const { scans, nextCursor } = await scanEngine.listScans({
+                ...summaryArgs,
+                since: summaryArgs.start,
+                until: summaryArgs.end,
+                limit: PAGE_SIZE,
+                cursor,
+              });
+              for (const s of scans) {
+                // Shape parity with Firestore docs the rest of the page expects.
+                out.push({ ...s, timestamp: { toDate: () => new Date(s.timestamp) } });
+              }
+              if (!nextCursor) break;
+              cursor = nextCursor;
+            }
+            return out;
+          })() : Promise.resolve([]);
+
+          const [summaryRes, scanDocs, payRes, aiRes] = await Promise.all([
+            scanEngine.scanSummary(summaryArgs).catch((e) => {
+              console.error('summary fetch failed', e); return null;
+            }),
+            scansPromise.catch((e) => { console.error('scan fetch failed', e); return []; }),
+            getDocs(qPay).catch((e) => { console.error('pay fetch failed', e); return { docs: [] }; }),
+            getDocs(qAi).catch((e) => { console.error('ai-usage fetch failed', e); return { docs: [] }; }),
+          ]);
+          if (cancelled || reqIdRef.current !== myReqId) return;
+
+          // Reshape summary into the same dailyArr/summary state the legacy
+          // path produced so downstream useMemos don't change.
+          const perDay = summaryRes?.perDay || [];
+          const dailyArr = perDay.map((p) => ({
+            date: p.day, scans: p.count, exceptions: 0, aiCalls: 0, aiCost: 0,
+          }));
+          // Ensure every requested day appears so charts have continuous data.
+          const dayKeys = new Set(dailyArr.map((r) => r.date));
+          for (const [d] of dayWindows) {
+            const k = dayKey(d);
+            if (!dayKeys.has(k)) dailyArr.push({ date: k, scans: 0, exceptions: 0, aiCalls: 0, aiCost: 0 });
+          }
+          const byType = summaryRes?.byType || {};
+          const bySource = summaryRes?.bySource || {};
+          const aiDocs = aiRes.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const aiCallsTotal = aiDocs.length;
+          const aiCostTotal = aiDocs.reduce((s, u) => s + (Number(u.costUsd) || 0), 0);
+          setDailyAgg(dailyArr.sort((a, b) => a.date.localeCompare(b.date)));
+          setScans(scanDocs);
+          setPay(payRes.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setAiUsage(aiDocs);
+          setSummary({
+            standardScans: byType.standard ?? 0,
+            exceptionScans: byType.exception ?? 0,
+            manualScans: bySource.manual ?? 0,
+            aiMatchScans: bySource['ai-match'] ?? 0,
+            loggedExceptions: summaryRes?.exceptionsCount ?? 0,
+            aiCalls: aiCallsTotal,
+            aiCost: aiCostTotal,
+          });
+          return;
+        }
+
+        // ─── Legacy Firestore path (scan-engine not configured) ───
+        // Range-wide aggregates (KPI cards). Each is one Firestore round-trip
+        // with zero doc transfer.
+        const rangeQ = (name, extra = []) => query(
+          collection(db, name), ...jobFilter, ...rangeFilters, ...extra,
+        );
+        const safeCount = async (q, label) => {
+          try { return (await getCountFromServer(q)).data().count; }
+          catch (e) { console.warn(`[Reports] count(${label}) failed:`, e.message); throw e; }
+        };
 
         // ─── Per-day scans count (one round-trip per day, all parallel) ───
         const fetchDayScansCount = async ([dStart, dEnd]) => {
