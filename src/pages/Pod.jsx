@@ -560,7 +560,7 @@ export default function Pod() {
             Promise.all(
               keys.map((k) =>
                 scanEngine
-                  .claim({ jobId, barcode: k, podId, scannerId: scannerName, ttlSeconds: XPOD_CLAIM_TTL_SECONDS })
+                  .claim({ jobId, barcode: k, podId, scannerId: operatorName, ttlSeconds: XPOD_CLAIM_TTL_SECONDS })
                   .then((r) => ({ key: k, ...r }))
                   .catch((err) => ({ key: k, error: String(err) })),
               ),
@@ -638,7 +638,7 @@ export default function Pod() {
         return { owned: true, timedOut: true };
       }
     },
-    [podId, scannerName, noteXpodLag, XPOD_BACKEND], // eslint-disable-line react-hooks/exhaustive-deps
+    [podId, operatorName, noteXpodLag, XPOD_BACKEND], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Read-only check (no claim). Used by AI candidate enrichment to grey out
@@ -1275,10 +1275,11 @@ export default function Pod() {
       playDuplicateBeep();
       flash('#EF4444', `🚫 ${isbn} — duplicate, logged as exception`, 2500);
       lastScannedRef.current = { isbn, time: Date.now() };
+      const dupScannerId = displayOperatorName(operatorName) || operatorName;
       addDoc(collection(db, 'exceptions'), {
         jobId: job.id,
         podId,
-        scannerId: scannerName,
+        scannerId: dupScannerId,
         isbn,
         title: o.capturedTitle || null,
         reason: 'Duplicate scan — already scanned for this job',
@@ -1311,10 +1312,11 @@ export default function Pod() {
         // instantly without another network round-trip.
         seenIsbnRef.current.add(isbn);
         for (const k of isbnDupKeys(isbn)) scannedIsbnsRef.current.add(k);
+        const xpodScannerId = displayOperatorName(operatorName) || operatorName;
         addDoc(collection(db, 'exceptions'), {
           jobId: job.id,
           podId,
-          scannerId: scannerName,
+          scannerId: xpodScannerId,
           isbn,
           title: o.capturedTitle || null,
           reason: `Cross-pod duplicate — already scanned on ${podLabel}`,
