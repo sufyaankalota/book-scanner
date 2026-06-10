@@ -248,6 +248,38 @@ async function checkPortalReads(): Promise<{ jobId: string | null }> {
     } else {
       fail('GET /api/portal/daily-summaries', `status=${ds.status}`);
     }
+
+    const today2 = new Date();
+    const start2 = new Date(today2); start2.setDate(today2.getDate() - 60);
+    const dbk = await http(
+      'GET',
+      `/api/portal/daily-breakdown?jobId=${firstJobId}&start=${start2.toISOString()}&end=${today2.toISOString()}`,
+    );
+    if (dbk.status === 200 && Array.isArray(dbk.json?.breakdown)) {
+      const sample = dbk.json.breakdown[0];
+      const shapeOk = !sample || (
+        typeof sample.date === 'string' &&
+        typeof sample.total === 'number' &&
+        typeof sample.regular === 'number' &&
+        typeof sample.manual === 'number' &&
+        typeof sample.aiCamera === 'number' &&
+        typeof sample.exceptions === 'number'
+      );
+      if (shapeOk) {
+        pass('GET /api/portal/daily-breakdown', `${dbk.json.breakdown.length} days`);
+      } else {
+        fail('GET /api/portal/daily-breakdown', `bad row shape: ${JSON.stringify(sample)}`);
+      }
+    } else {
+      fail('GET /api/portal/daily-breakdown', `status=${dbk.status}`);
+    }
+
+    const ops = await http('GET', `/api/portal/operators?jobId=${firstJobId}`);
+    if (ops.status === 200 && Array.isArray(ops.json?.operators)) {
+      pass('GET /api/portal/operators', `${ops.json.operators.length} operators`);
+    } else {
+      fail('GET /api/portal/operators', `status=${ops.status}`);
+    }
   } else {
     fail('first job for cascade tests', 'no jobs in DB');
   }

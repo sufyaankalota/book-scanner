@@ -52,6 +52,16 @@ const dailySummariesQuery = z.object({
   end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+const dailyBreakdownQuery = z.object({
+  jobId: z.string().min(1),
+  start: isoDate,
+  end: isoDate,
+});
+
+const operatorsQuery = z.object({
+  jobId: z.string().min(1),
+});
+
 // ---------------------------------------------------------------------------
 // Cursor helpers (keyset pagination on (timestamp DESC, id DESC))
 // ---------------------------------------------------------------------------
@@ -282,6 +292,130 @@ export function portalRouter(): Router {
       isOnline: p.online && p.lastSeen ? p.lastSeen.getTime() >= cutoff : false,
     }));
     res.json({ pods });
+  });
+
+  // GET /api/portal/daily-breakdown?jobId=&start=ISO&end=ISO
+  // Pre-bucketed exactly the way CustomerPortal renders it: per-day totals
+  // split into regular / manual / aiCamera / exceptions (where exceptions =
+  // both type='exception' scans and manual-exception docs from the Exception
+  // table). One SQL query per source, server-side aggregation. Replaces the
+  // 60-day full-collection Firestore listener that was pegging the browser.
+  r.get('/daily-breakdown', async (req: Request, res: Response) => {
+    const parsed = dailyBreakdownQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_query', issues: parsed.error.issues });
+      return;
+    }
+    const { jobId, start, end } = parsed.data;
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (endDate < startDate) {
+      res.status(400).json({ error: 'end_before_start' });
+      return;
+    }
+    const [scanRows, excRows] = await Promise.all([
+      prisma.$queryRaw<
+        Array<{
+          day: Date;
+          regular: bigint;
+          manual: bigint;
+          ai_camera: bigint;
+          type_exception: bigint;
+        }>
+      >`
+        SELECT
+          date_trunc('day', "timestamp") AS day,
+          COUNT(*) FILTER (
+            WHERE type = 'standard' AND ("source" IS NULL OR "source" NOT IN ('manual','ai-match'))
+          ) AS regular,
+          COUNT(*) FILTER (WHERE "source" = 'manual')   AS manual,
+          COUNT(*) FILTER (WHERE "source" = 'ai-match') AS ai_camera,
+          COUNT(*) FILTER (WHERE type = 'exception')    AS type_exception
+        FROM "Scan"
+        WHERE "jobId" = ${jobId}
+          AND "timestamp" >= ${startDate}
+          AND "timestamp" <= ${endDate}
+        GROUP BY 1
+        ORDER BY 1
+      `,
+      prisma.$queryRaw<Array<{ day: Date; manual_exceptions: bigint }>>`
+        SELECT date_trunc('day', "timestamp") AS day, COUNT(*) AS manual_exceptions
+        FROM "Exception"
+        WHERE "jobId" = ${jobId}
+          AND "timestamp" >= ${startDate}
+          AND "timestamp" <= ${endDate}
+        GROUP BY 1
+        ORDER BY 1
+      `,
+    ]);
+
+    const byDay = new Map<
+      string,
+      {
+        date: string;
+        regular: number;
+        manual: number;
+        aiCamera: number;
+        exceptions: number;
+        total: number;
+      }
+    >();
+    const ensure = (day: string) => {
+      let row = byDay.get(day);
+      if (!row) {
+        row = { date: day, regular: 0, manual: 0, aiCamera: 0, exceptions: 0, total: 0 };
+        byDay.set(day, row);
+      }
+      return row;
+    };
+    for (const row of scanRows) {
+      const day = row.day.toISOString().slice(0, 10);
+      const dst = ensure(day);
+      dst.regular += Number(row.regular);
+      dst.manual += Number(row.manual);
+      dst.aiCamera += Number(row.ai_camera);
+      dst.exceptions += Number(row.type_exception);
+    }
+    for (const row of excRows) {
+      const day = row.day.toISOString().slice(0, 10);
+      ensure(day).exceptions += Number(row.manual_exceptions);
+    }
+    for (const row of byDay.values()) {
+      row.total = row.regular + row.manual + row.aiCamera + row.exceptions;
+    }
+    const breakdown = Array.from(byDay.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+    res.json({ jobId, range: { start, end }, breakdown });
+  });
+
+  // GET /api/portal/operators?jobId=
+  // Per-operator totals (scans + exceptions) across a job's lifetime. Replaces
+  // JobHistory's habit of pulling every scan doc just to GROUP BY scannerId
+  // in-browser.
+  r.get('/operators', async (req: Request, res: Response) => {
+    const parsed = operatorsQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_query', issues: parsed.error.issues });
+      return;
+    }
+    const { jobId } = parsed.data;
+    const rows = await prisma.$queryRaw<
+      Array<{ scanner_id: string; scans: bigint; exceptions: bigint }>
+    >`
+      SELECT
+        "scannerId" AS scanner_id,
+        COUNT(*) AS scans,
+        COUNT(*) FILTER (WHERE type = 'exception') AS exceptions
+      FROM "Scan"
+      WHERE "jobId" = ${jobId} AND "scannerId" IS NOT NULL AND "scannerId" <> ''
+      GROUP BY "scannerId"
+      ORDER BY 2 DESC
+    `;
+    const operators = rows.map((row) => ({
+      scannerId: row.scanner_id,
+      scans: Number(row.scans),
+      exceptions: Number(row.exceptions),
+    }));
+    res.json({ jobId, operators });
   });
 
   return r;

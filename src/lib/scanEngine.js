@@ -59,6 +59,9 @@ export const scanEngine = {
   listExceptions: (params) => get('/api/portal/exceptions', params),
   dailySummaries: ({ jobId, start, end }) =>
     get('/api/portal/daily-summaries', { jobId, start, end }),
+  dailyBreakdown: ({ jobId, start, end }) =>
+    get('/api/portal/daily-breakdown', { jobId, start, end }),
+  operators: ({ jobId }) => get('/api/portal/operators', { jobId }),
   presence: () => get('/api/portal/presence'),
 
   // Cross-pod dedup. `claim` is atomic — exactly one pod wins per (jobId,

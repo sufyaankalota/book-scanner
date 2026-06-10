@@ -9,6 +9,9 @@ import { downloadBlob } from '../utils/export';
 import { useToast } from '../components/Toast';
 import { verifyPassword } from '../utils/crypto';
 import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStore';
+import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
+import { useDailyBreakdown } from '../hooks/useDailyBreakdown';
+import { useExceptionScans } from '../hooks/useExceptionScans';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -178,11 +181,15 @@ export default function CustomerPortal() {
 
   useEffect(() => {
     if (!authenticated || !job) return;
-    // Bound the live listener to the last 60 days. Long-running jobs accumulate
-    // tens of thousands of scan docs; subscribing to the full collection makes
-    // the portal load take 15-30s and pegs the browser on every new scan.
-    // Lifetime totals come from the aggregates doc; older per-scan detail
-    // (>60 days) is not currently exposed in the UI.
+    // When the scan-engine is configured, the daily KPI table comes from a
+    // server-side bucketed endpoint (see useDailyBreakdown) and the live
+    // 60-day listener becomes a 350K-doc browser-pegger we can skip. Exports
+    // and the exceptions tab fetch on-demand by date instead.
+    if (isScanEngineConfigured) {
+      setAllScans([]);
+      return undefined;
+    }
+    // Legacy path (no scan-engine): keep the bounded 60-day listener.
     const since = new Date(); since.setDate(since.getDate() - 60); since.setHours(0, 0, 0, 0);
     const q = query(
       collection(db, 'scans'),
@@ -193,6 +200,17 @@ export default function CustomerPortal() {
       setAllScans(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
   }, [authenticated, job]);
+
+  // Server-side daily buckets (replaces the in-memory dailyBreakdown useMemo
+  // when scan-engine is configured). Returns null when not configured so the
+  // legacy in-memory derivation continues to work.
+  const serverDailyBreakdown = useDailyBreakdown(authenticated && job ? job.id : null, 60);
+  // Type=exception scans (for the Exceptions tab + photo report). Bounded to
+  // the trailing 14 days to keep the page light; legacy code pulled 60d worth.
+  const serverExceptionScans = useExceptionScans(authenticated && job ? job.id : null, 14);
+  // Effective list to feed dailyExceptions / exports: prefer server data when
+  // scan-engine is on (allScans is empty in that case).
+  const exceptionScansSource = isScanEngineConfigured ? (serverExceptionScans || []) : allScans;
 
   useEffect(() => {
     if (!authenticated || !job) return;
@@ -293,6 +311,18 @@ export default function CustomerPortal() {
   };
 
   const dailyBreakdown = useMemo(() => {
+    // Prefer the server-bucketed breakdown when scan-engine is configured.
+    // Reshape to the same row schema the existing UI consumes.
+    if (serverDailyBreakdown && serverDailyBreakdown.length >= 0 && isScanEngineConfigured) {
+      return serverDailyBreakdown.map((d) => ({
+        date: d.date,
+        total: d.total,
+        regular: d.regular,
+        manual: d.manual,
+        aiCamera: d.aiCamera,
+        exceptions: d.exceptions,
+      }));
+    }
     const byDay = {};
     const ensure = (key) => {
       if (!byDay[key]) byDay[key] = { total: 0, regular: 0, manual: 0, aiCamera: 0, exceptions: 0 };
@@ -319,11 +349,11 @@ export default function CustomerPortal() {
     return Object.entries(byDay)
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([date, data]) => ({ date, ...data }));
-  }, [allScans, allExceptions]);
+  }, [allScans, allExceptions, serverDailyBreakdown]);
 
   const dailyExceptions = useMemo(() => {
     const byDay = {};
-    for (const s of allScans) {
+    for (const s of exceptionScansSource) {
       if (s.type !== 'exception') continue;
       const d = s.timestamp?.toDate?.();
       if (!d) continue;
@@ -347,7 +377,7 @@ export default function CustomerPortal() {
     return Object.entries(byDay)
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([date, excs]) => [date, excs.sort((a, b) => b.time.getTime() - a.time.getTime())]);
-  }, [allScans, allExceptions]);
+  }, [exceptionScansSource, allExceptions]);
 
   // Lifetime totals from the aggregates doc. Falls back to filtering the
   // last-60-days slice if the aggregates trigger hasn't backfilled this job yet.
@@ -557,87 +587,168 @@ export default function CustomerPortal() {
   };
 
   // Report Exports
-  const exportDailyScans = (date) => {
-    const dayScans = allScans.filter((s) => {
-      const d = s.timestamp?.toDate?.();
-      return d && d.toISOString().slice(0, 10) === date && s.type === 'standard';
-    });
-    const wb = XLSX.utils.book_new();
-    const sourceLabel = (s) => {
-      if (s.source === 'ai-match') return 'AI Camera ($0.85)';
-      if (s.source === 'manual') return 'Manual Entry ($0.85)';
-      return 'Regular Scan ($0.50)';
-    };
-    const data = dayScans.map((s) => ({
-      ISBN: s.isbn,
-      PO: s.poName || '',
-      Category: sourceLabel(s),
-      'Captured Title': s.capturedTitle || '',
-      'Match Score': s.matchScore != null ? Number(s.matchScore).toFixed(2) : '',
-      Pod: s.podId || '',
-      Operator: s.scannerId || '',
-      Timestamp: toDateStr(s.timestamp),
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), 'Scanned Items');
-    const aiCount = dayScans.filter((s) => s.source === 'ai-match').length;
-    const manualCount = dayScans.filter((s) => s.source === 'manual').length;
-    const regularCount = dayScans.length - aiCount - manualCount;
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-      { Metric: 'Date', Value: date },
-      { Metric: 'Total Units', Value: data.length },
-      { Metric: 'Regular Scans ($0.50)', Value: regularCount },
-      { Metric: 'Manual Entries ($0.85)', Value: manualCount },
-      { Metric: 'AI Camera ($0.85)', Value: aiCount },
-    ]), 'Summary');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    downloadBlob(buf, 'scans_' + date + '.xlsx');
+  // Returns scans (legacy shape with timestamp.toDate()) for a single calendar
+  // day. Uses scan-engine when configured, otherwise filters the in-memory
+  // allScans slice. Scoped per export click so we don't keep 350K rows in memory.
+  const fetchDayScans = async (date, opts = {}) => {
+    if (!isScanEngineConfigured) {
+      return allScans.filter((s) => {
+        const d = s.timestamp?.toDate?.();
+        if (!d || d.toISOString().slice(0, 10) !== date) return false;
+        if (opts.type && s.type !== opts.type) return false;
+        return true;
+      });
+    }
+    const dayStart = new Date(date + 'T00:00:00.000Z');
+    const dayEnd = new Date(date + 'T23:59:59.999Z');
+    const out = [];
+    let cursor;
+    for (let i = 0; i < 20; i += 1) {
+      const { scans, nextCursor } = await scanEngine.listScans({
+        jobId: job.id,
+        since: dayStart.toISOString(),
+        until: dayEnd.toISOString(),
+        type: opts.type,
+        limit: 5000,
+        cursor,
+      });
+      for (const s of scans) {
+        out.push({ ...s, timestamp: { toDate: () => new Date(s.timestamp) } });
+      }
+      if (!nextCursor) break;
+      cursor = nextCursor;
+    }
+    return out;
   };
 
-  const exportDailyExceptions = (date) => {
-    const dayAutoExc = allScans.filter((s) => {
-      const d = s.timestamp?.toDate?.();
-      return d && d.toISOString().slice(0, 10) === date && s.type === 'exception';
-    });
-    const dayManualExc = allExceptions.filter((ex) => {
-      const d = ex.timestamp?.toDate?.();
-      return d && d.toISOString().slice(0, 10) === date;
-    });
-    const wb = XLSX.utils.book_new();
-    const data = [
-      ...dayAutoExc.map((s) => ({
+  // Same idea for the Exception collection.
+  const fetchDayExceptions = async (date) => {
+    if (!isScanEngineConfigured) {
+      return allExceptions.filter((ex) => {
+        const d = ex.timestamp?.toDate?.();
+        return d && d.toISOString().slice(0, 10) === date;
+      });
+    }
+    const dayStart = new Date(date + 'T00:00:00.000Z');
+    const dayEnd = new Date(date + 'T23:59:59.999Z');
+    const out = [];
+    let cursor;
+    for (let i = 0; i < 10; i += 1) {
+      const { exceptions, nextCursor } = await scanEngine.listExceptions({
+        jobId: job.id,
+        since: dayStart.toISOString(),
+        until: dayEnd.toISOString(),
+        limit: 5000,
+        cursor,
+      });
+      for (const ex of exceptions) {
+        out.push({ ...ex, timestamp: { toDate: () => new Date(ex.timestamp) } });
+      }
+      if (!nextCursor) break;
+      cursor = nextCursor;
+    }
+    return out;
+  };
+
+  const exportDailyScans = async (date) => {
+    try {
+      const dayScans = (await fetchDayScans(date, { type: 'standard' }));
+      const wb = XLSX.utils.book_new();
+      const sourceLabel = (s) => {
+        if (s.source === 'ai-match') return 'AI Camera ($0.85)';
+        if (s.source === 'manual') return 'Manual Entry ($0.85)';
+        return 'Regular Scan ($0.50)';
+      };
+      const data = dayScans.map((s) => ({
         ISBN: s.isbn,
-        Title: s.capturedTitle || '',
-        Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest',
-        'Has Photo': 'No',
+        PO: s.poName || '',
+        Category: sourceLabel(s),
+        'Captured Title': s.capturedTitle || '',
+        'Match Score': s.matchScore != null ? Number(s.matchScore).toFixed(2) : '',
         Pod: s.podId || '',
         Operator: s.scannerId || '',
         Timestamp: toDateStr(s.timestamp),
-      })),
-      ...dayManualExc.map((ex) => ({
-        ISBN: ex.isbn || '',
-        Title: ex.title || '',
-        Reason: ex.reason || '',
-        'Has Photo': ex.photo ? 'Yes' : 'No',
-        Pod: ex.podId || '',
-        Operator: ex.scannerId || '',
-        Timestamp: toDateStr(ex.timestamp),
-      })),
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No exceptions' }]), 'Exceptions');
-    const disclaimer = XLSX.utils.json_to_sheet([
-      { Note: 'DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy. Photos are available in the HTML/PDF photo report (one click away in the Reports tab).' },
-    ]);
-    XLSX.utils.book_append_sheet(wb, disclaimer, 'Disclaimer');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    downloadBlob(buf, 'exceptions_' + date + '.xlsx');
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), 'Scanned Items');
+      const aiCount = dayScans.filter((s) => s.source === 'ai-match').length;
+      const manualCount = dayScans.filter((s) => s.source === 'manual').length;
+      const regularCount = dayScans.length - aiCount - manualCount;
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+        { Metric: 'Date', Value: date },
+        { Metric: 'Total Units', Value: data.length },
+        { Metric: 'Regular Scans ($0.50)', Value: regularCount },
+        { Metric: 'Manual Entries ($0.85)', Value: manualCount },
+        { Metric: 'AI Camera ($0.85)', Value: aiCount },
+      ]), 'Summary');
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      downloadBlob(buf, 'scans_' + date + '.xlsx');
+    } catch (err) {
+      toast('Export failed: ' + err.message, 'error');
+    }
+  };
+
+  const exportDailyExceptions = async (date) => {
+    try {
+      const [dayAutoExc, dayManualExc] = await Promise.all([
+        fetchDayScans(date, { type: 'exception' }),
+        fetchDayExceptions(date),
+      ]);
+      const wb = XLSX.utils.book_new();
+      const data = [
+        ...dayAutoExc.map((s) => ({
+          ISBN: s.isbn,
+          Title: s.capturedTitle || '',
+          Reason: s.source === 'manual' ? 'Manual Entry' : 'Not in Manifest',
+          'Has Photo': 'No',
+          Pod: s.podId || '',
+          Operator: s.scannerId || '',
+          Timestamp: toDateStr(s.timestamp),
+        })),
+        ...dayManualExc.map((ex) => ({
+          ISBN: ex.isbn || '',
+          Title: ex.title || '',
+          Reason: ex.reason || '',
+          'Has Photo': ex.photo ? 'Yes' : 'No',
+          Pod: ex.podId || '',
+          Operator: ex.scannerId || '',
+          Timestamp: toDateStr(ex.timestamp),
+        })),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No exceptions' }]), 'Exceptions');
+      const disclaimer = XLSX.utils.json_to_sheet([
+        { Note: 'DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy. Photos are available in the HTML/PDF photo report (one click away in the Reports tab).' },
+      ]);
+      XLSX.utils.book_append_sheet(wb, disclaimer, 'Disclaimer');
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      downloadBlob(buf, 'exceptions_' + date + '.xlsx');
+    } catch (err) {
+      toast('Export failed: ' + err.message, 'error');
+    }
   };
 
   // Generate HTML exception report with embedded photos for verification
-  const openPhotoReport = (filterDate) => {
+  const openPhotoReport = async (filterDate) => {
+    // Source: when scan-engine is on, the in-memory exception-scans list (14d
+    // window) for unfiltered, or a date-bounded fetch for a specific day.
+    let excScans;
+    let excDocs;
+    try {
+      if (filterDate) {
+        [excScans, excDocs] = await Promise.all([
+          fetchDayScans(filterDate, { type: 'exception' }),
+          fetchDayExceptions(filterDate),
+        ]);
+      } else {
+        excScans = exceptionScansSource.filter((s) => s.type === 'exception');
+        excDocs = allExceptions;
+      }
+    } catch (err) {
+      toast('Failed to load report: ' + err.message, 'error');
+      return;
+    }
     // Gather all exceptions (or filter by date)
     const allExcs = [];
-    for (const s of allScans) {
-      if (s.type !== 'exception') continue;
+    for (const s of excScans) {
       const d = s.timestamp?.toDate?.();
       if (!d) continue;
       if (filterDate && d.toISOString().slice(0, 10) !== filterDate) continue;
@@ -646,7 +757,7 @@ export default function CustomerPortal() {
         title: '', photo: null, time: d, podId: s.podId,
       });
     }
-    for (const ex of allExceptions) {
+    for (const ex of excDocs) {
       const d = ex.timestamp?.toDate?.();
       if (!d) continue;
       if (filterDate && d.toISOString().slice(0, 10) !== filterDate) continue;

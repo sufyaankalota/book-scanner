@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { downloadBlob } from '../utils/export';
 import { normalizeOperatorKey, displayOperatorName } from '../utils/operator';
+import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import * as XLSX from 'xlsx';
 
 export default function JobHistory() {
@@ -14,6 +15,12 @@ export default function JobHistory() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [jobScans, setJobScans] = useState([]);
   const [jobShifts, setJobShifts] = useState([]);
+  // When scan-engine is configured we never fetch jobScans at all — instead
+  // we pull the pre-aggregated totals, daily breakdown, and operator rollup.
+  // These mirror what the in-memory aggregates used to produce.
+  const [jobAggregate, setJobAggregate] = useState(null);
+  const [jobBreakdown, setJobBreakdown] = useState([]); // [{date,total,...}]
+  const [jobOperators, setJobOperators] = useState([]); // [{scannerId,scans,exceptions}]
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [viewMode, setViewMode] = useState('list'); // list | detail | trends
 
@@ -39,20 +46,56 @@ export default function JobHistory() {
     setSelectedJob(job);
     setViewMode('detail');
     setLoadingDetail(true);
+    setJobScans([]);
+    setJobAggregate(null);
+    setJobBreakdown([]);
+    setJobOperators([]);
     try {
-      const scanSnap = await getDocs(query(collection(db, 'scans'), where('jobId', '==', job.id)));
-      setJobScans(scanSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-
+      // Shifts are small (one row per shift, max a few thousand even for huge
+      // jobs) so we keep this as a single Firestore read.
       const shiftSnap = await getDocs(query(collection(db, 'shifts'), where('jobId', '==', job.id)));
       setJobShifts(shiftSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+      if (isScanEngineConfigured) {
+        // Pull lifetime totals + per-day buckets + per-operator buckets in
+        // parallel. These three calls combined return ~tens of KB even for a
+        // 350K-scan job, vs the legacy getDocs that locked up the browser.
+        const startDate = job.meta?.createdAt?.toDate
+          ? job.meta.createdAt.toDate()
+          : new Date(job.createdAt || Date.now() - 365 * 86400_000);
+        const endDate = job.meta?.closedAt?.toDate?.() || new Date();
+        const [aggResp, breakdownResp, opsResp] = await Promise.all([
+          scanEngine.getAggregate(job.id).catch(() => ({ aggregate: null })),
+          scanEngine.dailyBreakdown({
+            jobId: job.id,
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
+          }).catch(() => ({ breakdown: [] })),
+          scanEngine.operators({ jobId: job.id }).catch(() => ({ operators: [] })),
+        ]);
+        setJobAggregate(aggResp.aggregate);
+        setJobBreakdown(breakdownResp.breakdown || []);
+        setJobOperators(opsResp.operators || []);
+      } else {
+        const scanSnap = await getDocs(query(collection(db, 'scans'), where('jobId', '==', job.id)));
+        setJobScans(scanSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }
     } catch (err) {
       console.error(err);
     }
     setLoadingDetail(false);
   };
 
-  // Multi-day trends
+  // Multi-day trends. When scan-engine is on, jobBreakdown is already the
+  // server-side daily totals — just reshape. Legacy path keeps the in-browser
+  // groupBy on jobScans.
   const trendData = useMemo(() => {
+    if (isScanEngineConfigured) {
+      return jobBreakdown
+        .slice()
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((d) => ({ date: d.date, count: d.total }));
+    }
     if (!jobScans.length) return [];
     const byDay = {};
     for (const s of jobScans) {
@@ -63,11 +106,28 @@ export default function JobHistory() {
     }
     return Object.entries(byDay).sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, count]) => ({ date, count }));
-  }, [jobScans]);
+  }, [jobScans, jobBreakdown]);
+
+  // Lifetime totals — prefer the server aggregate when available so the stats
+  // tiles work even though we never loaded jobScans into memory.
+  const lifetimeTotals = useMemo(() => {
+    if (isScanEngineConfigured && jobAggregate) {
+      const totalExceptions = (jobAggregate.totalExceptions || 0);
+      return {
+        totalScans: jobAggregate.totalScanned || 0,
+        totalExceptions,
+      };
+    }
+    return {
+      totalScans: jobScans.length,
+      totalExceptions: jobScans.filter((x) => x.type === 'exception').length,
+    };
+  }, [jobScans, jobAggregate]);
 
   // Labor efficiency
   const laborMetrics = useMemo(() => {
-    if (!jobShifts.length || !jobScans.length) return null;
+    const totalScans = lifetimeTotals.totalScans;
+    if (!jobShifts.length || !totalScans) return null;
     let totalHours = 0;
     for (const s of jobShifts) {
       if (s.startTime && s.endTime) {
@@ -79,10 +139,10 @@ export default function JobHistory() {
     return {
       totalShifts: jobShifts.length,
       totalHours: totalHours.toFixed(1),
-      scansPerHour: totalHours > 0 ? Math.round(jobScans.length / totalHours) : 0,
-      totalScans: jobScans.length,
+      scansPerHour: totalHours > 0 ? Math.round(totalScans / totalHours) : 0,
+      totalScans,
     };
-  }, [jobShifts, jobScans]);
+  }, [jobShifts, lifetimeTotals]);
 
   const maxTrend = trendData.length ? Math.max(...trendData.map((d) => d.count)) : 1;
 
@@ -112,6 +172,17 @@ export default function JobHistory() {
 
   // Operator breakdown
   const operatorBreakdown = useMemo(() => {
+    if (isScanEngineConfigured) {
+      const byOp = {};
+      for (const row of jobOperators) {
+        const key = normalizeOperatorKey(row.scannerId);
+        if (!key) continue;
+        if (!byOp[key]) byOp[key] = { name: displayOperatorName(row.scannerId), scans: 0, exceptions: 0 };
+        byOp[key].scans += row.scans;
+        byOp[key].exceptions += row.exceptions;
+      }
+      return Object.values(byOp).sort((a, b) => b.scans - a.scans);
+    }
     if (!jobScans.length) return [];
     const byOp = {}; // key -> { name, scans, exceptions }
     for (const s of jobScans) {
@@ -122,24 +193,49 @@ export default function JobHistory() {
       if (s.type === 'exception') byOp[key].exceptions++;
     }
     return Object.values(byOp).sort((a, b) => b.scans - a.scans);
-  }, [jobScans]);
+  }, [jobScans, jobOperators]);
 
-  const handleExportJob = () => {
-    if (!selectedJob || !jobScans.length) return;
-    const wb = XLSX.utils.book_new();
-    const data = jobScans.map((s) => ({
-      ISBN: s.isbn, PO: s.poName || '', Pod: s.podId, Scanner: s.scannerId,
-      Type: s.type, Timestamp: s.timestamp?.toDate?.()?.toLocaleString() || '',
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Scans');
-    if (trendData.length) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendData), 'Daily Trend');
+  const handleExportJob = async () => {
+    if (!selectedJob) return;
+    try {
+      const wb = XLSX.utils.book_new();
+      // Trend + labor sheets — small, always exported when we have the data.
+      if (trendData.length) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendData), 'Daily Trend');
+      }
+      if (laborMetrics) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([laborMetrics]), 'Labor');
+      }
+      if (operatorBreakdown.length) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(operatorBreakdown), 'Operators');
+      }
+      // Raw scans — when scan-engine is on, page through it; this can take a
+      // few seconds for big jobs but only runs when the user clicks Export.
+      let scans = jobScans;
+      if (isScanEngineConfigured) {
+        scans = [];
+        let cursor;
+        for (let i = 0; i < 200; i += 1) { // hard cap 1M rows
+          const { scans: page, nextCursor } = await scanEngine.listScans({
+            jobId: selectedJob.id, limit: 5000, cursor,
+          });
+          for (const s of page) {
+            scans.push({ ...s, timestamp: { toDate: () => new Date(s.timestamp) } });
+          }
+          if (!nextCursor) break;
+          cursor = nextCursor;
+        }
+      }
+      const data = scans.map((s) => ({
+        ISBN: s.isbn, PO: s.poName || '', Pod: s.podId, Scanner: s.scannerId,
+        Type: s.type, Timestamp: s.timestamp?.toDate?.()?.toLocaleString() || '',
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No scans' }]), 'Scans');
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      downloadBlob(buf, `${selectedJob.meta.name}_history.xlsx`);
+    } catch (err) {
+      console.error('Export failed', err);
     }
-    if (laborMetrics) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([laborMetrics]), 'Labor');
-    }
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    downloadBlob(buf, `${selectedJob.meta.name}_history.xlsx`);
   };
 
   if (loading) return <div style={s.container}><p style={s.text}>Loading...</p></div>;
@@ -168,11 +264,11 @@ export default function JobHistory() {
             {/* Summary */}
             <div style={s.statsRow}>
               <div style={s.statBox}>
-                <div style={s.statVal}>{jobScans.length.toLocaleString()}</div>
+                <div style={s.statVal}>{lifetimeTotals.totalScans.toLocaleString()}</div>
                 <div style={s.statLbl}>Total Scans</div>
               </div>
               <div style={s.statBox}>
-                <div style={s.statVal}>{jobScans.filter((x) => x.type === 'exception').length}</div>
+                <div style={s.statVal}>{lifetimeTotals.totalExceptions.toLocaleString()}</div>
                 <div style={s.statLbl}>Exceptions</div>
               </div>
               <div style={s.statBox}>
