@@ -17,6 +17,7 @@ import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import { PER_POD_DAILY_TARGET, PER_POD_DAILY_MIN, PER_POD_BONUS_TARGET } from '../utils/target';
 import { displayOperatorName } from '../utils/operator';
+import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
 
@@ -496,57 +497,205 @@ export default function Pod() {
     return false;
   };
 
-  // ─── Cross-pod ISBN dedup (point-read against scanned-isbns/{isbn}) ───
+  // ─── Cross-pod ISBN dedup ───
   // Same-pod check (seenIsbnRef above) runs FIRST and is free. This is the
-  // network fallback that catches dups created by other pods. It's a single
-  // Firestore document-ID lookup (~15-50ms warm, often edge-cached), capped
-  // at 250ms with fail-open: if wifi is dragging, accept the scan rather
-  // than block the line. Soft indicator surfaces lag count to the floor.
-  // KILL SWITCH: flip to true to re-enable. Disabled 2026-06-08 — was
-  // causing the same slowness pattern we hit before (multiple pods lagging
-  // simultaneously). Suspected culprits: 2x getDoc per scan (ISBN-10 + 13
-  // alternates), setXpodLag triggering React re-renders, queued setTimeouts.
-  const XPOD_ENABLED = false;
+  // network fallback that catches dups created by other pods.
+  //
+  // Two backends are wired:
+  //   'redis'     — scan-engine `/api/dedup/claim` (atomic SET NX EX on Redis).
+  //                 Claim is the test-and-set: claimed=true means we own the
+  //                 ISBN for this job; claimed=false returns the existing
+  //                 holder. Replaces today's "read scanned-isbns, write later"
+  //                 pattern with a single atomic op, so cross-pod races can't
+  //                 produce two accepts on the same ISBN.
+  //   'firestore' — original behavior: getDoc against scanned-isbns/{isbn}.
+  //                 Kept as a fallback for emergencies (set XPOD_BACKEND=
+  //                 'firestore'); the CF onScanWrite trigger maintains the
+  //                 canonical doc.
+  //   'off'       — same-pod check only (the kill-switch we shipped after the
+  //                 collection-subscribe disaster).
+  //
+  // The HTTP call is capped at XPOD_TIMEOUT_MS with fail-open: if the network
+  // is dragging, accept the scan rather than block the line. Soft indicator
+  // surfaces lag count to the floor.
+  const XPOD_BACKEND = isScanEngineConfigured ? 'redis' : 'off';
   const XPOD_TIMEOUT_MS = 250;
+  // 60 days. Jobs can run a full quarter (Zoom Books is May 1 – June 15);
+  // a too-short TTL would let a book scanned on day 1 be re-counted later.
+  // The claim is SET NX so the TTL is set on first scan and not refreshed.
+  const XPOD_CLAIM_TTL_SECONDS = 60 * 24 * 3600;
   const [xpodLag, setXpodLag] = useState(0); // sliding count, decays after 60s
-  const checkCrossPodDup = useCallback(async (rawIsbn, jobId) => {
-    if (!XPOD_ENABLED) return { exists: false };
-    if (!jobId || !rawIsbn) return { exists: false };
-    const keys = isbnDupKeys(rawIsbn);
-    if (!keys.length) return { exists: false };
-    const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
-    const fetchAll = Promise.all(
-      keys.map((k) =>
-        getDoc(doc(db, 'jobs', jobId, 'scanned-isbns', k))
-          .then((snap) => (snap.exists() ? { key: k, data: snap.data() } : null))
-          .catch(() => null),
-      ),
-    );
-    const timeout = new Promise((resolve) => setTimeout(() => resolve('__t__'), XPOD_TIMEOUT_MS));
-    const result = await Promise.race([fetchAll, timeout]);
-    const ms = Math.round(((typeof performance !== 'undefined') ? performance.now() : Date.now()) - t0);
-    if (result === '__t__') {
-      // eslint-disable-next-line no-console
-      console.warn('[xpod] timeout', ms, 'ms', rawIsbn);
-      setXpodLag((n) => n + 1);
-      setTimeout(() => setXpodLag((n) => Math.max(0, n - 1)), 60_000);
-      return { exists: false, timedOut: true };
-    }
-    const hit = result.find(Boolean);
-    if (ms > 80) {
-      // eslint-disable-next-line no-console
-      console.log('[xpod]', ms, 'ms', hit ? 'HIT' : 'miss');
-    }
-    if (!hit) return { exists: false };
-    const data = hit.data || {};
-    return {
-      exists: true,
-      byPod: data.podId || null,
-      byScanner: data.scannerId || null,
-      atTime: data.atClient?.toDate?.() || data.firstSeen?.toDate?.() || null,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const noteXpodLag = useCallback(() => {
+    setXpodLag((n) => n + 1);
+    setTimeout(() => setXpodLag((n) => Math.max(0, n - 1)), 60_000);
   }, []);
+
+  // Race a promise against the standard fail-open timeout. Returns a sentinel
+  // string '__t__' on timeout; callers branch on that.
+  const withTimeout = (promise) =>
+    Promise.race([
+      promise,
+      new Promise((resolve) => setTimeout(() => resolve('__t__'), XPOD_TIMEOUT_MS)),
+    ]);
+
+  // Atomic claim. Used by the scan accept path. Returns:
+  //   { owned: true }                       — this pod won, proceed to write
+  //   { owned: false, existing: {podId,…} } — cross-pod dup, log exception
+  //   { owned: true, timedOut: true }       — fail-open (treat as accept,
+  //                                           soft indicator increments)
+  const claimIsbnForPod = useCallback(
+    async (rawIsbn, jobId) => {
+      if (XPOD_BACKEND === 'off') return { owned: true };
+      if (!jobId || !rawIsbn) return { owned: true };
+      const keys = isbnDupKeys(rawIsbn);
+      if (!keys.length) return { owned: true };
+      const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      try {
+        if (XPOD_BACKEND === 'redis') {
+          // Claim BOTH alternates (ISBN-10 + ISBN-13) so a scan on either form
+          // blocks the other. Run in parallel; if any returns claimed=false
+          // we treat it as a dup. The losing alternate is released so we
+          // don't leak a half-claim (the existing holder still owns).
+          const result = await withTimeout(
+            Promise.all(
+              keys.map((k) =>
+                scanEngine
+                  .claim({ jobId, barcode: k, podId, scannerId: scannerName, ttlSeconds: XPOD_CLAIM_TTL_SECONDS })
+                  .then((r) => ({ key: k, ...r }))
+                  .catch((err) => ({ key: k, error: String(err) })),
+              ),
+            ),
+          );
+          const ms = Math.round(((typeof performance !== 'undefined') ? performance.now() : Date.now()) - t0);
+          if (result === '__t__') {
+            // eslint-disable-next-line no-console
+            console.warn('[xpod] claim timeout', ms, 'ms', rawIsbn);
+            noteXpodLag();
+            return { owned: true, timedOut: true };
+          }
+          if (result.some((r) => r.error)) {
+            // eslint-disable-next-line no-console
+            console.warn('[xpod] claim error', result.find((r) => r.error)?.error, rawIsbn);
+            noteXpodLag();
+            return { owned: true, timedOut: true };
+          }
+          const loser = result.find((r) => r.claimed === false);
+          if (loser) {
+            // Release any alternate we managed to claim before discovering
+            // a sibling key was already taken. Otherwise the loser's
+            // existing-holder info is now wrong on the other alternate.
+            for (const r of result) {
+              if (r.claimed === true) {
+                scanEngine
+                  .release({ jobId, barcode: r.key })
+                  .catch(() => {});
+              }
+            }
+            if (ms > 80) {
+              // eslint-disable-next-line no-console
+              console.log('[xpod] redis claim', ms, 'ms HIT', rawIsbn);
+            }
+            return { owned: false, existing: loser.existing || null };
+          }
+          if (ms > 80) {
+            // eslint-disable-next-line no-console
+            console.log('[xpod] redis claim', ms, 'ms OK', rawIsbn);
+          }
+          return { owned: true };
+        }
+        // Legacy Firestore path (read-only, races with CF write).
+        const result = await withTimeout(
+          Promise.all(
+            keys.map((k) =>
+              getDoc(doc(db, 'jobs', jobId, 'scanned-isbns', k))
+                .then((snap) => (snap.exists() ? { key: k, data: snap.data() } : null))
+                .catch(() => null),
+            ),
+          ),
+        );
+        const ms = Math.round(((typeof performance !== 'undefined') ? performance.now() : Date.now()) - t0);
+        if (result === '__t__') {
+          // eslint-disable-next-line no-console
+          console.warn('[xpod] fs timeout', ms, 'ms', rawIsbn);
+          noteXpodLag();
+          return { owned: true, timedOut: true };
+        }
+        const hit = result.find(Boolean);
+        if (!hit) return { owned: true };
+        const data = hit.data || {};
+        return {
+          owned: false,
+          existing: {
+            podId: data.podId || null,
+            scannerId: data.scannerId || null,
+            timestamp: (data.atClient?.toDate?.() || data.firstSeen?.toDate?.() || null)?.toISOString?.() || null,
+          },
+        };
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[xpod] claim crash', err, rawIsbn);
+        noteXpodLag();
+        return { owned: true, timedOut: true };
+      }
+    },
+    [podId, scannerName, noteXpodLag, XPOD_BACKEND], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // Read-only check (no claim). Used by AI candidate enrichment to grey out
+  // candidates already scanned elsewhere — we must NOT claim here because the
+  // operator hasn't picked one yet. Returns same shape as legacy code.
+  const checkCrossPodDup = useCallback(
+    async (rawIsbn, jobId) => {
+      if (XPOD_BACKEND === 'off') return { exists: false };
+      if (!jobId || !rawIsbn) return { exists: false };
+      const keys = isbnDupKeys(rawIsbn);
+      if (!keys.length) return { exists: false };
+      try {
+        if (XPOD_BACKEND === 'redis') {
+          const result = await withTimeout(
+            scanEngine.inspectMany({ jobId, barcodes: keys }),
+          );
+          if (result === '__t__') { noteXpodLag(); return { exists: false, timedOut: true }; }
+          const claims = result?.claims || {};
+          for (const k of keys) {
+            const c = claims[k];
+            if (c) {
+              return {
+                exists: true,
+                byPod: c.podId || null,
+                byScanner: c.scannerId || null,
+                atTime: c.timestamp ? new Date(c.timestamp) : null,
+              };
+            }
+          }
+          return { exists: false };
+        }
+        const result = await withTimeout(
+          Promise.all(
+            keys.map((k) =>
+              getDoc(doc(db, 'jobs', jobId, 'scanned-isbns', k))
+                .then((snap) => (snap.exists() ? { key: k, data: snap.data() } : null))
+                .catch(() => null),
+            ),
+          ),
+        );
+        if (result === '__t__') { noteXpodLag(); return { exists: false, timedOut: true }; }
+        const hit = result.find(Boolean);
+        if (!hit) return { exists: false };
+        const data = hit.data || {};
+        return {
+          exists: true,
+          byPod: data.podId || null,
+          byScanner: data.scannerId || null,
+          atTime: data.atClient?.toDate?.() || data.firstSeen?.toDate?.() || null,
+        };
+      } catch {
+        noteXpodLag();
+        return { exists: false, timedOut: true };
+      }
+    },
+    [noteXpodLag, XPOD_BACKEND], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // Reset in-memory seen-set when the job changes (or operator switches —
   // handled elsewhere where seenIsbnRef is cleared on operator change).
@@ -1141,14 +1290,20 @@ export default function Pod() {
     }
 
     // CROSS-POD duplicate block — same job, different pod already scanned
-    // it. Single Firestore point-read (15-50ms warm), 250ms fail-open.
+    // it. With XPOD_BACKEND='redis' this is an atomic Redis SET NX EX on the
+    // scan-engine (typical 20–60 ms warm), so the claim itself reserves the
+    // ISBN; no second write is needed. With 'firestore' it's a point read
+    // and the CF trigger maintains the canonical doc. Either path is capped
+    // at 250 ms with fail-open.
     if (job?.id) {
-      const xpod = await checkCrossPodDup(isbn, job.id);
-      if (xpod.exists) {
+      const xpod = await claimIsbnForPod(isbn, job.id);
+      if (!xpod.owned) {
         playDuplicateBeep();
-        const podLabel = xpod.byPod && xpod.byPod !== podId ? `Pod ${xpod.byPod}` : 'another pod';
-        const timeStr = xpod.atTime
-          ? new Date(xpod.atTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const ex = xpod.existing || {};
+        const podLabel = ex.podId && ex.podId !== podId ? `Pod ${ex.podId}` : 'another pod';
+        const at = ex.timestamp ? new Date(ex.timestamp) : null;
+        const timeStr = at && !isNaN(at.getTime())
+          ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : '';
         flash('#EF4444', `🚫 ${isbn} — already on ${podLabel}${timeStr ? ' at ' + timeStr : ''}`, 3500);
         lastScannedRef.current = { isbn, time: Date.now() };
@@ -1174,16 +1329,6 @@ export default function Pod() {
     lastScannedRef.current = { isbn, time: Date.now() };
     seenIsbnRef.current.add(isbn);
     for (const k of isbnDupKeys(isbn)) scannedIsbnsRef.current.add(k);
-    // Client-side dedup marker write disabled with XPOD_ENABLED kill switch.
-    // The CF onScanWrite trigger still maintains the canonical doc.
-    if (XPOD_ENABLED && job?.id) {
-      setDoc(doc(db, 'jobs', job.id, 'scanned-isbns', isbn), {
-        podId,
-        scannerId: scannerName,
-        atClient: serverTimestamp(),
-        jobId: job.id,
-      }, { merge: true }).catch(() => {});
-    }
     processScan(isbn, o);
   };
 

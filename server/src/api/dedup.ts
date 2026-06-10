@@ -12,7 +12,10 @@ const claimBody = z.object({
   podId: z.string().min(1),
   scannerId: z.string().min(1),
   scanId: z.string().optional(),
-  ttlSeconds: z.coerce.number().int().positive().max(7 * 24 * 3600).optional(),
+  // Up to 90 days. Long-running jobs (e.g. a 6-week prep batch) need claims
+  // that outlive a single workday so a book scanned on day 1 still blocks
+  // re-counts on day 30. Server-default 24h applies when omitted.
+  ttlSeconds: z.coerce.number().int().positive().max(90 * 24 * 3600).optional(),
 });
 
 const releaseBody = z.object({

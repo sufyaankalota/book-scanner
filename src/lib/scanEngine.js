@@ -33,6 +33,22 @@ async function get(path, params) {
 // Endpoints (mirrors of /api/portal/*)
 // ---------------------------------------------------------------------------
 
+async function post(path, body) {
+  if (!isScanEngineConfigured) {
+    throw new Error('scan-engine not configured');
+  }
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'x-api-key': KEY, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`scan-engine ${path} ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
 export const scanEngine = {
   listJobs: ({ active } = {}) => get('/api/portal/jobs', { active }),
   getJob: (jobId) => get(`/api/portal/jobs/${encodeURIComponent(jobId)}`),
@@ -44,4 +60,13 @@ export const scanEngine = {
   dailySummaries: ({ jobId, start, end }) =>
     get('/api/portal/daily-summaries', { jobId, start, end }),
   presence: () => get('/api/portal/presence'),
+
+  // Cross-pod dedup. `claim` is atomic — exactly one pod wins per (jobId,
+  // barcode) until TTL expires (server default 24h). A claimed:false response
+  // includes the winning pod's identity so the UI can show a useful message.
+  claim: ({ jobId, barcode, podId, scannerId, scanId, ttlSeconds }) =>
+    post('/api/dedup/claim', { jobId, barcode, podId, scannerId, scanId, ttlSeconds }),
+  release: ({ jobId, barcode }) => post('/api/dedup/release', { jobId, barcode }),
+  inspect: ({ jobId, barcode }) => get('/api/dedup/inspect', { jobId, barcode }),
+  inspectMany: ({ jobId, barcodes }) => post('/api/dedup/inspect-many', { jobId, barcodes }),
 };
