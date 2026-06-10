@@ -411,21 +411,31 @@ async function checkPortalBundle(): Promise<void> {
   pass('portal index loads', indexMatch[0]);
 
   const entry = await http('GET', indexMatch[0], undefined, PORTAL);
-  const chunkMatch = entry.text.match(/scanEngine-[A-Za-z0-9_-]+\.js/);
-  if (!chunkMatch) {
-    fail('portal entry references scanEngine chunk', 'no scanEngine-*.js reference (env vars likely empty at build time)');
-    return;
-  }
-  pass('portal entry references scanEngine chunk', chunkMatch[0]);
 
-  const chunk = await http('GET', '/assets/' + chunkMatch[0], undefined, PORTAL);
-  const hasUrl = chunk.text.includes('prepfort-scan-engine-production');
-  const hasApi = chunk.text.includes('api/portal');
-  const hasHeader = chunk.text.includes('x-api-key');
-  if (hasUrl && hasApi && hasHeader) {
-    pass('portal scanEngine chunk has live config', `url+api/portal+x-api-key all present`);
+  // The scan-engine client used to be its own chunk; vite may now inline it
+  // when both lazy + eager pages reference it. Look for the live config in
+  // the entry bundle first, then fall back to the chunk if it still exists.
+  let body = entry.text;
+  const chunkMatch = entry.text.match(/scanEngine-[A-Za-z0-9_-]+\.js/);
+  if (chunkMatch) {
+    pass('portal scanEngine chunk present (split)', chunkMatch[0]);
+    const chunk = await http('GET', '/assets/' + chunkMatch[0], undefined, PORTAL);
+    body = chunk.text;
   } else {
-    fail('portal scanEngine chunk has live config', `url=${hasUrl} api=${hasApi} header=${hasHeader}`);
+    pass('portal scanEngine inlined into entry', `${entry.text.length} bytes`);
+  }
+
+  const hasUrl = body.includes('prepfort-scan-engine-production');
+  const hasPortal = body.includes('/api/portal/');
+  const hasDedup = body.includes('/api/dedup/');
+  const hasHeader = body.includes('x-api-key');
+  if (hasUrl && hasPortal && hasDedup && hasHeader) {
+    pass('portal bundle has live scan-engine config', 'url+/api/portal+/api/dedup+x-api-key');
+  } else {
+    fail(
+      'portal bundle has live scan-engine config',
+      `url=${hasUrl} portal=${hasPortal} dedup=${hasDedup} header=${hasHeader}`,
+    );
   }
 }
 
