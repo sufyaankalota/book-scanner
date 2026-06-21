@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck } from 'lucide-react';
 
 function AutoRefreshIndicator({ lastUpdated }) {
   const [, setTick] = useState(0);
@@ -1236,18 +1237,18 @@ export default function Dashboard() {
       {/* Panel toggles */}
       <div data-panel-toggles style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
         {[
-          ['exceptions', `Exceptions (${combinedExceptions.length})`],
-          ['leaderboard', '🏆 Leaderboard'],
-          ['hourly', '📊 Hourly'],
-          ['excTrend', '📈 Exception Trend'],
-          ['shifts', '⏱ Shifts'],
+          ['exceptions', `Exceptions (${combinedExceptions.length})`, AlertTriangle],
+          ['leaderboard', 'Leaderboard', Trophy],
+          ['hourly', 'Hourly', BarChart3],
+          ['excTrend', 'Exception Trend', TrendingUp],
+          ['shifts', 'Shifts', Clock],
           // Labor Cost tab disabled — see daily summaries for the numbers.
-          ...(isOwner ? [['crew', '👥 Daily Crew & Pay']] : []),
-          ['bols', `🚛 BOLs (${bols.length})`],
-        ].map(([key, label]) => (
+          ...(isOwner ? [['crew', 'Daily Crew & Pay', Users]] : []),
+          ['bols', `BOLs (${bols.length})`, Truck],
+        ].map(([key, label, Icon]) => (
           <button key={key} onClick={() => setShowPanel(showPanel === key ? '' : key)}
-            style={{ ...st.panelBtn, ...(showPanel === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
-            {label}
+            style={{ ...st.panelBtn, ...(showPanel === key ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}), display: 'flex', alignItems: 'center', gap: 6 }}>
+            {Icon && <Icon size={15} />} {label}
           </button>
         ))}
       </div>

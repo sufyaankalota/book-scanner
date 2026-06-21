@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { usePresence } from '../hooks/usePresence';
 import TodayLeaderboard from '../components/TodayLeaderboard';
+import { Monitor, Check, LayoutGrid, AlertTriangle, Settings, User } from 'lucide-react';
 
 const STORAGE_KEY = 'kiosk_assigned_pods';
 const DEVICE_NAME_KEY = 'kiosk_device_name';
@@ -136,7 +137,7 @@ export default function PodSelect() {
     return (
       <div style={styles.container}>
         <div style={styles.setupCard}>
-          <h1 style={styles.heading}>🖥️ Device Setup</h1>
+          <h1 style={styles.heading}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><Monitor size={28} /> Device Setup</span></h1>
           <p style={styles.hint}>
             Select the pods assigned to this kiosk laptop.
             This only needs to be done once per device.
@@ -170,7 +171,7 @@ export default function PodSelect() {
                   }}
                 >
                   <span style={{ fontSize: 28, fontWeight: 800 }}>Pod {podId}</span>
-                  {isSelected && <span style={{ fontSize: 22, marginTop: 4 }}>✓</span>}
+                  {isSelected && <Check size={22} style={{ marginTop: 4 }} />}
                 </button>
               );
             })}
@@ -205,7 +206,9 @@ export default function PodSelect() {
       <div style={styles.header}>
         <div>
           <h1 style={styles.heading}>
-            {deviceName ? `📋 ${deviceName}` : '📋 Select Pod'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+              <LayoutGrid size={26} /> {deviceName || 'Select Pod'}
+            </span>
           </h1>
           {job && (
             <p style={styles.jobInfo}>
@@ -220,7 +223,7 @@ export default function PodSelect() {
           )}
           {jobError && (
             <p style={{ color: '#EF4444', fontSize: 13, fontWeight: 600, margin: '4px 0 0' }}>
-              ⚠️ Connection error — retrying
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> Connection error — retrying</span>
             </p>
           )}
           {!job && !jobLoading && !jobError && (
@@ -229,8 +232,8 @@ export default function PodSelect() {
             </p>
           )}
         </div>
-        <button onClick={openSetup} style={styles.gearBtn} title="Device Settings">
-          ⚙️
+        <button onClick={openSetup} style={styles.gearBtn} title="Device Settings" aria-label="Device Settings">
+          <Settings size={20} />
         </button>
       </div>
 
@@ -283,9 +286,9 @@ export default function PodSelect() {
 
               {operator && isOnline && (
                 <p style={styles.operatorText}>
-                  👤 {operator}
-                  {isPaused && ' · ⏸ Paused'}
-                  {onBreak && ' · ☕ Break'}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><User size={14} /> {operator}</span>
+                  {isPaused && ' · Paused'}
+                  {onBreak && ' · Break'}
                 </p>
               )}
 

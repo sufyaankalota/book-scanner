@@ -12,6 +12,7 @@ import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStor
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useDailyBreakdown } from '../hooks/useDailyBreakdown';
 import { useExceptionScans } from '../hooks/useExceptionScans';
+import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -1104,28 +1105,28 @@ ${allExcs.map((exc, i) => `<div class="exc">
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
                 {d.regular > 0 && (
-                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#22C55E', fontSize: 13, fontWeight: 600 }}>✅ {d.regular.toLocaleString()} regular</span>
+                  <div style={{ padding: '6px 12px', backgroundColor: 'var(--success-soft)', borderRadius: 'var(--radius-pill)', display: 'inline-block' }}>
+                    <span style={{ color: 'var(--success)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={14} /> {d.regular.toLocaleString()} regular</span>
                   </div>
                 )}
                 {(d.manual || 0) > 0 && (
-                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(59,130,246,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>⌨️ {d.manual} manual</span>
+                  <div style={{ padding: '6px 12px', backgroundColor: 'var(--accent-soft)', borderRadius: 'var(--radius-pill)', display: 'inline-block' }}>
+                    <span style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Keyboard size={14} /> {d.manual} manual</span>
                   </div>
                 )}
                 {(d.aiCamera || 0) > 0 && (
-                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(147,197,253,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600 }}>📷 {d.aiCamera} AI camera</span>
+                  <div style={{ padding: '6px 12px', backgroundColor: 'var(--accent-soft)', borderRadius: 'var(--radius-pill)', display: 'inline-block' }}>
+                    <span style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Camera size={14} /> {d.aiCamera} AI camera</span>
                   </div>
                 )}
                 {d.exceptions > 0 && (
-                  <div style={{ padding: '6px 12px', backgroundColor: '#7f1d1d22', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>⚠️ {d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
+                  <div style={{ padding: '6px 12px', backgroundColor: 'var(--error-soft)', borderRadius: 'var(--radius-pill)', display: 'inline-block' }}>
+                    <span style={{ color: 'var(--error)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={14} /> {d.exceptions} exception{d.exceptions > 1 ? 's' : ''}</span>
                   </div>
                 )}
                 {d.regular >= 1500 && (
-                  <div style={{ padding: '6px 12px', backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 6, display: 'inline-block' }}>
-                    <span style={{ color: '#F59E0B', fontSize: 13, fontWeight: 600 }}>📦 {Math.floor(d.regular / 2000)}–{Math.floor(d.regular / 1500)} gaylords</span>
+                  <div style={{ padding: '6px 12px', backgroundColor: 'var(--signal-soft)', borderRadius: 'var(--radius-pill)', display: 'inline-block' }}>
+                    <span style={{ color: 'var(--signal)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Package size={14} /> {Math.floor(d.regular / 2000)}–{Math.floor(d.regular / 1500)} gaylords</span>
                   </div>
                 )}
               </div>
@@ -1248,7 +1249,7 @@ ${allExcs.map((exc, i) => `<div class="exc">
 
           <div style={st.card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={st.cardTitle}>💰 Weekly Billing Reports</h3>
+              <h3 style={{ ...st.cardTitle, display: 'flex', alignItems: 'center', gap: 8 }}><Receipt size={16} /> Weekly Billing Reports</h3>
               <button onClick={() => setShowArchived(!showArchived)}
                 style={{ ...st.smallBtn, color: showArchived ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
                 {showArchived ? '🗄 Hide Archived' : '📁 Show Archived'}

@@ -20,6 +20,7 @@ import { displayOperatorName } from '../utils/operator';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
+import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard } from 'lucide-react';
 
 const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
@@ -1949,27 +1950,27 @@ export default function Pod() {
             display: 'flex', gap: 10, marginBottom: 16,
           }}>
             <div style={{
-              flex: 1, padding: '12px 14px', borderRadius: 10,
-              border: '2px solid #3B82F6', backgroundColor: 'var(--bg-input, #0a0a0a)',
+              flex: 1, padding: '12px 14px', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--accent)', backgroundColor: 'var(--accent-soft)',
               textAlign: 'center',
             }}>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary, #93C5FD)', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                🎯 {t('minimum')}
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                <Target size={13} /> {t('minimum')}
               </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#3B82F6', lineHeight: 1.2 }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--accent)', lineHeight: 1.2, fontFamily: 'var(--font-display)' }}>
                 {PER_POD_DAILY_MIN.toLocaleString()}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary, #888)' }}>{t('perShift')}</div>
             </div>
             <div style={{
-              flex: 1, padding: '12px 14px', borderRadius: 10,
-              border: '2px solid #22C55E', backgroundColor: 'var(--bg-input, #0a0a0a)',
+              flex: 1, padding: '12px 14px', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--success)', backgroundColor: 'var(--success-soft)',
               textAlign: 'center',
             }}>
-              <div style={{ fontSize: 12, color: '#86efac', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                🎁 {t('giftCard')}
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                <Gift size={13} /> {t('giftCard')}
               </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#22C55E', lineHeight: 1.2 }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--success)', lineHeight: 1.2, fontFamily: 'var(--font-display)' }}>
                 {PER_POD_BONUS_TARGET.toLocaleString()}+
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary, #888)' }}>{t('giftCardHint')}</div>
@@ -2276,17 +2277,17 @@ export default function Pod() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={styles.scannerBadge}>
-            <div style={{ ...styles.dot, backgroundColor: '#22C55E' }} />
-            {t('paired')} ✓
+            <div style={{ ...styles.dot, backgroundColor: 'var(--success)' }} />
+            {t('paired')}
           </div>
           {recentScans.length > 0 && recentScans[0].docId && recentScans[0].docId !== 'training' && (
             <button onClick={handleUndo} style={styles.undoBtn} title="Press Ctrl + U">
-              ↩ {t('undoLastScan')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Ctrl + U</kbd>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Undo2 size={15} /> {t('undoLastScan')}</span> <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Ctrl + U</kbd>
             </button>
           )}
-          <button onClick={() => setShowSettings(!showSettings)} style={styles.settingsBtn} title="Press Ctrl + ,">⚙️</button>
+          <button onClick={() => setShowSettings(!showSettings)} style={styles.settingsBtn} title="Press Ctrl + ," aria-label="Settings"><Settings size={18} /></button>
           <button onClick={() => setPhase(PHASE_PAUSED)} style={styles.pauseBtn} title="Press Ctrl + P">
-            ⏸ {t('pause')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Ctrl + P</kbd>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Pause size={15} /> {t('pause')}</span> <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>Ctrl + P</kbd>
           </button>
         </div>
       </div>
@@ -2947,46 +2948,46 @@ export default function Pod() {
             : 'Press Ctrl+1 — reads the cover, matches to manifest, auto-logs exception if no match'}
           style={{
             ...styles.secondaryBtn, margin: 0,
-            borderColor: '#3B82F6', backgroundColor: '#1e3a8a', color: '#dbeafe',
-            fontSize: 18, padding: '20px 24px',
+            borderColor: 'var(--accent)', backgroundColor: 'var(--accent-soft)', color: 'var(--text)',
+            fontSize: 18, padding: '18px 24px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
             fontWeight: 800,
             opacity: (aiProcessing || aiMatchCandidates) ? 0.45 : 1,
             cursor: (aiProcessing || aiMatchCandidates) ? 'not-allowed' : 'pointer',
           }}>
-          <span>📷 {t('scanCoverAi')}</span>
-          <span style={{ fontSize: 12, fontWeight: 500, color: '#93c5fd' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Camera size={24} color="var(--accent)" /> {t('scanCoverAi')}</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>
             {aiProcessing ? t('aiStillMatching') : aiMatchCandidates ? t('pickMatchFirst') : t('scanCoverHint')}
           </span>
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <kbd style={{ ...kbdHintStyle, backgroundColor: '#1e3a8a', color: '#dbeafe', borderColor: '#3B82F6' }}>NumPad 1</kbd>
-            <span style={{ fontSize: 10, color: '#64748b' }}>or</span>
+            <kbd style={kbdHintStyle}>NumPad 1</kbd>
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>or</span>
             <kbd style={kbdHintStyle}>Ctrl + 1</kbd>
           </span>
         </button>
         <button onClick={() => { setShowTitleSearch(true); setTitleSearchQuery(''); }}
           title="Press Ctrl+4 — type the title, matches to manifest, picks ISBN"
-          style={{ ...styles.secondaryBtn, margin: 0, borderColor: '#8B5CF6', backgroundColor: '#3b0764', color: '#ede9fe', fontSize: 16, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontWeight: 800 }}>
-          <span>⌨️ {t('typeBookTitleAi')}</span>
-          <span style={{ fontSize: 11, fontWeight: 500, color: '#c4b5fd' }}>{t('typeBookTitleHint')}</span>
+          style={{ ...styles.secondaryBtn, margin: 0, borderColor: '#a78bfa', backgroundColor: 'rgba(139,92,246,0.12)', color: 'var(--text)', fontSize: 16, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontWeight: 800 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Type size={20} color="#a78bfa" /> {t('typeBookTitleAi')}</span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>{t('typeBookTitleHint')}</span>
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <kbd style={{ ...kbdHintStyle, backgroundColor: '#3b0764', color: '#ede9fe', borderColor: '#8B5CF6' }}>NumPad 4</kbd>
-            <span style={{ fontSize: 10, color: '#64748b' }}>or</span>
+            <kbd style={kbdHintStyle}>NumPad 4</kbd>
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>or</span>
             <kbd style={kbdHintStyle}>Ctrl + 4</kbd>
           </span>
         </button>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => { setShowManualEntry(true); setTimeout(() => manualInputRef.current?.focus(), 100); }}
             title="Press Ctrl+2"
-            style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: '#555', color: '#aaa', fontSize: 13, padding: '10px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-            <span>⌨️ {t('typeIsbn')}</span>
-            <kbd style={{ ...kbdHintStyle, backgroundColor: '#1e293b', color: '#cbd5e1' }}>NumPad 2</kbd>
+            style={{ ...styles.secondaryBtn, flex: 1, margin: 0, borderColor: 'var(--border-strong)', color: 'var(--text-secondary)', fontSize: 13, padding: '12px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Hash size={16} /> {t('typeIsbn')}</span>
+            <kbd style={kbdHintStyle}>NumPad 2</kbd>
           </button>
           <button onClick={() => setShowExceptionModal(true)}
             title="Press Ctrl+3 or Esc — only for severely damaged books"
-            style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '10px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-            <span>⚠️ {t('damagedException')}</span>
-            <kbd style={{ ...kbdHintStyle, backgroundColor: '#7f1d1d', color: '#fecaca', borderColor: '#EF4444' }}>NumPad 3</kbd>
+            style={{ ...styles.exceptionBtn, margin: 0, flex: 1, padding: '12px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} /> {t('damagedException')}</span>
+            <kbd style={{ ...kbdHintStyle, backgroundColor: 'var(--error-soft)', color: 'var(--error)', borderColor: 'var(--error)' }}>NumPad 3</kbd>
           </button>
         </div>
       </div>
@@ -2998,14 +2999,14 @@ export default function Pod() {
           title="Show all keyboard shortcuts"
           style={{
             position: 'fixed', bottom: 12, left: 12, zIndex: 50,
-            backgroundColor: 'rgba(30, 58, 138, 0.85)', color: '#dbeafe',
-            border: '1px solid #3B82F6', borderRadius: 20, padding: '6px 12px',
+            backgroundColor: 'var(--bg-elev)', color: 'var(--text-secondary)',
+            border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '7px 14px',
             fontSize: 12, fontWeight: 600, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 6,
-            fontFamily: 'var(--font-sans)',
+            fontFamily: 'var(--font-sans)', boxShadow: 'var(--shadow-card)',
           }}
         >
-          ⌨️ {t('numpadShortcuts')} <kbd style={{ ...kbdHintStyle, fontSize: 10 }}>?</kbd>
+          <Keyboard size={14} /> {t('numpadShortcuts')} <kbd style={{ ...kbdHintStyle, fontSize: 10 }}>?</kbd>
         </button>
       )}
 
@@ -3166,12 +3167,12 @@ const styles = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
     marginBottom: 14, flexWrap: 'wrap', gap: 10,
   },
-  podTitle: { fontSize: 'clamp(26px, 5vw, 40px)', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' },
+  podTitle: { fontSize: 'clamp(22px, 3.5vw, 30px)', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' },
   scannerBadge: {
     display: 'flex', alignItems: 'center', gap: 6,
-    padding: '7px 12px', borderRadius: 6,
-    border: '1px solid #22C55E', backgroundColor: '#14532d',
-    color: '#fff', fontSize: 13, fontWeight: 700,
+    padding: '7px 12px', borderRadius: 'var(--radius-pill)',
+    border: '1px solid var(--success)', backgroundColor: 'var(--success-soft)',
+    color: 'var(--success)', fontSize: 13, fontWeight: 700,
   },
   dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
   // Header action buttons sized to WCAG 44x44 minimum so gloved/wet hands

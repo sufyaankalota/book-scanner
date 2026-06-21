@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import TodayLeaderboard from '../components/TodayLeaderboard';
 import { computeDailyTarget } from '../utils/target';
+import { Settings, LayoutDashboard, MonitorPlay, History, Receipt, TrendingUp, Package, Download } from 'lucide-react';
 
 export default function Home() {
   const { currentUser, logout } = useAuth();
@@ -122,7 +123,7 @@ export default function Home() {
       {/* PWA Install */}
       {canInstall && (
         <button onClick={handleInstall} style={styles.installBtn}>
-          📲 Install App
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Download size={16} /> Install App</span>
         </button>
       )}
 
@@ -153,31 +154,31 @@ export default function Home() {
       {/* Navigation */}
       <nav className="home-nav" style={styles.nav}>
         <Link to="/setup" style={styles.navLink}>
-          <span style={styles.navIcon}>⚙️</span>
+          <Settings size={22} />
           <span>Setup</span>
         </Link>
         <Link to="/dashboard" style={styles.navLink}>
-          <span style={styles.navIcon}>📊</span>
+          <LayoutDashboard size={22} />
           <span>Dashboard</span>
         </Link>
         <Link to="/kiosk" style={styles.navLink}>
-          <span style={styles.navIcon}>📺</span>
+          <MonitorPlay size={22} />
           <span>Kiosk</span>
         </Link>
         <Link to="/history" style={styles.navLink}>
-          <span style={styles.navIcon}>📁</span>
+          <History size={22} />
           <span>History</span>
         </Link>
         <Link to="/billing" style={styles.navLink}>
-          <span style={styles.navIcon}>💰</span>
+          <Receipt size={22} />
           <span>Billing</span>
         </Link>
         <Link to="/reports" style={styles.navLink}>
-          <span style={styles.navIcon}>📈</span>
+          <TrendingUp size={22} />
           <span>Reports</span>
         </Link>
         <Link to="/portal" style={styles.navLink}>
-          <span style={styles.navIcon}>📦</span>
+          <Package size={22} />
           <span>Portal</span>
         </Link>
       </nav>

@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { computeDailyTarget } from '../utils/target';
 import { groupByOperator } from '../utils/operator';
+import { Trophy, Award, Maximize } from 'lucide-react';
 
 export default function Kiosk() {
   const [job, setJob] = useState(null);
@@ -373,7 +374,7 @@ export default function Kiosk() {
         <div style={k.rightCol}>
           {topPerformer && (
             <div className="top-performer-card" style={k.topPerformer}>
-              <div style={k.spotlightLbl}>{'🏆 TOP PERFORMER'}</div>
+              <div style={k.spotlightLbl}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}><Trophy size={16} /> TOP PERFORMER</span></div>
               <div style={k.spotlightName}>{topPerformer.name}</div>
               <div style={k.spotlightCount}>{topPerformer.count.toLocaleString()}</div>
               <div style={k.spotlightSubLbl}>scans today</div>
@@ -381,7 +382,7 @@ export default function Kiosk() {
           )}
 
           <div style={{ ...k.section, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <h2 style={k.sectionTitle}>{'🏅 Leaderboard'}</h2>
+            <h2 style={k.sectionTitle}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Award size={16} /> Leaderboard</span></h2>
             <div style={{ ...k.leaderboard, flex: 1, overflow: 'auto', minHeight: 0 }}>
               {leaderboard.map((l) => (
                 <div key={l.name} style={{
@@ -404,7 +405,7 @@ export default function Kiosk() {
         </div>
       </div>
 
-      <button onClick={goFullscreen} style={k.fullscreenBtn} title="Toggle fullscreen">⛶</button>
+      <button onClick={goFullscreen} style={k.fullscreenBtn} title="Toggle fullscreen" aria-label="Toggle fullscreen"><Maximize size={18} /></button>
     </div>
   );
 }
