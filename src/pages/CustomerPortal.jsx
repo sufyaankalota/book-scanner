@@ -1156,8 +1156,8 @@ export default function CustomerPortal() {
             </div>
           )}
           {jobProgress.totalExceptions > 0 && (
-            <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13 }}>
-              ? {jobProgress.totalExceptions.toLocaleString()} total exception{jobProgress.totalExceptions !== 1 ? 's' : ''}
+            <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={13} /> {jobProgress.totalExceptions.toLocaleString()} total exception{jobProgress.totalExceptions !== 1 ? 's' : ''}
             </div>
           )}
         </div>
