@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { TrendingUp, Download, AlertTriangle } from 'lucide-react';
 import {
   collection, getDocs, query, where, Timestamp, limit as qLimit, orderBy, startAfter,
   getCountFromServer, doc, deleteDoc, getDoc,
@@ -829,10 +830,10 @@ export default function Reports() {
       <Link to="/" style={st.back}>← Back to Home</Link>
       <div style={st.headerRow}>
         <div>
-          <h1 style={st.title}>📈 Executive Reports</h1>
+          <h1 style={st.title}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><TrendingUp size={26} /> Executive Reports</span></h1>
           <p style={st.subtitle}>Productivity, billing, AI cost, labor and margin in one view.</p>
         </div>
-        <button onClick={handleExport} disabled={loading} style={st.exportBtn}>📥 Export XLSX</button>
+        <button onClick={handleExport} disabled={loading} style={st.exportBtn}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={15} /> Export XLSX</span></button>
       </div>
 
       {/* Filters */}

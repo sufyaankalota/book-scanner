@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { TrendingUp, Users as UsersIcon, Download, FolderOpen } from 'lucide-react';
 import { db } from '../firebase';
 import {
   collection, getDocs, query, where, orderBy, Timestamp,
@@ -320,7 +321,7 @@ export default function JobHistory() {
             {/* Week-over-week comparison */}
             {weeklyComparison && weeklyComparison.length > 1 && (
               <div style={s.card}>
-                <h3 style={s.cardTitle}>📈 Week-over-Week Comparison</h3>
+                <h3 style={s.cardTitle}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><TrendingUp size={16} /> Week-over-Week Comparison</span></h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {weeklyComparison.map((w) => (
                     <div key={w.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #222' }}>
@@ -341,7 +342,7 @@ export default function JobHistory() {
             {/* Operator breakdown */}
             {operatorBreakdown.length > 0 && (
               <div style={s.card}>
-                <h3 style={s.cardTitle}>👥 Operator Breakdown</h3>
+                <h3 style={s.cardTitle}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><UsersIcon size={16} /> Operator Breakdown</span></h3>
                 {operatorBreakdown.map((op, i) => (
                   <div key={op.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #222' }}>
                     <span style={{ color: i === 0 ? '#EAB308' : '#888', fontSize: 14, width: 24, textAlign: 'center', fontWeight: 700 }}>
@@ -359,7 +360,7 @@ export default function JobHistory() {
               </div>
             )}
 
-            <button onClick={handleExportJob} style={s.exportBtn}>📥 Export Job Data</button>
+            <button onClick={handleExportJob} style={s.exportBtn}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={15} /> Export Job Data</span></button>
           </>
         )}
       </div>
@@ -377,7 +378,7 @@ export default function JobHistory() {
         </div>
       ) : jobs.length === 0 ? (
         <div style={{ ...s.card, textAlign: 'center', padding: 40 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>📁</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-tertiary)' }}><FolderOpen size={40} /></div>
           <p style={{ ...s.text, marginBottom: 8, fontSize: 16, color: 'var(--text-secondary, #aaa)' }}>No closed jobs yet</p>
           <p style={{ ...s.text, fontSize: 13 }}>Closed jobs will appear here. Active jobs are managed in <Link to="/setup" style={{ color: 'var(--accent)' }}>Setup</Link>.</p>
         </div>

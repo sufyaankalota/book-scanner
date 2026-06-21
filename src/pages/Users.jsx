@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Upload, Users as UsersIcon } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, doc, getDocs, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { hashPassword } from '../utils/crypto';
@@ -200,7 +201,7 @@ export default function Users() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
             <button onClick={() => setShowAdd(true)} style={{ ...s.addBtn, marginBottom: 0, flex: '1 1 200px' }}>+ Add User</button>
             <label style={{ ...s.addBtn, marginBottom: 0, flex: '1 1 200px', textAlign: 'center', cursor: importing ? 'wait' : 'pointer', opacity: importing ? 0.6 : 1, background: '#1a1a1a', borderColor: '#333', color: '#ccc' }}>
-              {importing ? 'Importing…' : '📥 Import CSV'}
+              {importing ? 'Importing…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Upload size={15} /> Import CSV</span>}
               <input type="file" accept=".csv,text/csv" onChange={handleCsvImport} disabled={importing} style={{ display: 'none' }} />
             </label>
           </div>
@@ -237,7 +238,7 @@ export default function Users() {
         </div>
       ) : users.length === 0 ? (
         <div style={{ ...s.card, textAlign: 'center', padding: 32 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>👥</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-tertiary)', display: 'flex', justifyContent: 'center' }}><UsersIcon size={36} /></div>
           <p style={{ color: 'var(--text-secondary, #aaa)', fontSize: 15, marginBottom: 4 }}>No users yet</p>
           <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 13 }}>Click <strong style={{ color: '#3B82F6' }}>+ Add User</strong> above to create your first account.</p>
         </div>

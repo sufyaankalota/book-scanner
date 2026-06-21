@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Receipt, Download, Calendar } from 'lucide-react';
 import { db } from '../firebase';
 import {
   collection, doc, getDoc, getDocs, setDoc, query, where,
@@ -243,7 +244,7 @@ export default function Billing() {
   return (
     <div style={st.container}>
       <Link to="/" style={st.backLink}>← Back to Home</Link>
-      <h1 style={st.title}>💰 Billing</h1>
+      <h1 style={st.title}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><Receipt size={24} /> Billing</span></h1>
       <p style={st.subtitle}>Export weekly billing for any job — active or closed.</p>
 
       {/* Job picker */}
@@ -271,12 +272,12 @@ export default function Billing() {
         <label style={{ ...st.label, marginTop: 18 }}>Week starting (Monday)</label>
         <input type="date" value={billingWeek} onChange={(e) => onBillingWeekChange(e.target.value)} style={st.input} />
         <p style={st.hint}>
-          📅 {weekStartDate.toLocaleDateString()} – {new Date(weekEndDate.getTime() - 86400000).toLocaleDateString()} (Mon–Sun)
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Calendar size={13} /> {weekStartDate.toLocaleDateString()} – {new Date(weekEndDate.getTime() - 86400000).toLocaleDateString()} (Mon–Sun)</span>
         </p>
 
         <button onClick={handleBillingExport} disabled={exporting || !selectedJob}
           style={{ ...st.primaryBtn, opacity: exporting || !selectedJob ? 0.5 : 1, cursor: exporting || !selectedJob ? 'not-allowed' : 'pointer' }}>
-          {exporting ? '⏳ Generating...' : '📥 Generate Billing Export'}
+          {exporting ? 'Generating…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={15} /> Generate Billing Export</span>}
         </button>
       </div>
 
@@ -310,7 +311,7 @@ export default function Billing() {
                     <button onClick={() => downloadReport(r)} disabled={!r.fileData}
                       style={{ ...st.downloadBtn, opacity: r.fileData ? 1 : 0.4, cursor: r.fileData ? 'pointer' : 'not-allowed' }}
                       title={r.fileData ? 'Download XLSX' : 'File not stored — re-export to download'}>
-                      📥 Download
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={14} /> Download</span>
                     </button>
                   </div>
                 </div>

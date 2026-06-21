@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck } from 'lucide-react';
+import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck, FileDown, Receipt, Mail, MonitorPlay } from 'lucide-react';
 
 function AutoRefreshIndicator({ lastUpdated }) {
   const [, setTick] = useState(0);
@@ -956,17 +956,17 @@ export default function Dashboard() {
           </p>
         </div>
         <div data-dashboard-actions style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button onClick={handleExportToday} disabled={exporting} style={{ ...st.exportBtn, opacity: exporting ? 0.5 : 1 }}>
-            {exporting ? '...' : '📊 Today'}
+          <button onClick={handleExportToday} disabled={exporting} style={{ ...st.exportBtn, opacity: exporting ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {exporting ? '...' : <><FileDown size={15} /> Today</>}
           </button>
-          <button onClick={handleExportAll} disabled={exporting} style={{ ...st.exportBtn, opacity: exporting ? 0.5 : 1 }}>
-            {exporting ? '...' : '📊 All'}
+          <button onClick={handleExportAll} disabled={exporting} style={{ ...st.exportBtn, opacity: exporting ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {exporting ? '...' : <><FileDown size={15} /> All</>}
           </button>
-          <button onClick={() => setShowBilling(true)} style={{ ...st.exportBtn, borderColor: '#22C55E', color: '#22C55E' }}>💰 Billing</button>
+          <button onClick={() => setShowBilling(true)} style={{ ...st.exportBtn, borderColor: 'var(--success)', color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Receipt size={15} /> Billing</button>
           {/* Reconciliation export removed — manifest size is not meaningful
               relative to actual books received (8M+ vs ~1M typical). */}
-          <button onClick={generateDailySummary} style={{ ...st.exportBtn, borderColor: '#A855F7', color: '#A855F7' }}>📧 Daily Summary</button>
-          <Link to="/kiosk" style={{ ...st.exportBtn, textDecoration: 'none' }}>📺 Kiosk</Link>
+          <button onClick={generateDailySummary} style={{ ...st.exportBtn, borderColor: '#a78bfa', color: '#a78bfa', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Mail size={15} /> Daily Summary</button>
+          <Link to="/kiosk" style={{ ...st.exportBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}><MonitorPlay size={15} /> Kiosk</Link>
           <Link to="/setup" style={st.setupLink}>Setup</Link>
         </div>
       </div>
