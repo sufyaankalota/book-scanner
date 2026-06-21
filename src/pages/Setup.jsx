@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock, Palette, Bell, QrCode, Clock, Trash2, ClipboardList, KeyRound, Users, Pencil, Link2, Search } from 'lucide-react';
+import { Lock, Palette, Bell, QrCode, Clock, Trash2, ClipboardList, KeyRound, Users, Pencil, Link2, Search, Printer, Mail, Package } from 'lucide-react';
 import { db } from '../firebase';
 import {
   collection, doc, setDoc, getDoc, getDocs, deleteDoc,
@@ -1064,7 +1064,7 @@ export default function Setup() {
               ))}
             </div>
             <button onClick={printQrCodes}
-              style={{ ...s.primaryBtn, marginTop: 16 }}>🖨 Print 4×6 Thermal Labels</button>
+              style={{ ...s.primaryBtn, marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Printer size={14} /> Print 4×6 Thermal Labels</button>
           </div>
         )}
 
@@ -1086,7 +1086,7 @@ export default function Setup() {
             <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>
               Report will auto-download on any open Dashboard tab at this time
             </p>
-            <label style={{ ...s.label, marginTop: 16 }}>📧 EOD Report Email</label>
+            <label style={{ ...s.label, marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Mail size={13} /> EOD Report Email</label>
             <input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)}
               placeholder="e.g. supervisor@company.com" style={s.input} />
             <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginTop: 4 }}>
@@ -1107,7 +1107,7 @@ export default function Setup() {
               min={7} style={s.input} />
             <button onClick={handleDataCleanup}
               style={{ ...s.dangerBtn, marginTop: 12, width: '100%' }}>
-              🗑 Run Cleanup
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Trash2 size={14} /> Run Cleanup</span>
             </button>
             {cleanupStatus && <p style={{ color: '#888', marginTop: 8, fontSize: 14 }}>{cleanupStatus}</p>}
           </div>
@@ -1215,7 +1215,7 @@ export default function Setup() {
                   )}
                   {customerPOUploads.length > 0 && (
                     <div style={{ marginTop: 12, padding: 12, backgroundColor: '#1a1a2e', borderRadius: 8, border: '1px solid #3B82F6' }}>
-                      <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>📦 Customer-Uploaded POs</p>
+                      <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}><Package size={14} /> Customer-Uploaded POs</p>
                       {customerPOUploads.map((up) => (
                         <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #333' }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
@@ -1238,12 +1238,12 @@ export default function Setup() {
                             {up.manifestMeta?.chunked && (
                               <button onClick={() => handleBackfillCustomerUpload(up)} disabled={!!pairingStatus} title="Pair ISBN-10/13 siblings + backfill titles in place (no re-upload needed)"
                                 style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EAB308', backgroundColor: 'transparent', color: '#EAB308', fontSize: 11, fontWeight: 600, cursor: pairingStatus ? 'wait' : 'pointer', opacity: pairingStatus ? 0.5 : 1 }}>
-                                🔗 Pair ISBNs
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Link2 size={12} /> Pair ISBNs</span>
                               </button>
                             )}
                             <button onClick={() => handleDeleteCustomerUpload(up)} title="Delete this PO upload from the library"
                               style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#F87171', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                              🗑 Delete
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Trash2 size={12} /> Delete</span>
                             </button>
                           </div>
                         </div>
@@ -1385,8 +1385,8 @@ export default function Setup() {
             {/* Customer-uploaded POs */}
             {customerPOUploads.length > 0 && (
               <div style={{ marginTop: 12, padding: 12, backgroundColor: '#1a1a2e', borderRadius: 8, border: '1px solid #3B82F6' }}>
-                <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>
-                  📦 Customer-Uploaded POs
+                <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Package size={14} /> Customer-Uploaded POs
                 </p>
                 {customerPOUploads.map((up) => (
                   <div key={up.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #333' }}>
@@ -1413,12 +1413,12 @@ export default function Setup() {
                       {up.manifestMeta?.chunked && (
                         <button onClick={() => handleBackfillCustomerUpload(up)} disabled={!!pairingStatus} title="Pair ISBN-10/13 siblings + backfill titles in place (no re-upload needed)"
                           style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EAB308', backgroundColor: 'transparent', color: '#EAB308', fontSize: 11, fontWeight: 600, cursor: pairingStatus ? 'wait' : 'pointer', opacity: pairingStatus ? 0.5 : 1 }}>
-                          🔗 Pair ISBNs
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Link2 size={12} /> Pair ISBNs</span>
                         </button>
                       )}
                       <button onClick={() => handleDeleteCustomerUpload(up)} title="Delete this PO upload from the library"
                         style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #7f1d1d', backgroundColor: 'transparent', color: '#F87171', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                        🗑 Delete
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Trash2 size={12} /> Delete</span>
                       </button>
                     </div>
                   </div>
@@ -1614,7 +1614,7 @@ export default function Setup() {
                   console.error('[delete-job] fatal:', err);
                   toast('Delete failed: ' + (err?.message || err), 'error');
                 }
-              }} style={{ ...s.dangerBtn, fontSize: 13, padding: '8px 16px' }}>🗑 Delete</button>
+              }} style={{ ...s.dangerBtn, fontSize: 13, padding: '8px 16px' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Trash2 size={12} /> Delete</span></button>
             </div>
           ))}
         </div>

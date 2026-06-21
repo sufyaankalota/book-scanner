@@ -910,8 +910,8 @@ export default function Reports() {
         </div>
       )}
       {truncated && !loading && (
-        <div style={st.warnBox}>
-          ⚠️ Result truncated at 100,000 rows. Pick a job or narrow the date range for accurate totals.
+        <div style={{ ...st.warnBox, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={15} /> Result truncated at 100,000 rows. Pick a job or narrow the date range for accurate totals.
         </div>
       )}
 

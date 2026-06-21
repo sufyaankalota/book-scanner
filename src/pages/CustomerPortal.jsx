@@ -12,7 +12,7 @@ import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStor
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useDailyBreakdown } from '../hooks/useDailyBreakdown';
 import { useExceptionScans } from '../hooks/useExceptionScans';
-import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt, FileText, Upload, Truck, Trash2, Download, Search } from 'lucide-react';
+import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt, FileText, Upload, Truck, Trash2, Download, Search, FolderOpen, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -1066,7 +1066,7 @@ export default function CustomerPortal() {
             disabled={resettingCache}
             style={{ ...st.logoutBtn, background: '#1a1a1a', color: '#fbbf24', borderColor: '#3b2f0a' }}
             title="Clears local browser cache (IndexedDB, localStorage, service workers) and reloads. Use this if the portal seems stuck or stale.">
-            {resettingCache ? '…' : '🧹 Reset Cache'}
+            {resettingCache ? '…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Trash2 size={13} /> Reset Cache</span>}
           </button>
           <button onClick={handleLogout} style={st.logoutBtn}>Sign Out</button>
         </div>
@@ -1112,7 +1112,7 @@ export default function CustomerPortal() {
 
       {!job?.meta?.active && job && (
         <div style={{ ...st.card, textAlign: 'center', padding: '20px', marginBottom: 16 }}>
-          <p style={{ color: '#888', fontSize: 14, margin: 0 }}>📁 Viewing completed job: <strong style={{ color: '#ccc' }}>{job.meta.name}</strong>{job.meta.closedAt?.toDate?.() ? ` (closed ${job.meta.closedAt.toDate().toLocaleDateString()})` : ''}. Use the dropdown above to switch jobs.</p>
+          <p style={{ color: '#888', fontSize: 14, margin: 0 }}><FolderOpen size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />Viewing completed job: <strong style={{ color: '#ccc' }}>{job.meta.name}</strong>{job.meta.closedAt?.toDate?.() ? ` (closed ${job.meta.closedAt.toDate().toLocaleDateString()})` : ''}. Use the dropdown above to switch jobs.</p>
         </div>
       )}
 
@@ -1120,7 +1120,7 @@ export default function CustomerPortal() {
       {job && totalProcessed > 0 && (
         <div style={{ ...st.card, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ ...st.cardTitle, marginBottom: 0 }}>📊 Job Progress</h3>
+            <h3 style={{ ...st.cardTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 8 }}><BarChart3 size={16} /> Job Progress</h3>
             <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
               {jobProgress.totalScanned.toLocaleString()} scanned
               {jobProgress.totalExpected ? ` / ${jobProgress.totalExpected.toLocaleString()} expected (${jobProgress.pct}%)` : ''}
@@ -1299,7 +1299,7 @@ export default function CustomerPortal() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
               <button onClick={() => openPhotoReport(null)}
                 style={{ ...st.smallBtn, padding: '10px 18px', borderColor: '#7c3aed', color: '#a78bfa', fontSize: 13 }}>
-                📷 Photo Report (All Dates)
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Camera size={14} /> Photo Report (All Dates)</span>
               </button>
             </div>
           )}
@@ -1317,7 +1317,7 @@ export default function CustomerPortal() {
                   {excCount > 0 && <span style={{ color: '#EF4444', fontSize: 13, fontWeight: 600 }}>{excCount} exception{excCount > 1 ? 's' : ''}</span>}
                   {manualCount > 0 && <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 600 }}>{manualCount} manual</span>}
                   <button onClick={() => exportDailyExceptions(date)} style={st.smallBtn}>Export</button>
-                  <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}>📷 Photos</button>
+                  <button onClick={() => openPhotoReport(date)} style={{ ...st.smallBtn, borderColor: '#7c3aed', color: '#a78bfa' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Camera size={13} /> Photos</span></button>
                 </div>
               </div>
               {excs.map((exc, i) => (
@@ -1390,9 +1390,9 @@ export default function CustomerPortal() {
                 {hasBreakdown && (
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed #333', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                     <span style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Exceptions made up of:</span>
-                    <span style={{ color: '#fdba74', fontSize: 13, fontWeight: 600 }}>⌨️ {totalManual.toLocaleString()} manual</span>
-                    <span style={{ color: '#93c5fd', fontSize: 13, fontWeight: 600 }}>📷 {totalAi.toLocaleString()} AI camera</span>
-                    <span style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600 }}>⚠️ {totalLogged.toLocaleString()} logged</span>
+                    <span style={{ color: '#fdba74', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Keyboard size={13} /> {totalManual.toLocaleString()} manual</span>
+                    <span style={{ color: '#93c5fd', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Camera size={13} /> {totalAi.toLocaleString()} AI camera</span>
+                    <span style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={13} /> {totalLogged.toLocaleString()} logged</span>
                   </div>
                 )}
               </div>
@@ -1434,8 +1434,8 @@ export default function CustomerPortal() {
                           : null}
                       </div>
                       {report.fileOmitted && (
-                        <div style={{ color: '#F59E0B', fontSize: 12, marginTop: 4 }}>
-                          ⚠️ File not stored (too large) — contact warehouse for a copy.
+                        <div style={{ color: '#F59E0B', fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <AlertTriangle size={12} /> File not stored (too large) — contact warehouse for a copy.
                         </div>
                       )}
                     </div>
@@ -1482,14 +1482,14 @@ export default function CustomerPortal() {
                   {(report.manualCount != null || report.aiMatchCount != null || report.loggedExceptionCount != null) && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #333', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Exceptions made up of:</span>
-                      <span style={{ color: '#fdba74', fontSize: 13, fontWeight: 600 }}>
-                        ⌨️ {(report.manualCount || 0).toLocaleString()} manual typed
+                      <span style={{ color: '#fdba74', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <Keyboard size={13} /> {(report.manualCount || 0).toLocaleString()} manual typed
                       </span>
-                      <span style={{ color: '#93c5fd', fontSize: 13, fontWeight: 600 }}>
-                        📷 {(report.aiMatchCount || 0).toLocaleString()} AI camera
+                      <span style={{ color: '#93c5fd', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <Camera size={13} /> {(report.aiMatchCount || 0).toLocaleString()} AI camera
                       </span>
-                      <span style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600 }}>
-                        ⚠️ {(report.loggedExceptionCount || 0).toLocaleString()} logged exceptions
+                      <span style={{ color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <AlertTriangle size={13} /> {(report.loggedExceptionCount || 0).toLocaleString()} logged exceptions
                       </span>
                     </div>
                   )}
@@ -1745,7 +1745,7 @@ export default function CustomerPortal() {
                           <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
                             backgroundColor: up.status === 'added' ? '#166534' : '#92400e',
                             color: up.status === 'added' ? '#4ADE80' : '#FCD34D' }}>
-                            {up.status === 'added' ? '✅ Added to Job' : '⏳ Pending'}
+                            {up.status === 'added' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle2 size={11} /> Added to Job</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> Pending</span>}
                           </span>
                         </td>
                         <td style={{ ...st.td, textAlign: 'right' }}>

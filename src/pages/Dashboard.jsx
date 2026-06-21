@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck, FileDown, Receipt, Mail, MonitorPlay, RefreshCw, Bell } from 'lucide-react';
+import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck, FileDown, Receipt, Mail, MonitorPlay, RefreshCw, Bell, DollarSign, Calendar, FileText, Download, Package, CheckCircle2, Trash2, Wrench, Loader2 } from 'lucide-react';
 
 function AutoRefreshIndicator({ lastUpdated }) {
   const [, setTick] = useState(0);
@@ -976,7 +976,7 @@ export default function Dashboard() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 16, padding: 32, maxWidth: 440, width: '100%', border: '2px solid #22C55E' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ color: '#fff', margin: 0, fontSize: 22 }}>💰 Weekly Billing Export</h2>
+              <h2 style={{ color: '#fff', margin: 0, fontSize: 22, display: 'inline-flex', alignItems: 'center', gap: 8 }}><DollarSign size={20} /> Weekly Billing Export</h2>
               <button onClick={() => setShowBilling(false)}
                 style={{ background: 'none', border: '1px solid #555', borderRadius: 8, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
             </div>
@@ -987,19 +987,19 @@ export default function Dashboard() {
             <input type="date" value={billingWeek}
               onChange={(e) => setBillingWeek(e.target.value)}
               style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #444', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 16, marginBottom: 16, boxSizing: 'border-box' }} />
-            <p style={{ color: '#888', fontSize: 13, margin: '0 0 16px' }}>
-              📅 {new Date(billingWeek + 'T00:00:00').toLocaleDateString()} – {new Date(new Date(billingWeek + 'T00:00:00').getTime() + 6 * 86400000).toLocaleDateString()}
+            <p style={{ color: '#888', fontSize: 13, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Calendar size={14} /> {new Date(billingWeek + 'T00:00:00').toLocaleDateString()} – {new Date(new Date(billingWeek + 'T00:00:00').getTime() + 6 * 86400000).toLocaleDateString()}
             </p>
             <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginBottom: 20, lineHeight: 1.5 }}>
               The XLSX includes: <strong>Billing Summary</strong> (regular scan count + exception count), <strong>Daily Breakdown</strong>, <strong>By Pod</strong>, and <strong>By Operator</strong> sheets. Fill in your rates in the Rate/Amount columns.
             </p>
-            <div style={{ backgroundColor: '#14532d', border: '1px solid #22C55E', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#86efac', fontSize: 13 }}>
-              📋 This report will also be visible to the customer in their portal.
+            <div style={{ backgroundColor: '#14532d', border: '1px solid #22C55E', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#86efac', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FileText size={14} /> This report will also be visible to the customer in their portal.
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <button onClick={handleBillingExport} disabled={exporting}
                 style={{ flex: 1, padding: '14px 20px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 700, cursor: exporting ? 'wait' : 'pointer', opacity: exporting ? 0.6 : 1 }}>
-                {exporting ? '⏳ Generating...' : '📥 Download Billing XLSX'}
+                {exporting ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Loader2 size={15} className="spin" /> Generating...</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={15} /> Download Billing XLSX</span>}
               </button>
               <button onClick={() => setShowBilling(false)}
                 style={{ padding: '14px 20px', borderRadius: 10, border: '1px solid #555', backgroundColor: 'transparent', color: 'var(--text-secondary, #aaa)', fontSize: 14, cursor: 'pointer' }}>
@@ -1067,8 +1067,8 @@ export default function Dashboard() {
       {/* Pending PO Uploads — top of dashboard */}
       {pendingPOUploads.length > 0 && (
         <div style={{ backgroundColor: '#1a1a2e', border: '1px solid #3B82F6', borderRadius: 10, padding: 14, marginBottom: 16 }}>
-          <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>
-            📦 {pendingPOUploads.length} Customer PO Upload{pendingPOUploads.length > 1 ? 's' : ''} Pending
+          <p style={{ color: '#93C5FD', fontSize: 13, fontWeight: 600, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Package size={14} /> {pendingPOUploads.length} Customer PO Upload{pendingPOUploads.length > 1 ? 's' : ''} Pending
           </p>
           {pendingPOUploads.map((up) => (
             <div key={up.id} style={{ padding: '8px 0', borderBottom: '1px solid #333' }}>
@@ -1138,7 +1138,7 @@ export default function Dashboard() {
                   disabled={recomputing}
                   title="Rebuild the per-PO breakdown from scratch (use if numbers look wrong). Takes a few seconds for small jobs, up to a few minutes for million-scan jobs."
                   style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #555', backgroundColor: 'transparent', color: '#888', fontSize: 11, fontWeight: 600, cursor: recomputing ? 'wait' : 'pointer', opacity: recomputing ? 0.6 : 1 }}>
-                  {recomputing ? '⏳ Rebuilding…' : '🔄 Rebuild counts'}
+                  {recomputing ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Loader2 size={12} className="spin" /> Rebuilding…</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><RefreshCw size={12} /> Rebuild counts</span>}
                 </button>
               )}
             </div>
@@ -1170,8 +1170,8 @@ export default function Dashboard() {
             );
           })()}
           {jobProgress.totalExceptions > 0 && (
-            <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13 }}>
-              ⚠ {jobProgress.totalExceptions.toLocaleString()} exception scan{jobProgress.totalExceptions !== 1 ? 's' : ''} (not in manifest)
+            <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={13} /> {jobProgress.totalExceptions.toLocaleString()} exception scan{jobProgress.totalExceptions !== 1 ? 's' : ''} (not in manifest)
             </div>
           )}
         </div>
@@ -1217,7 +1217,7 @@ export default function Dashboard() {
               backgroundColor: a.complete ? '#052e16' : '#422006',
               border: `1px solid ${a.complete ? '#22C55E' : '#F59E0B'}`,
             }}>
-              <span style={{ fontSize: 20 }}>{a.complete ? '✅' : '⏳'}</span>
+              <span style={{ fontSize: 20, display: 'inline-flex', alignItems: 'center', color: a.complete ? '#22C55E' : '#F59E0B' }}>{a.complete ? <CheckCircle2 size={20} /> : <Clock size={20} />}</span>
               <div style={{ flex: 1 }}>
                 <span style={{ color: a.complete ? '#86efac' : '#fde68a', fontWeight: 800, fontSize: 14 }}>
                   {a.po} — {a.pct}%
@@ -1261,13 +1261,13 @@ export default function Dashboard() {
               {selectedExceptions.size > 0 && (
                 <button onClick={bulkDelete}
                   style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                  🗑 Remove Selected ({selectedExceptions.size})
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Trash2 size={12} /> Remove Selected ({selectedExceptions.size})</span>
                 </button>
               )}
             </div>
             <button onClick={handleExportExceptions}
               style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-              📥 Export for Customer
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Download size={12} /> Export for Customer</span>
             </button>
           </div>
           {combinedExceptions.slice(0, exceptionPageSize).map((ex) => (
@@ -1292,7 +1292,7 @@ export default function Dashboard() {
                 <button onClick={() => removeException(ex.id)}
                   aria-label={`Remove exception for ${ex.isbn || 'unknown ISBN'}`}
                   style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #EF4444', backgroundColor: 'transparent', color: '#EF4444', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}>
-                  🗑 Remove
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Trash2 size={11} /> Remove</span>
                 </button>
               )}
             </div>
@@ -1340,8 +1340,8 @@ export default function Dashboard() {
         <div style={st.panel}>
           {isOwner && (
             <div style={{ padding: 12, borderBottom: '1px solid #222', backgroundColor: '#0f1722' }}>
-              <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-                🛠 Merge Operators
+              <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Wrench size={13} /> Merge Operators
               </div>
               <div style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
                 Combine two scanner identities (e.g. someone scanned a barcode into the name prompt). Rewrites scans, exceptions, and shifts.
@@ -1498,7 +1498,7 @@ export default function Dashboard() {
             <div style={{ marginTop: 12, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
               {exceptionTrend.filter((d) => d.rate > 15 && d.total > 10).map((d) => (
                 <div key={d.hour} style={{ backgroundColor: '#2a1010', border: '1px solid #EF4444', borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
-                  <span style={{ color: '#EF4444', fontWeight: 700 }}>⚠ {d.hour}:00</span>
+                  <span style={{ color: '#EF4444', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={12} /> {d.hour}:00</span>
                   <span style={{ color: '#ccc', marginLeft: 6 }}>{d.exceptions} exceptions ({d.rate}% rate)</span>
                 </div>
               ))}

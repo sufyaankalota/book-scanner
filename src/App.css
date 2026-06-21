@@ -333,6 +333,13 @@ a {
   margin-right: 6px;
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
 /* ── Skeleton loader ── */
 @keyframes shimmer {
   0% { background-position: -200px 0; }
