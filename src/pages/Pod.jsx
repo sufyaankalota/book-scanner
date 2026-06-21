@@ -20,7 +20,7 @@ import { displayOperatorName } from '../utils/operator';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
-import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard } from 'lucide-react';
+import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard, CloudUpload } from 'lucide-react';
 
 const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
@@ -165,6 +165,8 @@ export default function Pod() {
   const recentScansRef = useRef([]);
   useEffect(() => { recentScansRef.current = recentScans; }, [recentScans]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingSync, setPendingSync] = useState(0); // scans written but not yet acked by the server (offline queue depth)
+  const pendingSyncRef = useRef(0);
   const [showIdleWarning, setShowIdleWarning] = useState(false);
 
   // New feature states
@@ -1561,6 +1563,29 @@ export default function Pod() {
 
   // ─── Process scan (after validation/confirmation) ───
   // opts: { isManual?, source?, capturedTitle?, matchScore? }
+  // Surface how many scans are still syncing. Firestore's persistent cache
+  // already queues writes while offline and replays them on reconnect — this
+  // just shows the queue depth so operators trust nothing is lost when wifi
+  // drops. The .then/.catch bodies are identical across all three scan-write
+  // sites, so they live here once.
+  const bumpPending = (delta) => {
+    pendingSyncRef.current = Math.max(0, pendingSyncRef.current + delta);
+    setPendingSync(pendingSyncRef.current);
+  };
+  const trackScanWrite = (promise, scanId) => {
+    bumpPending(1);
+    return promise
+      .then((docRef) => {
+        setRecentScans((prev) => prev.map((s) => (s.id === scanId ? { ...s, docId: docRef.id } : s)));
+      })
+      .catch(() => {
+        setLocalCount((c) => Math.max(0, c - 1));
+        setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
+        playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
+      })
+      .finally(() => bumpPending(-1));
+  };
+
   const processScan = async (isbn, opts = {}) => {
     if (typeof opts === 'boolean') opts = { isManual: opts };
     const isManual = !!opts.isManual;
@@ -1637,16 +1662,10 @@ export default function Pod() {
       }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName: job.meta.name, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
-      addDoc(collection(db, 'scans'), {
+      trackScanWrite(addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
         poName: job.meta.name, timestamp: serverTimestamp(), type: 'standard', ...sourceMeta,
-      }).then((docRef) => {
-        setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
-      }).catch(() => {
-        setLocalCount((c) => Math.max(0, c - 1));
-        setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
-        playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
-      });
+      }), scanId);
       return;
     }
 
@@ -1673,16 +1692,10 @@ export default function Pod() {
       }
       setScanStreak((s) => { const n = s + 1; if (n > bestStreak) { setBestStreak(n); try { localStorage.setItem(`bestStreak_${operatorName}`, String(n)); } catch {} } return n; });
       setRecentScans((prev) => [{ id: scanId, isbn, poName, color, time: new Date(), docId: null, isManual, isAiMatch, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
-      addDoc(collection(db, 'scans'), {
+      trackScanWrite(addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn, poName,
         timestamp: serverTimestamp(), type: 'standard', ...sourceMeta,
-      }).then((docRef) => {
-        setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
-      }).catch(() => {
-        setLocalCount((c) => Math.max(0, c - 1));
-        setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
-        playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
-      });
+      }), scanId);
     } else {
       playNotInManifestBeep();
       const excColor = job.exceptionColor || '#EF4444';
@@ -1697,16 +1710,10 @@ export default function Pod() {
       }
       setScanStreak(0);
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'EXCEPTIONS', time: new Date(), docId: null, isException: true, capturedPhoto: opts.capturedPhoto || null, capturedTitle: opts.capturedTitle || null, aiSeq: opts.aiSeq || null }, ...prev].slice(0, 20));
-      addDoc(collection(db, 'scans'), {
+      trackScanWrite(addDoc(collection(db, 'scans'), {
         jobId: job.id, podId, scannerId: scannerName, isbn,
         poName: 'EXCEPTIONS', timestamp: serverTimestamp(), type: 'exception', ...sourceMeta,
-      }).then((docRef) => {
-        setRecentScans((prev) => prev.map((s) => s.id === scanId ? { ...s, docId: docRef.id } : s));
-      }).catch(() => {
-        setLocalCount((c) => Math.max(0, c - 1));
-        setRecentScans((prev) => prev.filter((s) => s.id !== scanId));
-        playErrorBeep(); flash('#EF4444', t('writeFailed'), 2000);
-      });
+      }), scanId);
     }
   };
 
@@ -2089,7 +2096,16 @@ export default function Pod() {
         📖 <strong style={{ color: '#e2e8f0' }}>{t('cantScanTip')}</strong> {t('cantScanHint')}
       </div>
 
-      {!isOnline && <div style={styles.offlineBanner}>{t('offlineBanner')}</div>}
+      {!isOnline && (
+        <div style={styles.offlineBanner}>
+          {t('offlineBanner')}{pendingSync > 0 ? ` — ${pendingSync} scan${pendingSync === 1 ? '' : 's'} queued (sync on reconnect)` : ''}
+        </div>
+      )}
+      {isOnline && pendingSync >= 5 && (
+        <div style={{ backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 14px', textAlign: 'center', color: 'var(--accent)', fontSize: 13, fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <CloudUpload size={15} /> Syncing {pendingSync} scans…
+        </div>
+      )}
       {isOnline && xpodLag > 0 && (
         <div
           title="Cross-pod duplicate checks are timing out — wifi may be slow. Scans still accepted; dupes will be caught after the fact."

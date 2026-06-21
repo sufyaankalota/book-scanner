@@ -12,7 +12,7 @@ import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStor
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useDailyBreakdown } from '../hooks/useDailyBreakdown';
 import { useExceptionScans } from '../hooks/useExceptionScans';
-import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt, FileText, Upload, Truck, Trash2, Download } from 'lucide-react';
+import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt, FileText, Upload, Truck, Trash2, Download, Search } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -84,6 +84,10 @@ export default function CustomerPortal() {
   const [exportError, setExportError] = useState('');
   const [resettingCache, setResettingCache] = useState(false);
   const [reportBusy, setReportBusy] = useState(''); // which day report is generating (button feedback)
+  const [searchIsbn, setSearchIsbn] = useState('');
+  const [searchPo, setSearchPo] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching] = useState(false);
   // Branding
   const [brandLogo, setBrandLogo] = useState('');
   const [manifestData, setManifestData] = useState({});
@@ -744,6 +748,37 @@ export default function CustomerPortal() {
     }
   };
 
+  // Look up whether (and when) a specific ISBN / PO was scanned in this job.
+  const runSearch = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    if (!job?.id) return;
+    const isbn = searchIsbn.replace(/[^0-9Xx]/g, '').toUpperCase();
+    const po = searchPo.trim();
+    if (!isbn && !po) { toast('Enter an ISBN or PO to search.', 'info'); return; }
+    setSearching(true);
+    try {
+      if (isScanEngineConfigured) {
+        const { scans } = await scanEngine.listScans({
+          jobId: job.id,
+          ...(isbn ? { isbn } : {}),
+          ...(po ? { poName: po } : {}),
+          limit: 500,
+        });
+        setSearchResults(scans || []);
+      } else {
+        const snapshot = [...allScans];
+        setSearchResults(snapshot.filter((s) =>
+          (!isbn || (s.isbn || '').toUpperCase() === isbn) &&
+          (!po || (s.poName || '') === po)));
+      }
+    } catch (err) {
+      toast('Search failed: ' + err.message, 'error');
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
   // Generate HTML exception report with embedded photos for verification
   const openPhotoReport = async (filterDate) => {
     // Source: when scan-engine is on, the in-memory exception-scans list (14d
@@ -1105,13 +1140,75 @@ export default function CustomerPortal() {
       )}
 
       <div style={st.tabBar}>
-        {[['daily','Daily Volume',BarChart3],['exceptions','Exceptions',AlertTriangle],['billing','Billing',Receipt],['reports','Reports',FileText],['upload','Upload POs',Upload],['bols','BOLs',Truck]].map(([key, label, Icon]) => (
+        {[['daily','Daily Volume',BarChart3],['search','Search',Search],['exceptions','Exceptions',AlertTriangle],['billing','Billing',Receipt],['reports','Reports',FileText],['upload','Upload POs',Upload],['bols','BOLs',Truck]].map(([key, label, Icon]) => (
           <button key={key} onClick={() => setActiveTab(key)}
             style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon size={14} /> {label}
           </button>
         ))}
       </div>
+
+      {activeTab === 'search' && (
+        <div>
+          <div style={st.card}>
+            <h3 style={{ ...st.cardTitle, display: 'flex', alignItems: 'center', gap: 8 }}><Search size={16} /> Find a scan</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 0, marginBottom: 14 }}>
+              Search this job by ISBN or PO to confirm whether — and when — a book was scanned.
+            </p>
+            <form onSubmit={runSearch} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ flex: '1 1 220px' }}>
+                <label style={st.label}>ISBN</label>
+                <input value={searchIsbn} onChange={(e) => setSearchIsbn(e.target.value)} placeholder="978… (dashes ok)" style={st.input} />
+              </div>
+              <div style={{ flex: '1 1 160px' }}>
+                <label style={st.label}>PO (optional)</label>
+                <input value={searchPo} onChange={(e) => setSearchPo(e.target.value)} placeholder="PO name" style={st.input} />
+              </div>
+              <button type="submit" disabled={searching} style={{ ...st.primaryBtn, width: 'auto', padding: '11px 22px', marginTop: 0, opacity: searching ? 0.6 : 1 }}>
+                {searching ? 'Searching…' : 'Search'}
+              </button>
+            </form>
+          </div>
+          {searchResults !== null && (
+            <div style={st.card}>
+              {searchResults.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 16 }}>
+                  No matching scans found in this job.
+                </p>
+              ) : (
+                <>
+                  <p style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 10 }}>
+                    {searchResults.length}{searchResults.length >= 500 ? '+' : ''} match{searchResults.length === 1 ? '' : 'es'}
+                  </p>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>
+                        <th style={st.th}>ISBN</th><th style={st.th}>PO</th><th style={st.th}>Type</th>
+                        <th style={st.th}>Pod</th><th style={st.th}>Operator</th><th style={st.th}>When</th>
+                      </tr></thead>
+                      <tbody>
+                        {searchResults.slice(0, 200).map((s, i) => (
+                          <tr key={s.id || i}>
+                            <td style={{ ...st.td, fontFamily: 'var(--font-mono)' }}>{s.isbn}</td>
+                            <td style={st.td}>{s.poName || '—'}</td>
+                            <td style={st.td}>{s.type === 'exception' ? 'Exception' : (s.source === 'manual' ? 'Manual' : s.source === 'ai-match' ? 'AI Camera' : 'Regular')}</td>
+                            <td style={st.td}>{s.podId || '—'}</td>
+                            <td style={st.td}>{s.scannerId || '—'}</td>
+                            <td style={st.td}>{toDateStr(s.timestamp)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {searchResults.length > 200 && (
+                    <p style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 8 }}>Showing first 200 of {searchResults.length}.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === 'daily' && (
         <div>

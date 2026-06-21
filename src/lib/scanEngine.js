@@ -63,6 +63,8 @@ export const scanEngine = {
     get('/api/portal/daily-breakdown', { jobId, start, end }),
   operators: ({ jobId, since, until } = {}) =>
     get('/api/portal/operators', { jobId, since, until }),
+  operatorTrends: ({ jobId, since, until } = {}) =>
+    get('/api/portal/operators/trends', { jobId, since, until }),
   presence: () => get('/api/portal/presence'),
 
   // Cross-pod dedup. `claim` is atomic — exactly one pod wins per (jobId,

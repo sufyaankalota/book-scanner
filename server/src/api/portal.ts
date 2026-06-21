@@ -28,6 +28,7 @@ const listScansQuery = z.object({
   poName: z.string().optional(),
   scannerId: z.string().optional(),
   podId: z.string().optional(),
+  isbn: z.string().min(1).max(20).optional(),
   limit: limitSchema,
   // Keyset cursor: <ISO timestamp>|<id> from the previous page's last row.
   cursor: z.string().optional(),
@@ -136,6 +137,7 @@ export function portalRouter(): Router {
     if (q.poName) where.poName = q.poName;
     if (q.scannerId) where.scannerId = q.scannerId;
     if (q.podId) where.podId = q.podId;
+    if (q.isbn) where.isbn = q.isbn;
     if (q.since || q.until) {
       where.timestamp = {
         ...(q.since ? { gte: new Date(q.since) } : {}),
@@ -435,6 +437,75 @@ export function portalRouter(): Router {
       exceptions: Number(row.exceptions),
     }));
     res.json({ jobId: jobId ?? null, operators });
+  });
+
+  // GET /api/portal/operators/trends?jobId=&since=&until=
+  // Per-operator PER-DAY buckets so the dashboard can render trend lines,
+  // attendance (distinct active days), accuracy (exception rate) and the
+  // manual/AI mix over time. Server-side aggregation — safe for big ranges.
+  r.get('/operators/trends', async (req: Request, res: Response) => {
+    const parsed = operatorsQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_query', issues: parsed.error.issues });
+      return;
+    }
+    const { jobId, since, until } = parsed.data;
+    const sinceDate = since ? new Date(since) : null;
+    const untilDate = until ? new Date(until) : null;
+    const rows = await prisma.$queryRaw<
+      Array<{ scanner_id: string; day: Date; scans: bigint; exceptions: bigint; manual: bigint; ai_camera: bigint }>
+    >`
+      SELECT
+        "scannerId" AS scanner_id,
+        date_trunc('day', "timestamp") AS day,
+        COUNT(*) AS scans,
+        COUNT(*) FILTER (WHERE type = 'exception') AS exceptions,
+        COUNT(*) FILTER (WHERE "source" = 'manual') AS manual,
+        COUNT(*) FILTER (WHERE "source" = 'ai-match') AS ai_camera
+      FROM "Scan"
+      WHERE "scannerId" IS NOT NULL AND "scannerId" <> ''
+        AND (${jobId ?? null}::text IS NULL OR "jobId" = ${jobId ?? null})
+        AND (${sinceDate}::timestamptz IS NULL OR "timestamp" >= ${sinceDate})
+        AND (${untilDate}::timestamptz IS NULL OR "timestamp" <= ${untilDate})
+      GROUP BY 1, 2
+      ORDER BY 1, 2
+    `;
+    const byOp = new Map<
+      string,
+      {
+        scannerId: string;
+        scans: number;
+        exceptions: number;
+        manual: number;
+        aiCamera: number;
+        daysActive: number;
+        days: Array<{ date: string; scans: number; exceptions: number }>;
+      }
+    >();
+    for (const row of rows) {
+      const id = row.scanner_id;
+      let op = byOp.get(id);
+      if (!op) {
+        op = { scannerId: id, scans: 0, exceptions: 0, manual: 0, aiCamera: 0, daysActive: 0, days: [] };
+        byOp.set(id, op);
+      }
+      const scans = Number(row.scans);
+      const exceptions = Number(row.exceptions);
+      op.scans += scans;
+      op.exceptions += exceptions;
+      op.manual += Number(row.manual);
+      op.aiCamera += Number(row.ai_camera);
+      op.daysActive += 1;
+      op.days.push({ date: row.day.toISOString().slice(0, 10), scans, exceptions });
+    }
+    const operators = Array.from(byOp.values())
+      .map((op) => ({
+        ...op,
+        avgPerDay: op.daysActive ? Math.round(op.scans / op.daysActive) : 0,
+        exceptionRate: op.scans ? op.exceptions / op.scans : 0,
+      }))
+      .sort((a, b) => b.scans - a.scans);
+    res.json({ jobId: jobId ?? null, range: { since: since ?? null, until: until ?? null }, operators });
   });
 
   return r;

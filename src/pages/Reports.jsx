@@ -117,6 +117,9 @@ export default function Reports() {
   // Scan docs — only populated when range is small enough for operator breakdown
   const [scans, setScans] = useState([]);
   const [operatorBreakdownDisabled, setOperatorBreakdownDisabled] = useState(false);
+  // Per-operator analytics over the selected range (server-aggregated; any range).
+  const [operatorTrends, setOperatorTrends] = useState([]);
+  const [opTrendsLoading, setOpTrendsLoading] = useState(false);
 
   // Load all jobs once
   useEffect(() => {
@@ -147,6 +150,23 @@ export default function Reports() {
     }
     return getRangePreset(preset);
   }, [preset, customStart, customEnd]);
+
+  // Per-operator analytics over the selected range. Server-aggregated, so it
+  // works for ANY range (unlike the scan-doc breakdown, which is capped).
+  useEffect(() => {
+    if (!isScanEngineConfigured) { setOperatorTrends([]); return undefined; }
+    let cancelled = false;
+    setOpTrendsLoading(true);
+    scanEngine.operatorTrends({
+      jobId: jobId !== 'all' ? jobId : undefined,
+      since: start.toISOString(),
+      until: end.toISOString(),
+    })
+      .then((res) => { if (!cancelled) setOperatorTrends(res.operators || []); })
+      .catch(() => { if (!cancelled) setOperatorTrends([]); })
+      .finally(() => { if (!cancelled) setOpTrendsLoading(false); });
+    return () => { cancelled = true; };
+  }, [jobId, start, end]);
 
   // Fetch data when filters change
   const reqIdRef = React.useRef(0);
@@ -989,6 +1009,62 @@ export default function Reports() {
         )}
       </div>
 
+      {/* Operator performance over the selected range — server-aggregated, so
+          it works for ANY range (the scan-doc breakdown below is capped). */}
+      {isScanEngineConfigured && (
+        <div style={st.card}>
+          <div style={st.cardHeader}>
+            <h2 style={st.cardTitle}>Operator Performance</h2>
+            <span style={st.cardHint}>{opTrendsLoading ? 'Loading…' : 'Attendance · pace · accuracy over the selected range'}</span>
+          </div>
+          {operatorTrends.length === 0 ? (
+            <p style={st.empty}>{opTrendsLoading ? 'Loading operator data…' : 'No operator data for this range.'}</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={st.table}>
+                <thead>
+                  <tr>
+                    <th style={{ ...st.th, textAlign: 'left' }}>Operator</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Scans</th>
+                    <th style={{ ...st.th, textAlign: 'right' }} title="Distinct days with at least one scan">Days</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Avg/Day</th>
+                    <th style={{ ...st.th, textAlign: 'right' }} title="Share of this operator's scans that were exceptions">Exc. Rate</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>Manual</th>
+                    <th style={{ ...st.th, textAlign: 'right' }}>AI Cam</th>
+                    <th style={st.th}>Daily trend</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {operatorTrends.map((op) => {
+                    const maxDay = Math.max(1, ...op.days.map((d) => d.scans));
+                    const excPct = (op.exceptionRate || 0) * 100;
+                    return (
+                      <tr key={op.scannerId}>
+                        <td style={{ ...st.td, fontWeight: 700 }}>{op.scannerId}</td>
+                        <td style={{ ...st.td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(op.scans)}</td>
+                        <td style={{ ...st.td, textAlign: 'right' }}>{op.daysActive}</td>
+                        <td style={{ ...st.td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(op.avgPerDay)}</td>
+                        <td style={{ ...st.td, textAlign: 'right', fontWeight: 700, color: excPct > 8 ? C.exception : excPct > 4 ? '#F59E0B' : C.standard }}>{excPct.toFixed(1)}%</td>
+                        <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(op.manual)}</td>
+                        <td style={{ ...st.td, textAlign: 'right' }}>{fmtNum(op.aiCamera)}</td>
+                        <td style={st.td}>
+                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 26 }}>
+                            {op.days.map((d) => (
+                              <div key={d.date} title={`${d.date}: ${fmtNum(d.scans)} scans`}
+                                style={{ width: 4, height: `${Math.max(8, (d.scans / maxDay) * 100)}%`, background: C.standard, borderRadius: 1, opacity: 0.85 }} />
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Operator & efficiency block (small ranges only — needs scan docs) */}
       <div style={st.card}>
         <div style={st.cardHeader}>
@@ -1022,7 +1098,7 @@ export default function Reports() {
       {/* Rapid same-ISBN repeats — THE inflation glitch we're catching */}
       <div style={st.card}>
         <div style={st.cardHeader}>
-          <h2 style={st.cardTitle}>🚨 Rapid Same-ISBN Repeats (Inflation Glitch)</h2>
+          <h2 style={{ ...st.cardTitle, display: 'flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} /> Rapid Same-ISBN Repeats (Inflation Glitch)</h2>
           <span style={st.cardHint}>
             {operatorBreakdownDisabled
               ? `Pick ≤ ${OPERATOR_BREAKDOWN_MAX_DAYS}-day range`

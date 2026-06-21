@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { computeCrewDailyTarget } from '../utils/target';
 import { normalizeOperatorKey, displayOperatorName } from '../utils/operator';
+import { Trophy } from 'lucide-react';
 
 /**
  * Live "Today" stats: total scans, top 5 operators, hourly pace trend.
@@ -127,7 +128,7 @@ export default function TodayLeaderboard({ job, compact = false, canMerge = fals
       )}
 
       <div style={styles.headerRow}>
-        <div style={styles.title}>🏆 Today's Leaderboard</div>
+        <div style={styles.title}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Trophy size={18} /> Today's Leaderboard</span></div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {canMerge && stats.all.length > 1 && (
             <button

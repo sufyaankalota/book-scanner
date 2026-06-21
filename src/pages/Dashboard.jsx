@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck, FileDown, Receipt, Mail, MonitorPlay } from 'lucide-react';
+import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck, FileDown, Receipt, Mail, MonitorPlay, RefreshCw, Bell } from 'lucide-react';
 
 function AutoRefreshIndicator({ lastUpdated }) {
   const [, setTick] = useState(0);
@@ -12,7 +12,7 @@ function AutoRefreshIndicator({ lastUpdated }) {
   const label = secs < 5 ? 'just now' : secs < 60 ? `${secs}s ago` : `${Math.round(secs / 60)}m ago`;
   return (
     <div style={{ textAlign: 'center', color: '#555', fontSize: 12, marginBottom: 12 }}>
-      🔄 Updated {label}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><RefreshCw size={12} /> Updated {label}</span>
     </div>
   );
 }
@@ -1109,15 +1109,15 @@ export default function Dashboard() {
       {queuedJobs.length > 0 && (
         <div style={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: 10, padding: 14, marginBottom: 16 }}>
           <p style={{ color: '#888', fontSize: 13, fontWeight: 600, margin: 0 }}>
-            🔜 Up Next: {queuedJobs.map((j) => j.meta.name).join(' → ')} ({queuedJobs.length} queued)
+            Up Next: {queuedJobs.map((j) => j.meta.name).join(' → ')} ({queuedJobs.length} queued)
           </p>
         </div>
       )}
 
       {/* Notification toggle */}
       {!notificationsEnabled && typeof Notification !== 'undefined' && (
-        <button onClick={enableNotifications} style={{ ...st.exportBtn, marginBottom: 16 }}>
-          🔔 Enable Push Alerts
+        <button onClick={enableNotifications} style={{ ...st.exportBtn, marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Bell size={14} /> Enable Push Alerts
         </button>
       )}
 
@@ -1127,7 +1127,7 @@ export default function Dashboard() {
       {jobProgress.totalScanned > 0 && (
         <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
-            <h3 style={{ color: '#ccc', fontSize: 14, margin: 0 }}>📊 Job Total Scanned</h3>
+            <h3 style={{ color: '#ccc', fontSize: 14, margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><BarChart3 size={15} /> Job Total Scanned</h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
                 {jobProgress.totalScanned.toLocaleString()} scanned to date
@@ -1560,7 +1560,7 @@ const st = {
   container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '16px 20px', fontFamily: 'var(--font-sans)', maxWidth: 1100, margin: '0 auto' },
   backLink: { color: 'var(--text-tertiary, #555)', textDecoration: 'none', fontSize: 13, marginBottom: 8, display: 'inline-block', fontWeight: 600 },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
-  title: { fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 800, margin: 0, letterSpacing: '-0.3px' },
+  title: { fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: 800, margin: 0, letterSpacing: '-0.3px', overflowWrap: 'anywhere' },
   subtitle: { fontSize: 14, color: 'var(--text-secondary, #666)', marginTop: 4 },
   text: { color: 'var(--text-secondary, #ccc)', fontSize: 14 },
   exportBtn: { padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'var(--bg-card, #161616)', color: 'var(--text-secondary, #aaa)', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
