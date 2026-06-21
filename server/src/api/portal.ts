@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireApiKey } from './middleware/requireApiKey';
+import { createGzip } from 'node:zlib';
 
 // All response fields are JSON-serializable plain objects. BigInt fields
 // (SyncState.rowsTotal) are not exposed by any portal endpoint, so we never
@@ -202,7 +203,18 @@ export function portalRouter(): Router {
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="scans_${jobId}_${stamp}.csv"`);
-    res.write('isbn,po,type,source,pod,operator,title,timestamp\n');
+    // Gzip the stream when the client accepts it — a ~30 MB CSV compresses to a
+    // few MB, turning a 15 s download into a few seconds. Browsers (and the
+    // portal's fetch) decode it transparently.
+    const acceptsGzip = (req.header('accept-encoding') || '').includes('gzip');
+    let sink: NodeJS.WritableStream = res;
+    if (acceptsGzip) {
+      res.setHeader('Content-Encoding', 'gzip');
+      const gz = createGzip();
+      gz.pipe(res);
+      sink = gz;
+    }
+    sink.write('isbn,po,type,source,pod,operator,title,timestamp\n');
 
     const BATCH = 10000;
     let cursor: { ts: Date; id: string } | null = null;
@@ -238,13 +250,13 @@ export function portalRouter(): Router {
           csvCell(row.timestamp.toISOString()),
         ].join(',') + '\n';
       }
-      res.write(chunk);
+      sink.write(chunk);
       if (batch.length < BATCH) break;
       const lastRow = batch[batch.length - 1];
       if (!lastRow) break;
       cursor = { ts: lastRow.timestamp, id: lastRow.id };
     }
-    res.end();
+    sink.end();
   });
 
   // GET /api/portal/scans/summary?jobId=&start=&end=
