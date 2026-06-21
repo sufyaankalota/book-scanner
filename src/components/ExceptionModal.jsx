@@ -208,7 +208,7 @@ const styles = {
     position: 'relative',
     maxHeight: '92vh',
     overflowY: 'auto',
-    fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    fontFamily: 'var(--font-sans)',
   },
   titleRow: {
     display: 'flex',

@@ -305,14 +305,14 @@ export default function Users() {
 }
 
 const s = {
-  container: { minHeight: '100vh', backgroundColor: '#0a0a0a', color: '#f0f0f0', padding: '20px 20px 40px', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", maxWidth: 640, margin: '0 auto' },
-  backLink: { color: '#555', textDecoration: 'none', fontSize: 13, display: 'inline-block', marginBottom: 14, fontWeight: 600 },
-  title: { fontSize: 22, fontWeight: 800, margin: '0 0 8px', color: '#f0f0f0', letterSpacing: '-0.3px' },
-  card: { backgroundColor: '#141414', borderRadius: 12, padding: '14px 16px', border: '1px solid #1e1e1e', marginBottom: 10 },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #f0f0f0)', padding: '20px 20px 40px', fontFamily: 'var(--font-sans)', maxWidth: 640, margin: '0 auto' },
+  backLink: { color: 'var(--text-tertiary, #555)', textDecoration: 'none', fontSize: 13, display: 'inline-block', marginBottom: 14, fontWeight: 600 },
+  title: { fontSize: 22, fontWeight: 800, margin: '0 0 8px', color: 'var(--text, #f0f0f0)', letterSpacing: '-0.3px' },
+  card: { backgroundColor: 'var(--bg-card, #141414)', borderRadius: 'var(--radius-lg)', padding: '14px 16px', border: '1px solid var(--border, #1e1e1e)', marginBottom: 10 },
   cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text-secondary, #aaa)', marginTop: 0, marginBottom: 10, letterSpacing: '-0.2px' },
-  input: { width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: '#1a1a1a', color: '#f0f0f0', fontSize: 14, boxSizing: 'border-box', fontWeight: 500 },
-  addBtn: { padding: '10px 20px', borderRadius: 8, border: '1px dashed #2a2a2a', backgroundColor: 'transparent', color: '#3B82F6', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 14 },
-  primaryBtn: { padding: '10px 20px', borderRadius: 8, border: 'none', backgroundColor: '#3B82F6', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
-  cancelBtn: { padding: '10px 20px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: 'var(--text-tertiary, #666)', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  smallBtn: { padding: '4px 10px', borderRadius: 4, border: '1px solid #2a2a2a', backgroundColor: 'transparent', color: 'var(--text-tertiary, #666)', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  input: { width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'var(--bg-input, #1a1a1a)', color: 'var(--text, #f0f0f0)', fontSize: 14, boxSizing: 'border-box', fontWeight: 500 },
+  addBtn: { padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-strong, #2a2a2a)', backgroundColor: 'transparent', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 14 },
+  primaryBtn: { padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  cancelBtn: { padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'transparent', color: 'var(--text-tertiary, #666)', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  smallBtn: { padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'transparent', color: 'var(--text-tertiary, #666)', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
 };

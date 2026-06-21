@@ -379,7 +379,7 @@ export default function JobHistory() {
         <div style={{ ...s.card, textAlign: 'center', padding: 40 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📁</div>
           <p style={{ ...s.text, marginBottom: 8, fontSize: 16, color: 'var(--text-secondary, #aaa)' }}>No closed jobs yet</p>
-          <p style={{ ...s.text, fontSize: 13 }}>Closed jobs will appear here. Active jobs are managed in <Link to="/setup" style={{ color: '#3B82F6' }}>Setup</Link>.</p>
+          <p style={{ ...s.text, fontSize: 13 }}>Closed jobs will appear here. Active jobs are managed in <Link to="/setup" style={{ color: 'var(--accent)' }}>Setup</Link>.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -404,7 +404,7 @@ export default function JobHistory() {
 }
 
 const s = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px 20px', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", maxWidth: 900, margin: '0 auto' },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px 20px', fontFamily: 'var(--font-sans)', maxWidth: 900, margin: '0 auto' },
   title: { fontSize: 26, fontWeight: 800, margin: '8px 0 20px', letterSpacing: '-0.3px' },
   subtitle: { fontSize: 14, color: 'var(--text-secondary, #666)', marginBottom: 20 },
   text: { color: 'var(--text-secondary, #888)', fontSize: 14 },

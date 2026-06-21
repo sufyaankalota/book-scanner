@@ -7,65 +7,123 @@
   box-sizing: border-box;
 }
 
-/* Design tokens (defaults; theme.js overrides via :root vars) */
+/* Design tokens (defaults; theme.js overrides color vars via :root) */
 :root {
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  /* Type */
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Space Grotesk', 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Space Grotesk', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 26px;
+  --text-2xl: 33px;
+  --text-3xl: 42px;
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+  --tracking-wide: 0.04em;
+
+  /* Shape */
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
   --radius-pill: 999px;
+
+  /* Spacing */
+  --space-2xs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
   --space-lg: 16px;
   --space-xl: 24px;
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.4);
-  --shadow-elev: 0 6px 24px rgba(0,0,0,0.5);
-  --text-primary: #f0f0f0;
-  --text-secondary: #aaa;
-  --text-tertiary: #666;
+  --space-2xl: 36px;
+  --space-3xl: 56px;
+
+  /* Motion — purposeful, fast, ease-out (no bounce/elastic) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 130ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  /* Elevation — tinted + layered (shadow-rgb is set per-theme) */
+  --shadow-rgb: 4 6 12;
+  --shadow-xs: 0 1px 2px rgba(var(--shadow-rgb), 0.20);
+  --shadow-card: 0 1px 2px rgba(var(--shadow-rgb), 0.18), 0 4px 12px rgba(var(--shadow-rgb), 0.16);
+  --shadow-elev: 0 12px 34px rgba(var(--shadow-rgb), 0.34), 0 2px 6px rgba(var(--shadow-rgb), 0.20);
+
+  /* Text fallbacks (tinted; theme.js sets the live values) */
+  --text-primary: #eef1f7;
+  --text-secondary: #9aa4b8;
+  --text-tertiary: #69728a;
 }
 
 html,
 body {
-  background-color: var(--bg, #0f0f0f);
-  color: var(--text, #f0f0f0);
-  font-family: 'Inter', 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg, #0e1118);
+  color: var(--text, #eef1f7);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   line-height: 1.5;
 }
 
-/* Focus ring for accessibility — bolder on dark theme */
+/* Display type for headings + big numbers; tabular figures keep data aligned */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.12;
+}
+h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-snug);
+}
+
+/* Focus ring for accessibility — follows the active theme accent */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [role="button"]:focus-visible {
-  outline: 3px solid #60a5fa;
+  outline: 2px solid var(--ring, #6b93ff);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border, #333);
-  border-radius: 3px;
+  background: var(--border-strong, #333b4f);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--text-tertiary, #69728a);
+  background-clip: padding-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong, #333b4f) transparent;
 }
 
 /* Selection color */
 ::selection {
-  background: #3B82F6;
-  color: #fff;
+  background: var(--accent, #4d7cff);
+  color: var(--accent-contrast, #fff);
 }
 
 /* Pulse animation for scanner pairing */
@@ -101,7 +159,12 @@ button, a, [role="button"] {
 
 /* Smooth transitions on interactive elements */
 button, a {
-  transition: opacity 0.15s ease, transform 0.1s ease, background-color 0.2s ease, border-color 0.2s ease;
+  transition: opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out);
 }
 button:active {
   transform: scale(0.98);
@@ -111,6 +174,84 @@ button:active {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* Tabular figures for data/counts (opt-in) */
+.tnum, [data-tnum] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Respect reduced-motion: kill non-essential animation + transitions */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Interactive utilities (attach via className alongside inline styles) ──
+   Inline styles can't express :hover/:focus, so these supply the craft:
+   subtle lift, accent affordance, row highlight. !important only where it
+   must beat an inline border/background on hover. */
+.surface-hover {
+  transition: transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+.surface-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elev);
+}
+.surface-hover:active {
+  transform: translateY(0);
+}
+.tile-accent:hover {
+  border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+}
+.row-hover {
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+.row-hover:hover {
+  background: var(--accent-soft) !important;
+}
+.link-accent {
+  color: var(--accent);
+  transition: color var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out);
+}
+.link-accent:hover {
+  color: var(--accent-hover);
+}
+.lift-press:active {
+  transform: scale(0.97);
+}
+
+/* ── Home: nav tiles + pod cards get accent affordance on hover ── */
+.home-nav a {
+  transition: border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.home-nav a:hover {
+  border-color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+  color: var(--text) !important;
+  transform: translateY(-1px);
+}
+.home-podgrid a {
+  transition: border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.home-podgrid a:hover {
+  border-color: var(--accent) !important;
+  box-shadow: var(--shadow-elev);
+  transform: translateY(-2px);
 }
 
 /* Responsive adjustments */
@@ -161,20 +302,20 @@ a {
   top: 16px;
   right: 16px;
   padding: 12px 18px;
-  border-radius: 10px;
-  background: #161616;
-  border: 1px solid #2a2a2a;
-  color: #f0f0f0;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev, #1b2030);
+  border: 1px solid var(--border, #252b3a);
+  color: var(--text, #eef1f7);
   font-weight: 600;
   font-size: 14px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-elev);
   z-index: 9999;
-  animation: toastSlide 0.18s ease;
+  animation: toastSlide 0.18s var(--ease-out);
   max-width: 360px;
 }
-.app-toast--success { border-color: #22C55E; color: #86efac; }
-.app-toast--error { border-color: #EF4444; color: #fca5a5; }
-.app-toast--info { border-color: #3B82F6; color: #93c5fd; }
+.app-toast--success { border-color: var(--success, #2fbf71); color: var(--success, #2fbf71); }
+.app-toast--error { border-color: var(--error, #f0506e); color: var(--error, #f0506e); }
+.app-toast--info { border-color: var(--accent, #4d7cff); color: var(--accent, #4d7cff); }
 
 /* ── Live indicator dot ── */
 @keyframes livePulse {
@@ -186,7 +327,7 @@ a {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #22C55E;
+  background: var(--success, #2fbf71);
   animation: livePulse 1.6s ease-in-out infinite;
   vertical-align: middle;
   margin-right: 6px;
@@ -198,10 +339,10 @@ a {
   100% { background-position: 200px 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #1a1a1a 0%, #222 50%, #1a1a1a 100%);
+  background: linear-gradient(90deg, var(--bg-card, #161a24) 0%, var(--bg-elev, #1b2030) 50%, var(--bg-card, #161a24) 100%);
   background-size: 400px 100%;
   animation: shimmer 1.4s infinite linear;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 /* ── Kiosk screen: fit any TV / monitor without horizontal scroll ── */

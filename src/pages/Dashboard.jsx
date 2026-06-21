@@ -1556,8 +1556,8 @@ export default function Dashboard() {
 }
 
 const st = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '16px 20px', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", maxWidth: 1100, margin: '0 auto' },
-  backLink: { color: '#555', textDecoration: 'none', fontSize: 13, marginBottom: 8, display: 'inline-block', fontWeight: 600 },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '16px 20px', fontFamily: 'var(--font-sans)', maxWidth: 1100, margin: '0 auto' },
+  backLink: { color: 'var(--text-tertiary, #555)', textDecoration: 'none', fontSize: 13, marginBottom: 8, display: 'inline-block', fontWeight: 600 },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
   title: { fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 800, margin: 0, letterSpacing: '-0.3px' },
   subtitle: { fontSize: 14, color: 'var(--text-secondary, #666)', marginTop: 4 },
@@ -1569,7 +1569,7 @@ const st = {
   summaryValue: { fontSize: 'clamp(26px, 5vw, 36px)', fontWeight: 800, color: 'var(--text, #f0f0f0)', lineHeight: 1, letterSpacing: '-1px' },
   summaryLabel: { fontSize: 'clamp(10px, 1.5vw, 12px)', color: 'var(--text-secondary, #666)', marginTop: 4, textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.3px' },
   progressContainer: { height: 6, backgroundColor: 'var(--bg-input, #1a1a1a)', borderRadius: 3, overflow: 'hidden', marginBottom: 20 },
-  progressBar: { height: '100%', backgroundColor: '#22C55E', borderRadius: 3, transition: 'width 0.5s ease' },
+  progressBar: { height: '100%', backgroundColor: 'var(--success)', borderRadius: 3, transition: 'width 0.5s ease' },
   podGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, marginBottom: 16 },
   panelBtn: { padding: '7px 14px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border, #222)', backgroundColor: 'transparent', color: 'var(--text-secondary, #888)', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
   panel: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 12, border: '1px solid var(--border, #222)', maxHeight: 400, overflowY: 'auto', marginBottom: 16 },

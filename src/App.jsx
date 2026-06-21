@@ -33,7 +33,7 @@ class ErrorBoundary extends React.Component {
         <div style={{
           minHeight: '100vh', backgroundColor: 'var(--bg, #111)', display: 'flex',
           flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'system-ui, sans-serif', padding: 24, color: 'var(--text, #fff)',
+          fontFamily: 'var(--font-sans)', padding: 24, color: 'var(--text, #fff)',
         }}>
           <h1 style={{ color: '#EF4444', fontSize: 32, marginBottom: 12 }}>
             Something went wrong
@@ -59,7 +59,7 @@ class ErrorBoundary extends React.Component {
 }
 
 const Loading = () => (
-  <div style={{ minHeight: '100vh', backgroundColor: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontFamily: 'system-ui' }}>
+  <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg, #111)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary, #888)', fontFamily: 'var(--font-sans)' }}>
     Loading...
   </div>
 );

@@ -104,7 +104,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    fontFamily: 'var(--font-sans)',
     padding: 24,
   },
   card: {

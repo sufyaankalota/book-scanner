@@ -143,7 +143,7 @@ export default function AuthGate({ children, requiredRole }) {
 const st = {
   container: {
     minHeight: '100vh', backgroundColor: '#0a0a0a', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", padding: 24,
+    alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-sans)', padding: 24,
   },
   card: {
     backgroundColor: '#141414', borderRadius: 16, padding: '36px 32px', width: '100%', maxWidth: 380,

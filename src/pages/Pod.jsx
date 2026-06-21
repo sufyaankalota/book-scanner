@@ -2630,7 +2630,7 @@ export default function Pod() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 16 }}
           onClick={() => { if (!titleSearchBusy) { setShowTitleSearch(false); setTimeout(refocusInput, 100); } }}>
           <div onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#0f0f0f', border: '2px solid #8B5CF6', borderRadius: 14, padding: 22, width: '100%', maxWidth: 600, fontFamily: "'Inter', system-ui, sans-serif" }}>
+            style={{ backgroundColor: 'var(--bg-elev, #0f0f0f)', border: '2px solid var(--accent)', borderRadius: 14, padding: 22, width: '100%', maxWidth: 600, fontFamily: 'var(--font-sans)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <h2 style={{ color: '#fff', margin: 0, fontSize: 20, fontWeight: 800 }}>⌨️ {t('searchByTitle')}</h2>
               <button onClick={() => { setShowTitleSearch(false); setTimeout(refocusInput, 100); }}
@@ -3002,7 +3002,7 @@ export default function Pod() {
             border: '1px solid #3B82F6', borderRadius: 20, padding: '6px 12px',
             fontSize: 12, fontWeight: 600, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 6,
-            fontFamily: "'Inter', system-ui, sans-serif",
+            fontFamily: 'var(--font-sans)',
           }}
         >
           ⌨️ {t('numpadShortcuts')} <kbd style={{ ...kbdHintStyle, fontSize: 10 }}>?</kbd>
@@ -3154,7 +3154,7 @@ const kbdHintStyle = {
 
 const styles = {
   container: {
-    minHeight: '100vh', color: 'var(--text, #fff)', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    minHeight: '100vh', color: 'var(--text, #fff)', fontFamily: 'var(--font-sans)',
     padding: 'clamp(8px, 2vw, 16px) clamp(12px, 3vw, 24px)', display: 'flex', flexDirection: 'column', position: 'relative',
     // No max-width cap — operators want big, glanceable numbers across the
     // full display whether the AI panel is open or not. The setup cards

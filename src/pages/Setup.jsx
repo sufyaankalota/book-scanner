@@ -1691,15 +1691,15 @@ export default function Setup() {
 }
 
 const s = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px 20px', fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif", maxWidth: 720, margin: '0 auto' },
-  backLink: { color: '#555', textDecoration: 'none', fontSize: 13, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px 20px', fontFamily: 'var(--font-sans)', maxWidth: 720, margin: '0 auto' },
+  backLink: { color: 'var(--text-tertiary, #555)', textDecoration: 'none', fontSize: 13, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
   title: { fontSize: 26, fontWeight: 800, marginBottom: 20, marginTop: 8, letterSpacing: '-0.3px' },
   card: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 12, padding: '20px 22px', marginBottom: 14, border: '1px solid var(--border, #222)' },
-  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#777', marginBottom: 6, marginTop: 14, textTransform: 'uppercase', letterSpacing: '0.5px' },
-  input: { width: '100%', padding: '11px 14px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: 'var(--bg-input, #1a1a1a)', color: 'var(--text, #f0f0f0)', fontSize: 15, boxSizing: 'border-box', fontWeight: 500 },
-  text: { color: '#ccc', fontSize: 15, margin: '4px 0' },
-  toggle: { padding: '11px 20px', borderRadius: 8, border: '1px solid #2a2a2a', backgroundColor: '#1a1a1a', color: '#888', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
-  activeToggle: { padding: '11px 20px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'rgba(59,130,246,0.1)', color: '#93c5fd', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
+  label: { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-tertiary, #777)', marginBottom: 6, marginTop: 14, textTransform: 'uppercase', letterSpacing: '0.5px' },
+  input: { width: '100%', padding: '11px 14px', borderRadius: 8, border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'var(--bg-input, #1a1a1a)', color: 'var(--text, #f0f0f0)', fontSize: 15, boxSizing: 'border-box', fontWeight: 500 },
+  text: { color: 'var(--text-secondary, #ccc)', fontSize: 15, margin: '4px 0' },
+  toggle: { padding: '11px 20px', borderRadius: 8, border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'var(--bg-input, #1a1a1a)', color: 'var(--text-secondary, #888)', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
+  activeToggle: { padding: '11px 20px', borderRadius: 8, border: '1px solid var(--accent)', backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center' },
   primaryBtn: { padding: '13px 24px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%' },
   secondaryBtn: { padding: '9px 16px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: '#2a2a2a', backgroundColor: '#161616', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   dangerBtn: { padding: '11px 20px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)', color: '#f87171', fontSize: 14, fontWeight: 700, cursor: 'pointer' },

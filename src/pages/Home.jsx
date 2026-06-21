@@ -113,7 +113,7 @@ export default function Home() {
         {currentUser && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 13 }}>{currentUser.name}</span>
-            <span style={{ color: '#444', fontSize: 13 }}>({currentUser.role})</span>
+            <span style={{ color: 'var(--text-tertiary, #666)', fontSize: 13 }}>({currentUser.role})</span>
             <button onClick={logout} style={styles.signOutBtn}>Sign Out</button>
           </div>
         )}
@@ -151,7 +151,7 @@ export default function Home() {
       {job && <TodayLeaderboard job={job} compact />}
 
       {/* Navigation */}
-      <nav style={styles.nav}>
+      <nav className="home-nav" style={styles.nav}>
         <Link to="/setup" style={styles.navLink}>
           <span style={styles.navIcon}>⚙️</span>
           <span>Setup</span>
@@ -188,7 +188,7 @@ export default function Home() {
         Open the link for your pod on its laptop. Scanner connects automatically via USB.
       </p>
 
-      <div style={styles.podGrid}>
+      <div className="home-podgrid" style={styles.podGrid}>
         {pods.map((podId) => {
           const p = presence[podId];
           const isOnline = p?.online;
@@ -199,8 +199,8 @@ export default function Home() {
           const isActive = isOnline && (status === 'scanning' || status === 'ready' || status === 'pair_scanner');
 
           const statusLabel = isPaused ? 'PAUSED' : isActive ? 'ONLINE' : 'OFFLINE';
-          const statusColor = isPaused ? '#EAB308' : isActive ? '#22C55E' : '#555';
-          const statusTextColor = isPaused ? '#fff' : isActive ? '#fff' : '#999';
+          const statusColor = isPaused ? 'var(--warning)' : isActive ? 'var(--success)' : 'var(--border-strong)';
+          const statusTextColor = isPaused ? '#0e1118' : isActive ? '#0e1118' : 'var(--text-secondary)';
 
           return (
             <Link
@@ -323,7 +323,7 @@ const styles = {
     minHeight: '100vh',
     backgroundColor: 'var(--bg, #0f0f0f)',
     color: 'var(--text, #f0f0f0)',
-    fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    fontFamily: 'var(--font-sans)',
     padding: '0 24px 40px',
     maxWidth: 1100,
     margin: '0 auto',
@@ -349,8 +349,8 @@ const styles = {
     lineHeight: 1,
   },
   signOutBtn: {
-    padding: '6px 14px', borderRadius: 6, border: '1px solid #2a2a2a',
-    backgroundColor: 'transparent', color: '#777', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    padding: '6px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+    backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
   },
 
   loader: {
@@ -363,10 +363,10 @@ const styles = {
     display: 'block',
     margin: '0 auto 20px',
     padding: '10px 24px',
-    borderRadius: 8,
-    border: '1px solid #1e40af',
-    backgroundColor: 'rgba(59,130,246,0.08)',
-    color: '#93c5fd',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--accent)',
+    backgroundColor: 'var(--accent-soft)',
+    color: 'var(--accent)',
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
@@ -376,9 +376,9 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(34,197,94,0.06)',
-    border: '1px solid rgba(34,197,94,0.2)',
-    borderRadius: 10,
+    backgroundColor: 'var(--success-soft)',
+    border: '1px solid var(--success)',
+    borderRadius: 'var(--radius-md)',
     padding: '14px 20px',
     marginBottom: 20,
   },
@@ -386,26 +386,26 @@ const styles = {
     width: 8,
     height: 8,
     borderRadius: '50%',
-    backgroundColor: '#22C55E',
+    backgroundColor: 'var(--success)',
     flexShrink: 0,
   },
   jobText: {
     fontSize: 14,
-    color: '#86efac',
+    color: 'var(--text)',
   },
   noJobBanner: {
-    backgroundColor: 'rgba(239,68,68,0.06)',
-    border: '1px solid rgba(239,68,68,0.2)',
-    borderRadius: 10,
+    backgroundColor: 'var(--warning-soft)',
+    border: '1px solid var(--warning)',
+    borderRadius: 'var(--radius-md)',
     padding: '14px 20px',
     marginBottom: 20,
   },
   noJobText: {
     fontSize: 14,
-    color: '#fca5a5',
+    color: 'var(--text)',
   },
   link: {
-    color: '#93c5fd',
+    color: 'var(--accent)',
     textDecoration: 'underline',
   },
   nav: {
@@ -499,17 +499,17 @@ const styles = {
     gap: 8,
     marginBottom: 4,
   },
-  scannerDotGreen: { width: 7, height: 7, borderRadius: '50%', backgroundColor: '#22C55E', flexShrink: 0 },
-  scannerDotYellow: { width: 7, height: 7, borderRadius: '50%', backgroundColor: '#EAB308', flexShrink: 0 },
-  scannerDotGray: { width: 7, height: 7, borderRadius: '50%', backgroundColor: '#444', flexShrink: 0 },
+  scannerDotGreen: { width: 7, height: 7, borderRadius: '50%', backgroundColor: 'var(--success)', flexShrink: 0 },
+  scannerDotYellow: { width: 7, height: 7, borderRadius: '50%', backgroundColor: 'var(--warning)', flexShrink: 0 },
+  scannerDotGray: { width: 7, height: 7, borderRadius: '50%', backgroundColor: 'var(--border-strong)', flexShrink: 0 },
   scannerName: { fontSize: 13, color: 'var(--text-secondary, #bbb)', fontWeight: 600 },
-  scannerLinked: { fontSize: 11, color: '#22C55E', fontWeight: 600, marginLeft: 'auto' },
-  scannerPending: { fontSize: 12, color: '#EAB308' },
-  scannerOffline: { fontSize: 12, color: '#555' },
+  scannerLinked: { fontSize: 11, color: 'var(--success)', fontWeight: 600, marginLeft: 'auto' },
+  scannerPending: { fontSize: 12, color: 'var(--warning)' },
+  scannerOffline: { fontSize: 12, color: 'var(--text-tertiary)' },
   urlHint: {
     fontSize: 11,
-    color: '#444',
-    fontFamily: 'monospace',
+    color: 'var(--text-tertiary)',
+    fontFamily: 'var(--font-mono)',
     marginTop: 8,
   },
   instructions: {
@@ -538,8 +538,8 @@ const styles = {
     width: 28,
     height: 28,
     borderRadius: '50%',
-    backgroundColor: '#3B82F6',
-    color: '#fff',
+    backgroundColor: 'var(--accent)',
+    color: 'var(--accent-contrast)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

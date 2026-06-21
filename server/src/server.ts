@@ -1,3 +1,4 @@
+import 'express-async-errors';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -30,6 +31,11 @@ app.use(
 );
 
 app.use(healthRouter());
+// Live data — never let an intermediary cache a stale portal response.
+app.use('/api/portal', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 app.use('/api/portal', portalRouter());
 
 const server = app.listen(config.PORT, () => {
@@ -44,6 +50,22 @@ app.use('/api/dedup', dedupRouter(dedupHub));
 
 app.get('/', (_req, res) => {
   res.json({ service: 'prepfort-scan-engine', status: 'ok' });
+});
+
+// Unmatched route — consistent JSON envelope instead of Express' HTML 404.
+app.use((_req, res) => {
+  res.status(404).json({ error: 'not_found' });
+});
+
+// Centralized error handler. With express-async-errors loaded, rejected
+// promises from async routes land here too, so a DB blip returns a clean 500
+// rather than hanging the request. CORS rejections map to 403.
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err);
+  const isCors = message.startsWith('CORS rejected');
+  logger.error({ err: message }, 'request failed');
+  if (res.headersSent) return;
+  res.status(isCors ? 403 : 500).json({ error: isCors ? 'cors_rejected' : 'internal_error' });
 });
 
 const mirrorHandle = config.MIRROR_ENABLED ? startAllMirrors() : null;

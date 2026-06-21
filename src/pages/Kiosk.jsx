@@ -413,7 +413,7 @@ const k = {
   container: {
     height: '100vh', width: '100vw', maxWidth: '100vw',
     backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #f0f0f0)',
-    fontFamily: "'Inter', 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    fontFamily: 'var(--font-sans)',
     padding: 'clamp(8px, 1.2vh, 18px) clamp(10px, 1.4vw, 22px)',
     boxSizing: 'border-box', overflow: 'hidden',
     display: 'flex', flexDirection: 'column', gap: 'clamp(4px, 0.8vh, 10px)',
@@ -444,8 +444,8 @@ const k = {
     color: '#cbd5e1',
     letterSpacing: 0.5,
     padding: 'clamp(4px, 0.6vh, 8px) clamp(8px, 1vw, 16px)',
-    background: 'linear-gradient(90deg, rgba(59,130,246,0.08), rgba(168,85,247,0.08))',
-    border: '1px solid rgba(255,255,255,0.06)',
+    background: 'var(--accent-soft)',
+    border: '1px solid var(--border)',
     borderRadius: 8,
     animation: 'fact-in 0.6s ease-out',
     flexShrink: 0,
@@ -465,7 +465,7 @@ const k = {
 
   bigRow: { display: 'flex', gap: 'clamp(8px, 1vw, 16px)', justifyContent: 'space-around', flexShrink: 0 },
   bigStat: { textAlign: 'center', flex: 1, minWidth: 0 },
-  bigVal: { fontSize: 'clamp(36px, 5.5vw, 84px)', fontWeight: 900, lineHeight: 1, color: 'var(--text, #f0f0f0)', letterSpacing: '-2px', fontVariantNumeric: 'tabular-nums' },
+  bigVal: { fontSize: 'clamp(36px, 5.5vw, 84px)', fontWeight: 900, lineHeight: 1, color: 'var(--text, #f0f0f0)', letterSpacing: '-2px', fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-display)' },
   bigLbl: { fontSize: 'clamp(10px, 0.9vw, 14px)', color: 'var(--text-secondary, #888)', letterSpacing: 2, fontWeight: 700, marginTop: 4, textTransform: 'uppercase' },
 
   topPerformer: {
@@ -493,7 +493,7 @@ const k = {
   podStatus: { fontSize: 'clamp(9px, 0.8vw, 12px)', fontWeight: 800, letterSpacing: 1, whiteSpace: 'nowrap' },
   podOp: { fontSize: 'clamp(11px, 0.9vw, 14px)', color: '#bbb', marginBottom: 4, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   podStats: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 },
-  podPace: { fontSize: 'clamp(22px, 2.4vw, 38px)', fontWeight: 900, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums', color: '#22C55E' },
+  podPace: { fontSize: 'clamp(22px, 2.4vw, 38px)', fontWeight: 900, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums', color: 'var(--success)' },
   podPaceUnit: { fontSize: 'clamp(11px, 0.9vw, 14px)', fontWeight: 700, color: '#888', marginLeft: 2 },
   podCount: { fontSize: 'clamp(13px, 1.1vw, 18px)', color: '#888', fontWeight: 700, fontFamily: 'monospace' },
 

@@ -438,10 +438,10 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose, embe
 
 const st = {
   overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 12 },
-  modal: { backgroundColor: '#0f0f0f', border: '2px solid #3B82F6', borderRadius: 14, padding: 20, width: '100%', maxWidth: 720, maxHeight: '94vh', overflowY: 'auto', fontFamily: "'Inter', system-ui, sans-serif" },
+  modal: { backgroundColor: 'var(--bg-elev, #0f0f0f)', border: '2px solid var(--accent)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 720, maxHeight: '94vh', overflowY: 'auto', fontFamily: 'var(--font-sans)' },
   // Embedded variant: lives inline inside the AI side panel so the operator
   // can keep scanning regular barcodes while the camera is active.
-  embeddedWrap: { width: '100%', fontFamily: "'Inter', system-ui, sans-serif" },
+  embeddedWrap: { width: '100%', fontFamily: 'var(--font-sans)' },
   embeddedBody: { backgroundColor: 'transparent', padding: 0, width: '100%' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   title: { color: '#fff', fontSize: 22, fontWeight: 800, margin: 0 },
