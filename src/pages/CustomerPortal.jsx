@@ -81,6 +81,7 @@ export default function CustomerPortal() {
   const [exportPO, setExportPO] = useState('');
   const [exportType, setExportType] = useState('both');
   const [exporting, setExporting] = useState(false);
+  const [csvExporting, setCsvExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const [resettingCache, setResettingCache] = useState(false);
   const [reportBusy, setReportBusy] = useState(''); // which day report is generating (button feedback)
@@ -896,6 +897,29 @@ export default function CustomerPortal() {
     setLoginEmail('');
   };
 
+  // Fast path: stream a CSV of every scan in the range straight from the
+  // Postgres mirror — seconds, no row cap. This is the "all ISBNs from X to
+  // Y" pull customers ask for. Only available when the scan-engine is wired.
+  const handleFastCsvExport = async () => {
+    if (!job?.id) return;
+    setCsvExporting(true);
+    try {
+      const blob = await scanEngine.exportScansCsv({
+        jobId: job.id,
+        since: exportStart ? new Date(exportStart + 'T00:00:00').toISOString() : undefined,
+        until: exportEnd ? new Date(exportEnd + 'T23:59:59.999').toISOString() : undefined,
+      });
+      const safe = (job.meta?.name || 'job').replace(/[^a-z0-9_-]+/gi, '_');
+      const name = `scans_${safe}_${exportStart || 'start'}_to_${exportEnd || 'today'}.csv`;
+      downloadBlob(blob, name);
+      toast('Downloaded ' + name, 'success');
+    } catch (err) {
+      toast('Export failed: ' + err.message, 'error');
+    } finally {
+      setCsvExporting(false);
+    }
+  };
+
   // Full-job export via Cloud Function. Build the URL with the active filters
   // and let the browser handle the download. We pre-check with a fetch so
   // we can surface the "too large" 413 path inline instead of a broken
@@ -1531,8 +1555,21 @@ export default function CustomerPortal() {
                 }}>
                 {exporting ? 'Generating…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={14} /> Download XLSX</span>}
               </button>
+              {isScanEngineConfigured && (
+                <button
+                  onClick={handleFastCsvExport}
+                  disabled={csvExporting || !job?.id}
+                  style={{
+                    background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent)',
+                    borderRadius: 6, padding: '10px 16px', fontSize: 14, fontWeight: 700,
+                    cursor: csvExporting ? 'wait' : 'pointer', opacity: csvExporting ? 0.6 : 1,
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}>
+                  {csvExporting ? 'Exporting…' : <><Download size={14} /> Download CSV (all rows, fast)</>}
+                </button>
+              )}
               <span style={{ color: '#666', fontSize: 12 }}>
-                Reports are capped at 250,000 rows. Narrow the date range if you hit the cap.
+                CSV streams every row in seconds with no cap. XLSX is formatted but capped at 250,000 rows.
               </span>
             </div>
             {exportError && (

@@ -49,6 +49,29 @@ async function post(path, body) {
   return res.json();
 }
 
+// Fetch a non-JSON response (e.g. a streamed CSV export) as a Blob, still
+// authenticated with the portal API key.
+async function getBlob(path, params) {
+  if (!isScanEngineConfigured) {
+    throw new Error('scan-engine not configured');
+  }
+  const qs = params
+    ? '?' +
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
+    : '';
+  const res = await fetch(`${BASE}${path}${qs}`, {
+    headers: { 'x-api-key': KEY },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`scan-engine ${path} ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  return res.blob();
+}
+
 export const scanEngine = {
   listJobs: ({ active } = {}) => get('/api/portal/jobs', { active }),
   getJob: (jobId) => get(`/api/portal/jobs/${encodeURIComponent(jobId)}`),
@@ -65,6 +88,9 @@ export const scanEngine = {
     get('/api/portal/operators', { jobId, since, until }),
   operatorTrends: ({ jobId, since, until } = {}) =>
     get('/api/portal/operators/trends', { jobId, since, until }),
+  // Streamed CSV of every scan in a date range — fast even for a whole job.
+  exportScansCsv: ({ jobId, since, until }) =>
+    getBlob('/api/portal/scans/export', { jobId, since, until }),
   presence: () => get('/api/portal/presence'),
 
   // Cross-pod dedup. `claim` is atomic — exactly one pod wins per (jobId,

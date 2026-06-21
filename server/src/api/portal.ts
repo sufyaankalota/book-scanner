@@ -68,6 +68,12 @@ const operatorsQuery = z.object({
   until: isoDate.optional(),
 });
 
+const exportScansQuery = z.object({
+  jobId: z.string().min(1),
+  since: isoDate.optional(),
+  until: isoDate.optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Cursor helpers (keyset pagination on (timestamp DESC, id DESC))
 // ---------------------------------------------------------------------------
@@ -83,6 +89,13 @@ function decodeCursor(raw: string): { ts: Date; id: string } | null {
   const id = raw.slice(idx + 1);
   if (Number.isNaN(ts.getTime()) || !id) return null;
   return { ts, id };
+}
+
+// RFC4180 CSV cell — quote when the value contains a comma, quote or newline.
+function csvCell(v: string | null | undefined): string {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +181,70 @@ export function portalRouter(): Router {
       scans: page,
       nextCursor: hasMore && last ? encodeCursor(last) : null,
     });
+  });
+
+  // GET /api/portal/scans/export?jobId=&since=ISO&until=ISO
+  // Streams every scan in the range as CSV straight from Postgres using keyset
+  // pagination — bounded memory, NO row cap, finishes in seconds even for a
+  // full multi-month job. This is the "give me all ISBNs from X to Y" report.
+  r.get('/scans/export', async (req: Request, res: Response) => {
+    const parsed = exportScansQuery.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_query', issues: parsed.error.issues });
+      return;
+    }
+    const { jobId, since, until } = parsed.data;
+    const gte = since ? new Date(since) : undefined;
+    const lte = until ? new Date(until) : undefined;
+    const rangeFilter =
+      gte || lte ? { timestamp: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } } : {};
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="scans_${jobId}_${stamp}.csv"`);
+    res.write('isbn,po,type,source,pod,operator,title,timestamp\n');
+
+    const BATCH = 10000;
+    let cursor: { ts: Date; id: string } | null = null;
+    for (;;) {
+      const where: Prisma.ScanWhereInput = {
+        jobId,
+        ...rangeFilter,
+        ...(cursor
+          ? { OR: [{ timestamp: { gt: cursor.ts } }, { timestamp: cursor.ts, id: { gt: cursor.id } }] }
+          : {}),
+      };
+      // eslint-disable-next-line no-await-in-loop
+      const batch = await prisma.scan.findMany({
+        where,
+        orderBy: [{ timestamp: 'asc' }, { id: 'asc' }],
+        take: BATCH,
+        select: {
+          id: true, isbn: true, poName: true, type: true, source: true,
+          podId: true, scannerId: true, capturedTitle: true, timestamp: true,
+        },
+      });
+      if (batch.length === 0) break;
+      let chunk = '';
+      for (const row of batch) {
+        chunk += [
+          csvCell(row.isbn),
+          csvCell(row.poName),
+          csvCell(row.type),
+          csvCell(row.source),
+          csvCell(row.podId),
+          csvCell(row.scannerId),
+          csvCell(row.capturedTitle),
+          csvCell(row.timestamp.toISOString()),
+        ].join(',') + '\n';
+      }
+      res.write(chunk);
+      if (batch.length < BATCH) break;
+      const lastRow = batch[batch.length - 1];
+      if (!lastRow) break;
+      cursor = { ts: lastRow.timestamp, id: lastRow.id };
+    }
+    res.end();
   });
 
   // GET /api/portal/scans/summary?jobId=&start=&end=
