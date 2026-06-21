@@ -23,7 +23,13 @@ app.use(
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
       if (config.corsOrigins.length === 0) return cb(null, true);
-      if (config.corsOrigins.includes(origin)) return cb(null, true);
+      // Origins are case-insensitive per RFC 3986 — normalize both sides so a
+      // mixed-case Origin header can't bypass (or be wrongly rejected by) the
+      // allowlist.
+      const normalized = origin.toLowerCase();
+      if (config.corsOrigins.some((allowed) => allowed.toLowerCase() === normalized)) {
+        return cb(null, true);
+      }
       return cb(new Error(`CORS rejected: ${origin}`));
     },
     credentials: true,

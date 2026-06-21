@@ -1,5 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { config } from '../../config';
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
 
 // Same shape as requireApiKey but accepts `DEDUP_API_KEY` (falling back to
 // PORTAL_API_KEY in config.dedupApiKey). Kept separate so the two surfaces
@@ -15,7 +23,7 @@ export function requireDedupKey(req: Request, res: Response, next: NextFunction)
     return;
   }
   const provided = req.header('x-api-key') ?? '';
-  if (provided !== required) {
+  if (!safeEqual(provided, required)) {
     res.status(401).json({ error: 'unauthorized' });
     return;
   }

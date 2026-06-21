@@ -7,11 +7,11 @@ import type { HubHandle } from '../dedup/hub';
 import { logger } from '../lib/logger';
 
 const claimBody = z.object({
-  jobId: z.string().min(1),
-  barcode: z.string().min(1),
-  podId: z.string().min(1),
-  scannerId: z.string().min(1),
-  scanId: z.string().optional(),
+  jobId: z.string().min(1).max(255),
+  barcode: z.string().min(1).max(255),
+  podId: z.string().min(1).max(128),
+  scannerId: z.string().min(1).max(128),
+  scanId: z.string().max(255).optional(),
   // Up to 90 days. Long-running jobs (e.g. a 6-week prep batch) need claims
   // that outlive a single workday so a book scanned on day 1 still blocks
   // re-counts on day 30. Server-default 24h applies when omitted.
@@ -19,18 +19,18 @@ const claimBody = z.object({
 });
 
 const releaseBody = z.object({
-  jobId: z.string().min(1),
-  barcode: z.string().min(1),
+  jobId: z.string().min(1).max(255),
+  barcode: z.string().min(1).max(255),
 });
 
 const inspectQuery = z.object({
-  jobId: z.string().min(1),
-  barcode: z.string().min(1),
+  jobId: z.string().min(1).max(255),
+  barcode: z.string().min(1).max(255),
 });
 
 const inspectManyBody = z.object({
-  jobId: z.string().min(1),
-  barcodes: z.array(z.string().min(1)).min(1).max(500),
+  jobId: z.string().min(1).max(255),
+  barcodes: z.array(z.string().min(1).max(255)).min(1).max(500),
 });
 
 export function dedupRouter(hub: HubHandle | null): Router {

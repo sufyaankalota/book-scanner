@@ -83,6 +83,7 @@ export default function CustomerPortal() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const [resettingCache, setResettingCache] = useState(false);
+  const [reportBusy, setReportBusy] = useState(''); // which day report is generating (button feedback)
   // Branding
   const [brandLogo, setBrandLogo] = useState('');
   const [manifestData, setManifestData] = useState({});
@@ -224,6 +225,14 @@ export default function CustomerPortal() {
 
   useEffect(() => {
     if (!authenticated || !job) return;
+    // When the scan-engine is configured, the Exceptions tab + photo report
+    // are fed by useExceptionScans (bounded 14-day server fetch). This live
+    // 60-day Firestore listener is then pure redundant egress that pegs the
+    // browser on big jobs — skip it. Legacy (no scan-engine) keeps it.
+    if (isScanEngineConfigured) {
+      setAllExceptions([]);
+      return undefined;
+    }
     const since = new Date(); since.setDate(since.getDate() - 60); since.setHours(0, 0, 0, 0);
     const q = query(
       collection(db, 'exceptions'),
@@ -652,6 +661,7 @@ export default function CustomerPortal() {
   };
 
   const exportDailyScans = async (date) => {
+    setReportBusy('scans-' + date);
     try {
       const dayScans = (await fetchDayScans(date, { type: 'standard' }));
       const wb = XLSX.utils.book_new();
@@ -683,12 +693,16 @@ export default function CustomerPortal() {
       ]), 'Summary');
       const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       downloadBlob(buf, 'scans_' + date + '.xlsx');
+      toast('Downloaded scans_' + date + '.xlsx', 'success');
     } catch (err) {
       toast('Export failed: ' + err.message, 'error');
+    } finally {
+      setReportBusy('');
     }
   };
 
   const exportDailyExceptions = async (date) => {
+    setReportBusy('exc-' + date);
     try {
       const [dayAutoExc, dayManualExc] = await Promise.all([
         fetchDayScans(date, { type: 'exception' }),
@@ -722,8 +736,11 @@ export default function CustomerPortal() {
       XLSX.utils.book_append_sheet(wb, disclaimer, 'Disclaimer');
       const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       downloadBlob(buf, 'exceptions_' + date + '.xlsx');
+      toast('Downloaded exceptions_' + date + '.xlsx', 'success');
     } catch (err) {
       toast('Export failed: ' + err.message, 'error');
+    } finally {
+      setReportBusy('');
     }
   };
 
@@ -775,7 +792,7 @@ export default function CustomerPortal() {
     const dateLabel = filterDate || 'All Dates';
     const withPhotos = allExcs.filter((e) => e.photo);
 
-    const html = `<!DOCTYPE html>
+    const head = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Exception Photo Report – ${jobName}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -805,8 +822,9 @@ export default function CustomerPortal() {
   <div><div class="num">${allExcs.length}</div><div class="lbl">Total Exceptions</div></div>
   <div><div class="num">${withPhotos.length}</div><div class="lbl">With Photos</div></div>
   <div><div class="num">${allExcs.length - withPhotos.length}</div><div class="lbl">No Photo</div></div>
-</div>
-${allExcs.map((exc, i) => `<div class="exc">
+</div>`;
+
+    const rowHtml = (exc, i) => `<div class="exc">
   ${exc.photo ? `<img src="${exc.photo}" alt="Exception ${i + 1}">` : '<div class="no-photo">No photo</div>'}
   <div class="info">
     <span class="reason">${exc.reason}</span>
@@ -814,12 +832,25 @@ ${allExcs.map((exc, i) => `<div class="exc">
     ${exc.title ? `<div class="title">"${exc.title}"</div>` : ''}
     <div class="time">${exc.time.toLocaleString()}${exc.podId ? ' – Pod ' + exc.podId : ''}</div>
   </div>
-</div>`).join('\n')}
-<div class="disclaimer">⚠️ DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
+</div>`;
+
+    const footer = `<div class="disclaimer">⚠️ DISCLAIMER: Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.</div>
 </body></html>`;
 
     const w = window.open('', '_blank');
-    w.document.write(html);
+    if (!w) { toast('Popup blocked — allow popups in your browser to view the report.', 'error'); return; }
+    w.document.write(head);
+    // Stream rows in batches, yielding to the event loop between each, so a
+    // large report (base64 photos can be megabytes each) never builds one
+    // giant string nor blocks the portal's main thread.
+    const BATCH = 40;
+    for (let i = 0; i < allExcs.length; i += BATCH) {
+      const chunk = allExcs.slice(i, i + BATCH).map((exc, j) => rowHtml(exc, i + j)).join('\n');
+      w.document.write(chunk);
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    w.document.write(footer);
     w.document.close();
   };
 
@@ -1131,9 +1162,9 @@ ${allExcs.map((exc, i) => `<div class="exc">
                 )}
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button onClick={() => exportDailyScans(d.date)} style={st.smallBtn}>Scans Report</button>
+                <button onClick={() => exportDailyScans(d.date)} disabled={reportBusy === 'scans-' + d.date} style={st.smallBtn}>{reportBusy === 'scans-' + d.date ? 'Preparing…' : 'Scans Report'}</button>
                 {d.exceptions > 0 && (
-                  <button onClick={() => exportDailyExceptions(d.date)} style={st.smallBtn}>Exceptions Report</button>
+                  <button onClick={() => exportDailyExceptions(d.date)} disabled={reportBusy === 'exc-' + d.date} style={st.smallBtn}>{reportBusy === 'exc-' + d.date ? 'Preparing…' : 'Exceptions Report'}</button>
                 )}
               </div>
             </div>
