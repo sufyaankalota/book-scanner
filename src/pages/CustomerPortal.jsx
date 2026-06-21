@@ -12,7 +12,7 @@ import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStor
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useDailyBreakdown } from '../hooks/useDailyBreakdown';
 import { useExceptionScans } from '../hooks/useExceptionScans';
-import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt } from 'lucide-react';
+import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt, FileText, Upload, Truck, Trash2, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -1105,10 +1105,10 @@ export default function CustomerPortal() {
       )}
 
       <div style={st.tabBar}>
-        {[['daily','Daily Volume'],['exceptions','Exceptions'],['billing','Billing'],['reports','Reports'],['upload','Upload POs'],['bols','BOLs']].map(([key, label]) => (
+        {[['daily','Daily Volume',BarChart3],['exceptions','Exceptions',AlertTriangle],['billing','Billing',Receipt],['reports','Reports',FileText],['upload','Upload POs',Upload],['bols','BOLs',Truck]].map(([key, label, Icon]) => (
           <button key={key} onClick={() => setActiveTab(key)}
-            style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}) }}>
-            {label}
+            style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Icon size={14} /> {label}
           </button>
         ))}
       </div>
@@ -1283,7 +1283,7 @@ export default function CustomerPortal() {
               <h3 style={{ ...st.cardTitle, display: 'flex', alignItems: 'center', gap: 8 }}><Receipt size={16} /> Weekly Billing Reports</h3>
               <button onClick={() => setShowArchived(!showArchived)}
                 style={{ ...st.smallBtn, color: showArchived ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
-                {showArchived ? '🗄 Hide Archived' : '📁 Show Archived'}
+                {showArchived ? 'Hide Archived' : 'Show Archived'}
               </button>
             </div>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 16 }}>
@@ -1328,11 +1328,11 @@ export default function CustomerPortal() {
                         disabled={!report.fileData}
                         style={{ ...st.smallBtn, padding: '8px 20px', opacity: report.fileData ? 1 : 0.4, cursor: report.fileData ? 'pointer' : 'not-allowed' }}
                         title={report.fileData ? 'Download XLSX' : 'File not available'}>
-                        📥 Download
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={13} /> Download</span>
                       </button>
                       <button onClick={() => updateDoc(doc(db, 'billing-reports', report.id), { archived: !report.archived })}
                         style={{ ...st.smallBtn, padding: '8px 12px' }}>
-                        {report.archived ? '↩ Unarchive' : '📦 Archive'}
+                        {report.archived ? 'Unarchive' : 'Archive'}
                       </button>
                     </div>
                   </div>
@@ -1385,7 +1385,7 @@ export default function CustomerPortal() {
               exportJobReport Cloud Function, so it covers the entire job
               lifetime (not just the live 60-day subscription window). */}
           <div style={st.card}>
-            <h3 style={st.cardTitle}>📊 Full Job Export (Beginning of Job → Today)</h3>
+            <h3 style={{ ...st.cardTitle, display: 'flex', alignItems: 'center', gap: 8 }}><BarChart3 size={16} /> Full Job Export (Beginning of Job → Today)</h3>
             <p style={{ color: '#888', fontSize: 14, marginBottom: 12 }}>
               Generate a custom XLSX directly from the database. Leave dates blank to cover the entire job. Use the PO filter to narrow to a single purchase order.
             </p>
@@ -1432,7 +1432,7 @@ export default function CustomerPortal() {
                   borderRadius: 6, padding: '10px 16px', fontSize: 14, fontWeight: 700,
                   cursor: exporting ? 'wait' : 'pointer', opacity: exporting ? 0.6 : 1,
                 }}>
-                {exporting ? '⏳ Generating…' : '⬇️ Download XLSX'}
+                {exporting ? 'Generating…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={14} /> Download XLSX</span>}
               </button>
               <span style={{ color: '#666', fontSize: 12 }}>
                 Reports are capped at 250,000 rows. Narrow the date range if you hit the cap.
@@ -1446,7 +1446,7 @@ export default function CustomerPortal() {
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <button onClick={() => setReportsShowAll(!reportsShowAll)}
               style={{ ...st.smallBtn, color: reportsShowAll ? '#3B82F6' : 'var(--text-tertiary, #666)' }}>
-              {reportsShowAll ? '📅 Show Recent Only' : '📆 Show All Dates'}
+              {reportsShowAll ? 'Show Recent Only' : 'Show All Dates'}
             </button>
           </div>
           <div style={st.card}>
