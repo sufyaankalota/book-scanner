@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Lock, Palette, Bell, QrCode, Clock, Trash2, ClipboardList, KeyRound, Users, Pencil, Link2, Search } from 'lucide-react';
 import { db } from '../firebase';
 import {
   collection, doc, setDoc, getDoc, getDocs, deleteDoc,
@@ -891,16 +892,16 @@ export default function Setup() {
                   setEditPoColors({ ...(activeJob.poColors || {}) });
                   setEditPoNumbers({ ...(activeJob.poNumbers || {}) });
                   setEditMode(true);
-                }} style={s.editBtn}>✏️ Edit Job</button>
+                }} style={s.editBtn}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Pencil size={15} /> Edit Job</span></button>
                 {activeJob?.manifestMeta?.chunked && (
                   <button onClick={handleBackfillActiveJob} disabled={!!pairingStatus}
                     title="Pair ISBN-10/13 siblings + backfill titles in this job's manifest. Safe to run multiple times."
                     style={{ ...s.editBtn, borderColor: '#EAB308', color: '#EAB308', backgroundColor: 'transparent', opacity: pairingStatus ? 0.5 : 1, cursor: pairingStatus ? 'wait' : 'pointer' }}>
-                    🔗 {pairingStatus ? `Pairing… (${pairingStatus.phase} ${pairingStatus.done}/${pairingStatus.total})` : 'Pair ISBN-10/13 + Add Titles'}
+                    <Link2 size={15} style={{ verticalAlign: '-2px', marginRight: 6 }} />{pairingStatus ? `Pairing… (${pairingStatus.phase} ${pairingStatus.done}/${pairingStatus.total})` : 'Pair ISBN-10/13 + Add Titles'}
                   </button>
                 )}
                 <button onClick={handleCloseJob} style={s.dangerBtn}>Close Job</button>
-                <button onClick={handleDeleteJob} style={{ ...s.dangerBtn, backgroundColor: '#450a0a', borderColor: '#7f1d1d' }}>🗑 Delete Job</button>
+                <button onClick={handleDeleteJob} style={{ ...s.dangerBtn, backgroundColor: '#450a0a', borderColor: '#7f1d1d' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Trash2 size={15} /> Delete Job</span></button>
               </div>
             </>
           ) : (
@@ -972,13 +973,22 @@ export default function Setup() {
 
         {/* Admin sections */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
-          {['pin', 'branding', 'alerts', 'qr', 'schedule', 'retention', 'audit', 'customer'].map((key) => (
+          {[
+            ['pin', 'PIN', Lock],
+            ['branding', 'Branding', Palette],
+            ['alerts', 'Alerts', Bell],
+            ['qr', 'QR Codes', QrCode],
+            ['schedule', 'Auto-Export', Clock],
+            ['retention', 'Retention', Trash2],
+            ['audit', 'Audit', ClipboardList],
+            ['customer', 'Customer', KeyRound],
+          ].map(([key, label, Icon]) => (
             <button key={key} onClick={() => { setShowSection(showSection === key ? '' : key); if (key === 'audit') loadAuditLog(); }}
-              style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
-              {key === 'pin' ? '🔒 PIN' : key === 'branding' ? '🎨 Branding' : key === 'alerts' ? '⚙️ Alerts' : key === 'qr' ? '📱 QR Codes' : key === 'schedule' ? '⏰ Auto-Export' : key === 'retention' ? '🗑 Retention' : key === 'audit' ? '📋 Audit' : '🔑 Customer'}
+              style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon size={15} /> {label}
             </button>
           ))}
-          <Link to="/users" style={{ ...s.secondaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>👥 Users</Link>
+          <Link to="/users" style={{ ...s.secondaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Users size={15} /> Users</Link>
         </div>
 
         {showSection === 'pin' && (
@@ -1612,13 +1622,18 @@ export default function Setup() {
 
       {/* Admin sections — always accessible */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 24, marginBottom: 12 }}>
-        {['branding', 'customer', 'lookup', 'audit'].map((key) => (
+        {[
+          ['branding', 'Branding', Palette],
+          ['customer', 'Customer', KeyRound],
+          ['lookup', 'ISBN Lookup', Search],
+          ['audit', 'Audit', ClipboardList],
+        ].map(([key, label, Icon]) => (
           <button key={key} onClick={() => { setShowSection(showSection === key ? '' : key); if (key === 'audit') loadAuditLog(); }}
-            style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: '#3B82F6', color: '#3B82F6' } : {}) }}>
-            {key === 'branding' ? '🎨 Branding' : key === 'audit' ? '📋 Audit' : key === 'lookup' ? '🔍 ISBN Lookup' : '🔑 Customer'}
+            style={{ ...s.secondaryBtn, ...(showSection === key ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Icon size={15} /> {label}
           </button>
         ))}
-        <Link to="/users" style={{ ...s.secondaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>👥 Users</Link>
+        <Link to="/users" style={{ ...s.secondaryBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Users size={15} /> Users</Link>
       </div>
 
       {showSection === 'lookup' && (
