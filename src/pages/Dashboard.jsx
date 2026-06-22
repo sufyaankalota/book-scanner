@@ -1550,7 +1550,7 @@ const st = {
   progressFill: { height: '100%', borderRadius: 4 },
   progressCount: { color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
   progressException: { marginTop: 10, color: 'var(--error)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 },
-  podGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))', gap: 12, marginBottom: 16, width: '100%', minWidth: 0 },
+  podGrid: { display: 'grid', gap: 12, marginBottom: 16, width: '100%', minWidth: 0 },
   panelBtn: { padding: '7px 14px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border, #222)', backgroundColor: 'transparent', color: 'var(--text-secondary, #888)', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
   panel: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border, #222)', maxHeight: 400, overflowY: 'auto', marginBottom: 16, boxShadow: 'var(--shadow-card)' },
   exRow: { display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border, #1e1e1e)', flexWrap: 'wrap' },
