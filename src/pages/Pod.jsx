@@ -3091,55 +3091,55 @@ export default function Pod() {
       {/* Keyboard shortcuts overlay */}
       {showShortcuts && (
         <div style={styles.pauseOverlay} onClick={() => setShowShortcuts(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#1a1a1a', borderRadius: 16, padding: 32, maxWidth: 400, width: '90%' }}>
-            <h2 style={{ color: '#fff', marginTop: 0, fontSize: 20, textAlign: 'center' }}>⌨️ Keyboard Shortcuts</h2>
-            <p style={{ color: '#888', fontSize: 12, textAlign: 'center', margin: '0 0 12px', fontStyle: 'italic' }}>NumPad keys = fastest (no modifier needed). Ctrl+digit also works.</p>
+          <div onClick={(e) => e.stopPropagation()} style={styles.shortcutsPanel} className="ui-card scale-enter" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+            <h2 style={styles.shortcutsTitle}><Keyboard size={20} /> Keyboard Shortcuts</h2>
+            <p style={styles.shortcutsHint}>NumPad keys are fastest. Ctrl+digit also works.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                ['— NumPad (fastest — no Ctrl) —', null],
-                ['NumPad 1', '📷 Scan book cover (AI)'],
-                ['NumPad 2', '⌨️ Type ISBN manually'],
-                ['NumPad 3', '⚠️ Log exception'],
-                ['NumPad 4', '⌨️ Type book title (AI)'],
-                ['NumPad 0', '↩ Undo last scan'],
-                ['NumPad .', '⏸ Pause shift'],
-                ['NumPad +', '⚙️ Toggle settings'],
-                ['NumPad −', '🔄 Switch operator'],
-                ['NumPad ×', '? Toggle this help'],
-                ['— Ctrl shortcuts —', null],
-                ['Ctrl + 1', '📷 Scan book cover (AI)'],
-                ['Ctrl + 4', '⌨️ Type book title (AI)'],
-                ['Ctrl + 2', '⌨️ Type ISBN manually'],
-                ['Ctrl + 3 / Esc', '⚠️ Log exception'],
-                ['Ctrl + U', '↩ Undo last scan'],
-                ['Ctrl + P', '⏸ Pause shift'],
-                ['Ctrl + S', '🔄 Switch operator'],
-                ['Ctrl + E', '🚪 End shift'],
-                ['Ctrl + ,', '⚙️ Toggle settings'],
+                ['NumPad (fastest - no Ctrl)', null],
+                ['NumPad 1', 'Scan book cover (AI)'],
+                ['NumPad 2', 'Type ISBN manually'],
+                ['NumPad 3', 'Log exception'],
+                ['NumPad 4', 'Type book title (AI)'],
+                ['NumPad 0', 'Undo last scan'],
+                ['NumPad .', 'Pause shift'],
+                ['NumPad +', 'Toggle settings'],
+                ['NumPad -', 'Switch operator'],
+                ['NumPad *', 'Toggle this help'],
+                ['Ctrl shortcuts', null],
+                ['Ctrl + 1', 'Scan book cover (AI)'],
+                ['Ctrl + 4', 'Type book title (AI)'],
+                ['Ctrl + 2', 'Type ISBN manually'],
+                ['Ctrl + 3 / Esc', 'Log exception'],
+                ['Ctrl + U', 'Undo last scan'],
+                ['Ctrl + P', 'Pause shift'],
+                ['Ctrl + S', 'Switch operator'],
+                ['Ctrl + E', 'End shift'],
+                ['Ctrl + ,', 'Toggle settings'],
                 ['?', 'Toggle this help'],
-                ['— Pause Screen —', null],
-                ['NumPad 1 / Space / R', '▶ Resume scanning'],
-                ['NumPad 2', '☕ Take 15 min break'],
-                ['NumPad 3', '☕ Take 30 min break'],
-                ['NumPad −  /  S', '🔄 Switch operator'],
-                ['NumPad ×  /  E', '🚪 End shift'],
-                ['— AI Match Picker —', null],
+                ['Pause screen', null],
+                ['NumPad 1 / Space / R', 'Resume scanning'],
+                ['NumPad 2', 'Take 15 min break'],
+                ['NumPad 3', 'Take 30 min break'],
+                ['NumPad - / S', 'Switch operator'],
+                ['NumPad * / E', 'End shift'],
+                ['AI match picker', null],
                 ['NumPad 1–9', 'Pick AI-match candidate'],
                 ['M', 'Manual entry (from AI match)'],
                 ['E', 'Log exception (from AI match)'],
                 ['Esc', 'Close picker'],
-                ['— Modals —', null],
+                ['Modals', null],
                 ['Enter / NumPad Enter', 'Submit / confirm'],
                 ['Esc / NumPad 0', 'Cancel / close'],
                 ['Y / NumPad 1', 'Confirm duplicate'],
                 ['N / NumPad 0', 'Skip duplicate'],
               ].map(([key, desc], i) => (
                 desc === null ? (
-                  <div key={i} style={{ color: '#666', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, padding: '6px 0 2px', textAlign: 'center' }}>{key}</div>
+                  <div key={i} style={styles.shortcutsSection}>{key}</div>
                 ) : (
-                  <div key={key + i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #2a2a2a' }}>
-                    <kbd style={{ backgroundColor: '#333', padding: '3px 10px', borderRadius: 4, fontFamily: 'monospace', fontSize: 13, color: '#fff', border: '1px solid #555', fontWeight: 600, whiteSpace: 'nowrap' }}>{key}</kbd>
-                    <span style={{ color: '#bbb', fontSize: 13, fontWeight: 500, marginLeft: 12, textAlign: 'right' }}>{desc}</span>
+                  <div key={key + i} style={styles.shortcutRow}>
+                    <kbd style={styles.shortcutKey}>{key}</kbd>
+                    <span style={styles.shortcutDesc}>{desc}</span>
                   </div>
                 )
               ))}
@@ -3272,6 +3272,13 @@ const styles = {
     zIndex: 900, gap: 14, padding: 20,
   },
   pauseBox: { textAlign: 'center' },
+  shortcutsPanel: { padding: 28, maxWidth: 440, width: 'min(92vw, 440px)', maxHeight: '86vh', overflowY: 'auto' },
+  shortcutsTitle: { color: 'var(--text)', marginTop: 0, marginBottom: 6, fontSize: 20, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'var(--font-display)', letterSpacing: 0 },
+  shortcutsHint: { color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'center', margin: '0 0 14px', fontWeight: 600 },
+  shortcutsSection: { color: 'var(--accent)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, padding: '8px 0 2px', textAlign: 'center' },
+  shortcutRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--border)' },
+  shortcutKey: { backgroundColor: 'var(--bg-input)', padding: '4px 10px', borderRadius: 5, fontFamily: 'monospace', fontSize: 13, color: 'var(--text)', border: '1px solid var(--border)', fontWeight: 700, whiteSpace: 'nowrap' },
+  shortcutDesc: { color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, textAlign: 'right' },
   setupCard: {
     background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 12, padding: 'clamp(16px, 3vw, 22px) clamp(14px, 3vw, 20px)',
     maxWidth: 480, margin: 'clamp(8px, 2vh, 16px) auto', width: '100%', boxShadow: 'var(--shadow-card)',

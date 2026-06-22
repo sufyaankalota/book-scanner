@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck, FileDown, Receipt, Mail, MonitorPlay, RefreshCw, Bell, DollarSign, Calendar, FileText, Download, Package, CheckCircle2, Trash2, Wrench, Loader2 } from 'lucide-react';
+import { AlertTriangle, Trophy, BarChart3, TrendingUp, Clock, Users, Truck, FileDown, Receipt, Mail, MonitorPlay, RefreshCw, Bell, DollarSign, Calendar, FileText, Download, Package, CheckCircle2, Trash2, Wrench, Loader2, X } from 'lucide-react';
 
 function AutoRefreshIndicator({ lastUpdated }) {
   const [, setTick] = useState(0);
@@ -980,36 +980,37 @@ export default function Dashboard() {
 
       {/* Billing Export Modal */}
       {showBilling && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-          <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 16, padding: 32, maxWidth: 440, width: '100%', border: '2px solid #22C55E' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ color: '#fff', margin: 0, fontSize: 22, display: 'inline-flex', alignItems: 'center', gap: 8 }}><DollarSign size={20} /> Weekly Billing Export</h2>
+        <div style={st.modalBackdrop}>
+          <div style={st.modalCard} className="ui-card scale-enter glow-accent" role="dialog" aria-modal="true" aria-label="Weekly billing export">
+            <div style={st.modalHeader}>
+              <h2 style={st.modalTitle}><DollarSign size={20} /> Weekly Billing Export</h2>
               <button onClick={() => setShowBilling(false)}
-                style={{ background: 'none', border: '1px solid #555', borderRadius: 8, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                aria-label="Close billing export"
+                style={st.iconBtn}><X size={18} /></button>
             </div>
             <p style={{ color: 'var(--text-secondary, #aaa)', fontSize: 14, marginTop: 0, marginBottom: 16 }}>
               Select the week start date (Monday). The export covers 7 days from that date.
             </p>
-            <label style={{ color: '#ccc', fontSize: 14, fontWeight: 600, display: 'block', marginBottom: 6 }}>Week starting:</label>
+            <label style={st.modalLabel}>Week starting:</label>
             <input type="date" value={billingWeek}
               onChange={(e) => setBillingWeek(e.target.value)}
-              style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #444', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 16, marginBottom: 16, boxSizing: 'border-box' }} />
-            <p style={{ color: '#888', fontSize: 13, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              style={st.modalInput} />
+            <p style={{ color: 'var(--text-tertiary)', fontSize: 13, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Calendar size={14} /> {new Date(billingWeek + 'T00:00:00').toLocaleDateString()} – {new Date(new Date(billingWeek + 'T00:00:00').getTime() + 6 * 86400000).toLocaleDateString()}
             </p>
             <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 12, marginBottom: 20, lineHeight: 1.5 }}>
               The XLSX includes: <strong>Billing Summary</strong> (regular scan count + exception count), <strong>Daily Breakdown</strong>, <strong>By Pod</strong>, and <strong>By Operator</strong> sheets. Fill in your rates in the Rate/Amount columns.
             </p>
-            <div style={{ backgroundColor: '#14532d', border: '1px solid #22C55E', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#86efac', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={st.modalCallout}>
               <FileText size={14} /> This report will also be visible to the customer in their portal.
             </div>
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <button onClick={handleBillingExport} disabled={exporting}
-                style={{ flex: 1, padding: '14px 20px', borderRadius: 10, border: 'none', backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 700, cursor: exporting ? 'wait' : 'pointer', opacity: exporting ? 0.6 : 1 }}>
+                style={{ ...st.modalPrimaryBtn, cursor: exporting ? 'wait' : 'pointer', opacity: exporting ? 0.6 : 1 }}>
                 {exporting ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Loader2 size={15} className="spin" /> Generating...</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={15} /> Download Billing XLSX</span>}
               </button>
               <button onClick={() => setShowBilling(false)}
-                style={{ padding: '14px 20px', borderRadius: 10, border: '1px solid #555', backgroundColor: 'transparent', color: 'var(--text-secondary, #aaa)', fontSize: 14, cursor: 'pointer' }}>
+                style={st.modalSecondaryBtn}>
                 Cancel
               </button>
             </div>
@@ -1571,6 +1572,16 @@ const st = {
   subtitle: { fontSize: 14, color: 'var(--text-secondary, #666)', marginTop: 4 },
   text: { color: 'var(--text-secondary, #ccc)', fontSize: 14 },
   exportBtn: { padding: '8px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #2a2a2a)', background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', color: 'var(--text-secondary, #aaa)', fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: 'var(--shadow-xs)' },
+  modalBackdrop: { position: 'fixed', inset: 0, backgroundColor: 'rgba(5,10,18,0.78)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
+  modalCard: { padding: 28, maxWidth: 460, width: '100%', border: '1px solid var(--success)', boxShadow: 'var(--shadow-elev)' },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 18 },
+  modalTitle: { color: 'var(--text)', margin: 0, fontSize: 22, display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-display)', letterSpacing: 0 },
+  iconBtn: { background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-secondary)', width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modalLabel: { color: 'var(--text-secondary)', fontSize: 14, fontWeight: 700, display: 'block', marginBottom: 6 },
+  modalInput: { width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)', color: 'var(--text)', fontSize: 16, marginBottom: 16, boxSizing: 'border-box' },
+  modalCallout: { backgroundColor: 'var(--success-soft)', border: '1px solid var(--success)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, color: 'var(--success)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 },
+  modalPrimaryBtn: { flex: '1 1 220px', padding: '14px 20px', borderRadius: 10, border: 'none', backgroundColor: 'var(--success)', color: 'var(--accent-contrast)', fontSize: 16, fontWeight: 800, minHeight: 48 },
+  modalSecondaryBtn: { padding: '14px 20px', borderRadius: 10, border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer', fontWeight: 700, minHeight: 48 },
   setupLink: { padding: '8px 14px', borderRadius: 8, backgroundColor: 'var(--bg-card, #161616)', border: '1px solid var(--border, #222)', color: 'var(--text-secondary, #888)', fontSize: 12, fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center' },
   summaryRow: { display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 16 },
   summaryItem: { textAlign: 'center', flex: 1, minWidth: 90 },
