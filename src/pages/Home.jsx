@@ -328,9 +328,9 @@ const styles = {
     backgroundColor: 'var(--bg, #0f0f0f)',
     color: 'var(--text, #f0f0f0)',
     fontFamily: 'var(--font-sans)',
-    padding: '0 24px 40px',
-    maxWidth: 1100,
-    margin: '0 auto',
+    padding: '0 clamp(16px, 2.5vw, 36px) 40px',
+    width: '100%',
+    boxSizing: 'border-box',
   },
   topBar: {
     display: 'flex',

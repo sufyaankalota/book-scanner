@@ -16,14 +16,13 @@ function AutoRefreshIndicator({ lastUpdated }) {
     </div>
   );
 }
-import { db, functions } from '../firebase';
-import { httpsCallable } from 'firebase/functions';
+import { db } from '../firebase';
 import {
   collection, doc, getDocs, getDoc, updateDoc, setDoc, addDoc, deleteDoc,
   query, where, onSnapshot, Timestamp, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import PodCard from '../components/PodCard';
-import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportReconciliation, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
+import { exportTodayXLSX, exportAllXLSX, exportPerPO, exportExceptionsXLSX, exportBillingXLSX } from '../utils/export';
 import { logAudit } from '../utils/audit';
 import { copyManifestChunks } from '../utils/manifestStore';
 import { useToast } from '../components/Toast';
@@ -32,8 +31,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { computeDailyTarget } from '../utils/target';
 import { normalizeOperatorKey, displayOperatorName, groupByOperator } from '../utils/operator';
 import RolePayEditor from '../components/RolePayEditor';
-import { useJobAggregate } from '../hooks/useJobAggregate';
-import { isScanEngineConfigured } from '../lib/scanEngine';
 
 export default function Dashboard() {
   const { show: toast } = useToast();
@@ -405,25 +402,6 @@ export default function Dashboard() {
     return unsub;
   }, [job]);
 
-  // All-job aggregate totals (maintained server-side by onScanWrite trigger).
-  // For long-running jobs we cannot subscribe to the full scans collection.
-  // Prefer scan-engine polling; fall back to a direct Firestore listener so
-  // environments without VITE_SCAN_ENGINE_URL keep working unchanged.
-  const [jobAggregate, setJobAggregate] = useState(null);
-  const [recomputing, setRecomputing] = useState(false);
-  const pgAggregate = useJobAggregate(job?.id || null);
-  useEffect(() => {
-    if (isScanEngineConfigured) {
-      setJobAggregate(pgAggregate);
-      return undefined;
-    }
-    if (!job) { setJobAggregate(null); return undefined; }
-    const unsub = onSnapshot(doc(db, 'jobs', job.id, 'aggregates', 'totals'), (snap) => {
-      setJobAggregate(snap.exists() ? snap.data() : null);
-    });
-    return unsub;
-  }, [job, pgAggregate]);
-
   // Auto-export scheduling
   useEffect(() => {
     if (!job) return;
@@ -602,24 +580,27 @@ export default function Dashboard() {
 
   // Manifest completion: removed. Customer-uploaded manifests can carry
   // 8M+ ISBNs while a job only ever physically receives ~1M books, so a
-  // completion percentage against the full manifest is meaningless. We
-  // now only track scanned counts (jobAggregate) and per-PO scans.
+  // completion percentage against the full manifest is meaningless.
   const manifestCompletion = null;
 
-  // Total job progress (from server-maintained aggregate counter).
-  // We no longer surface "expected" counts because the manifest size is
-  // not what's actually being received \u2014 only the scanned-so-far number
-  // is reliable. By-PO scanned counts come straight from the aggregate.
-  const jobProgress = useMemo(() => {
-    const totalScanned = jobAggregate?.totalScanned || 0;
-    const totalExceptions = jobAggregate?.totalExceptions || 0;
-    const aggByPO = jobAggregate?.byPO || {};
+  // Live today-by-PO breakdown. This intentionally uses the same real-time
+  // snapshot as the KPI row, not the historical aggregate counter, because
+  // the aggregate can drift if a trigger missed earlier writes.
+  const todayProgress = useMemo(() => {
     const byPO = {};
-    for (const [po, scanned] of Object.entries(aggByPO)) {
-      byPO[po] = { scanned: Number(scanned) || 0 };
+    let scanExceptions = 0;
+    for (const s of allScans) {
+      if (s.type === 'exception') scanExceptions += 1;
+      const po = s.poName || (s.type === 'exception' ? 'EXCEPTIONS' : 'Unassigned');
+      if (!byPO[po]) byPO[po] = { scanned: 0 };
+      byPO[po].scanned += 1;
     }
-    return { totalScanned, totalExceptions, byPO };
-  }, [jobAggregate]);
+    return {
+      totalProcessed: allScans.length + allExceptions.length,
+      totalExceptions: scanExceptions + allExceptions.length,
+      byPO,
+    };
+  }, [allScans, allExceptions]);
 
   // Labor efficiency
   const laborMetrics = useMemo(() => {
@@ -765,23 +746,6 @@ export default function Dashboard() {
   // Reconciliation export removed — it compared scans against the full
   // customer manifest, which is misleading when the manifest is 8M+ ISBNs
   // but only ~1M books are physically received.
-
-  // Owner-only: rebuild the server-maintained aggregate counter doc from
-  // scratch. Needed when the onScanWrite trigger missed writes (e.g. it
-  // was deployed after a lot of scans landed) and per-PO totals drifted.
-  const handleRecomputeAggregate = async () => {
-    if (!job || recomputing) return;
-    if (!window.confirm(`Rebuild per-PO and total counts for "${job.meta.name}" from scratch?\n\nThis paginates through every scan in the job. Small jobs take a few seconds; million-scan jobs can take a few minutes.`)) return;
-    setRecomputing(true);
-    try {
-      const fn = httpsCallable(functions, 'recomputeJobAggregate');
-      const res = await fn({ jobId: job.id });
-      toast(`Rebuilt: ${res.data?.totalScanned?.toLocaleString() || 0} scans, ${res.data?.poCount || 0} POs`, 'success', 5000);
-    } catch (err) {
-      toast('Rebuild failed: ' + (err.message || 'unknown error'), 'error', 6000);
-    }
-    setRecomputing(false);
-  };
 
   const handleBillingExport = async () => {
     if (!job) return;
@@ -1129,46 +1093,31 @@ export default function Dashboard() {
         </button>
       )}
 
-      {/* Job Progress — scanned counts only. Expected/% removed because the
-          customer manifest can be 8M+ ISBNs but only ~1M books are physically
-          received, making a completion percentage meaningless. */}
-      {jobProgress.totalScanned > 0 && (
-        <div style={{ backgroundColor: '#1a1a1a', borderRadius: 10, padding: 16, border: '1px solid #333', marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
-            <h3 style={{ color: '#ccc', fontSize: 14, margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}><BarChart3 size={15} /> Job Total Scanned</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
-                {jobProgress.totalScanned.toLocaleString()} scanned to date
-              </span>
-              {isOwner && (
-                <button
-                  onClick={handleRecomputeAggregate}
-                  disabled={recomputing}
-                  title="Rebuild the per-PO breakdown from scratch (use if numbers look wrong). Takes a few seconds for small jobs, up to a few minutes for million-scan jobs."
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #555', backgroundColor: 'transparent', color: '#888', fontSize: 11, fontWeight: 600, cursor: recomputing ? 'wait' : 'pointer', opacity: recomputing ? 0.6 : 1 }}>
-                  {recomputing ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Loader2 size={12} className="spin" /> Rebuilding…</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><RefreshCw size={12} /> Rebuild counts</span>}
-                </button>
-              )}
-            </div>
+      {/* Live PO progress — same source as KPI row, so it cannot drift from today's counts. */}
+      {todayProgress.totalProcessed > 0 && (
+        <div style={st.progressCard}>
+          <div style={st.progressHeader}>
+            <h3 style={st.progressTitle}><BarChart3 size={15} /> Today by PO</h3>
+            <span style={st.progressTotal}>{todayProgress.totalProcessed.toLocaleString()} processed today</span>
           </div>
-          {job.meta.mode === 'multi' && Object.keys(jobProgress.byPO).length > 1 && (() => {
-            const rows = Object.entries(jobProgress.byPO)
+          {job.meta.mode === 'multi' && Object.keys(todayProgress.byPO).length > 1 && (() => {
+            const rows = Object.entries(todayProgress.byPO)
               .filter(([po]) => po !== 'EXCEPTIONS' && po !== 'Unassigned')
               .sort((a, b) => (b[1].scanned || 0) - (a[1].scanned || 0));
             const max = Math.max(1, ...rows.map(([, d]) => d.scanned || 0));
             return (
-              <div style={{ marginTop: 8 }}>
+              <div style={st.progressRows}>
                 {rows.map(([po, data]) => {
-                  const color = job.poColors?.[po] || '#3B82F6';
+                  const color = job.poColors?.[po] || 'var(--accent)';
                   const width = Math.round(((data.scanned || 0) / max) * 100);
                   return (
-                    <div key={po} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
-                      <span style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{po}</span>
-                      <div style={{ flex: 1, height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', backgroundColor: color, width: `${width}%`, borderRadius: 3 }} />
+                    <div key={po} style={st.progressRow}>
+                      <span style={{ ...st.progressDot, backgroundColor: color }} />
+                      <span style={st.progressName}>{po}</span>
+                      <div style={st.progressTrack}>
+                        <div style={{ ...st.progressFill, backgroundColor: color, width: `${width}%` }} />
                       </div>
-                      <span style={{ color: '#888', fontSize: 12, minWidth: 80, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <span style={st.progressCount}>
                         {(data.scanned || 0).toLocaleString()}
                       </span>
                     </div>
@@ -1177,9 +1126,9 @@ export default function Dashboard() {
               </div>
             );
           })()}
-          {jobProgress.totalExceptions > 0 && (
-            <div style={{ marginTop: 8, color: '#EF4444', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <AlertTriangle size={13} /> {jobProgress.totalExceptions.toLocaleString()} exception scan{jobProgress.totalExceptions !== 1 ? 's' : ''} (not in manifest)
+          {todayProgress.totalExceptions > 0 && (
+            <div style={st.progressException}>
+              <AlertTriangle size={13} /> {todayProgress.totalExceptions.toLocaleString()} exception scan{todayProgress.totalExceptions !== 1 ? 's' : ''} today
             </div>
           )}
         </div>
@@ -1565,7 +1514,7 @@ export default function Dashboard() {
 }
 
 const st = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '16px 20px', fontFamily: 'var(--font-sans)', maxWidth: 1100, margin: '0 auto' },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '16px clamp(16px, 2.5vw, 36px) 36px', fontFamily: 'var(--font-sans)', width: '100%', boxSizing: 'border-box' },
   backLink: { color: 'var(--text-tertiary, #555)', textDecoration: 'none', fontSize: 13, marginBottom: 8, display: 'inline-block', fontWeight: 600 },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
   title: { fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: 800, margin: 0, letterSpacing: '-0.3px', overflowWrap: 'anywhere' },
@@ -1589,6 +1538,18 @@ const st = {
   summaryLabel: { fontSize: 'clamp(10px, 1.5vw, 12px)', color: 'var(--text-secondary, #666)', marginTop: 4, textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.3px' },
   progressContainer: { height: 6, backgroundColor: 'var(--bg-input, #1a1a1a)', borderRadius: 3, overflow: 'hidden', marginBottom: 20 },
   progressBar: { height: '100%', backgroundColor: 'var(--success)', borderRadius: 3, transition: 'width 0.5s ease' },
+  progressCard: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-lg)', padding: 16, border: '1px solid var(--border)', marginBottom: 16, boxShadow: 'var(--shadow-card)' },
+  progressHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' },
+  progressTitle: { color: 'var(--text-secondary)', fontSize: 14, margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-display)', letterSpacing: 0 },
+  progressTotal: { color: 'var(--success)', fontWeight: 800, fontSize: 14, fontVariantNumeric: 'tabular-nums' },
+  progressRows: { marginTop: 8, display: 'grid', gap: 7 },
+  progressRow: { display: 'grid', gridTemplateColumns: '10px minmax(110px, 0.35fr) minmax(140px, 1fr) 78px', alignItems: 'center', gap: 8 },
+  progressDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+  progressName: { color: 'var(--text-secondary)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  progressTrack: { height: 7, backgroundColor: 'var(--bg-input)', borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 4 },
+  progressCount: { color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
+  progressException: { marginTop: 10, color: 'var(--error)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 },
   podGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, marginBottom: 16 },
   panelBtn: { padding: '7px 14px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border, #222)', backgroundColor: 'transparent', color: 'var(--text-secondary, #888)', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
   panel: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border, #222)', maxHeight: 400, overflowY: 'auto', marginBottom: 16, boxShadow: 'var(--shadow-card)' },

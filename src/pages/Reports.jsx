@@ -1522,7 +1522,7 @@ function Kpi({ label, value, sub, color }) {
 const st = {
   page: {
     minHeight: '100vh', background: 'var(--bg, #0a0a0a)', color: 'var(--text, #fff)',
-    fontFamily: 'var(--font-sans)', padding: '24px 32px', maxWidth: 1400, margin: '0 auto',
+    fontFamily: 'var(--font-sans)', padding: '24px clamp(16px, 2.5vw, 40px)', width: '100%', boxSizing: 'border-box',
   },
   back: { color: 'var(--accent)', textDecoration: 'none', fontSize: 14, display: 'inline-block', marginBottom: 16 },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 24, flexWrap: 'wrap' },

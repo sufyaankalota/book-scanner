@@ -409,7 +409,7 @@ export default function JobHistory() {
 }
 
 const s = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px 20px', fontFamily: 'var(--font-sans)', maxWidth: 900, margin: '0 auto' },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px clamp(16px, 2.5vw, 36px)', fontFamily: 'var(--font-sans)', width: '100%', boxSizing: 'border-box' },
   title: { fontSize: 26, fontWeight: 800, margin: '8px 0 20px', letterSpacing: '-0.3px' },
   subtitle: { fontSize: 14, color: 'var(--text-secondary, #666)', marginBottom: 20 },
   text: { color: 'var(--text-secondary, #888)', fontSize: 14 },

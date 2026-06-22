@@ -1706,7 +1706,7 @@ export default function Setup() {
 }
 
 const s = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px 20px', fontFamily: 'var(--font-sans)', maxWidth: 720, margin: '0 auto' },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', padding: '24px clamp(16px, 2.5vw, 36px)', fontFamily: 'var(--font-sans)', width: '100%', boxSizing: 'border-box' },
   backLink: { color: 'var(--text-tertiary, #555)', textDecoration: 'none', fontSize: 13, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
   title: { fontSize: 26, fontWeight: 800, marginBottom: 20, marginTop: 8, letterSpacing: '-0.3px' },
   card: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 12, padding: '20px 22px', marginBottom: 14, border: '1px solid var(--border, #222)' },

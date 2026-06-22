@@ -329,7 +329,7 @@ export default function Billing() {
 }
 
 const st = {
-  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #fff)', padding: 'clamp(12px, 3vw, 24px)', maxWidth: 720, margin: '0 auto', fontFamily: 'var(--font-sans)' },
+  container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #fff)', padding: 'clamp(12px, 3vw, 24px)', width: '100%', boxSizing: 'border-box', fontFamily: 'var(--font-sans)' },
   backLink: { color: 'var(--text-secondary, #888)', textDecoration: 'none', fontSize: 14, fontWeight: 600 },
   title: { fontSize: 28, marginTop: 12, marginBottom: 4 },
   subtitle: { color: 'var(--text-secondary, #888)', fontSize: 14, marginTop: 0, marginBottom: 24 },

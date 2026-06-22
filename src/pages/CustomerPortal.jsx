@@ -1877,7 +1877,7 @@ const st = {
   },
   container: {
     minHeight: '100vh', backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #f0f0f0)',
-    padding: '16px 20px 40px', fontFamily: 'var(--font-sans)', maxWidth: 860, margin: '0 auto',
+    padding: '16px clamp(16px, 2.5vw, 36px) 40px', fontFamily: 'var(--font-sans)', width: '100%', boxSizing: 'border-box',
   },
   topBar: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
