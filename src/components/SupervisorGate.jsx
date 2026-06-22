@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { verifyPassword } from '../utils/crypto';
+import { ArrowLeft, ShieldCheck } from 'lucide-react';
 
 const DEFAULT_PIN = '1234';
 
@@ -68,8 +69,9 @@ export default function SupervisorGate({ children }) {
 
   return (
     <div style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>🔒 Supervisor Access</h2>
+      <div style={styles.card} className="ui-card scale-enter glow-accent">
+        <div style={styles.icon}><ShieldCheck size={24} /></div>
+        <h2 style={styles.title}>Supervisor Access</h2>
         <p style={styles.subtitle}>Enter the supervisor PIN to continue.</p>
         <input
           type="password"
@@ -91,7 +93,7 @@ export default function SupervisorGate({ children }) {
         >
           Unlock
         </button>
-        <Link to="/" style={styles.backLink}>← Back to Home</Link>
+        <Link to="/" style={styles.backLink}><ArrowLeft size={14} /> Back to Home</Link>
       </div>
     </div>
   );
@@ -100,7 +102,7 @@ export default function SupervisorGate({ children }) {
 const styles = {
   container: {
     minHeight: '100vh',
-    backgroundColor: 'var(--bg, #0f0f0f)',
+    background: 'transparent',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -108,48 +110,49 @@ const styles = {
     padding: 24,
   },
   card: {
-    backgroundColor: 'var(--bg-card, #141414)',
-    borderRadius: 16,
     padding: '36px 32px',
     width: '100%',
     maxWidth: 380,
     textAlign: 'center',
-    border: '1px solid var(--border, #222)',
   },
-  title: { fontSize: 24, fontWeight: 800, color: 'var(--text, #f0f0f0)', marginBottom: 6, marginTop: 0, letterSpacing: '-0.3px' },
-  subtitle: { fontSize: 14, color: 'var(--text-secondary, #666)', marginBottom: 24 },
+  icon: { width: 48, height: 48, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', color: 'var(--accent)', backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent-soft)' },
+  title: { fontSize: 24, fontWeight: 800, color: 'var(--text)', marginBottom: 6, marginTop: 0, letterSpacing: 0, fontFamily: 'var(--font-display)' },
+  subtitle: { fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 },
   input: {
     width: '100%',
     padding: '14px 18px',
     borderRadius: 10,
-    border: '1px solid var(--border, #2a2a2a)',
-    backgroundColor: 'var(--bg-input, #1a1a1a)',
-    color: 'var(--text, #f0f0f0)',
+    border: '1px solid var(--border)',
+    backgroundColor: 'var(--bg-input)',
+    color: 'var(--text)',
     fontSize: 24,
     textAlign: 'center',
     letterSpacing: 8,
     boxSizing: 'border-box',
     fontWeight: 600,
   },
-  error: { color: '#f87171', fontSize: 13, marginTop: 8, marginBottom: 0 },
+  error: { color: 'var(--error)', fontSize: 13, marginTop: 8, marginBottom: 0 },
   btn: {
     width: '100%',
     marginTop: 16,
     padding: '12px 24px',
     borderRadius: 10,
     border: 'none',
-    backgroundColor: '#3B82F6',
-    color: '#fff',
+    backgroundColor: 'var(--accent)',
+    color: 'var(--accent-contrast)',
     fontSize: 16,
     fontWeight: 700,
     cursor: 'pointer',
   },
   backLink: {
-    display: 'inline-block',
+    display: 'inline-flex',
     marginTop: 16,
-    color: '#555',
+    color: 'var(--text-tertiary)',
     fontSize: 13,
     textDecoration: 'none',
     fontWeight: 600,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
 };

@@ -3,6 +3,7 @@ import { db } from '../firebase';
 import { collection, getDocs, setDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { hashPassword, verifyPassword } from '../utils/crypto';
 import { useAuth } from '../contexts/AuthContext';
+import { LockKeyhole, ShieldAlert } from 'lucide-react';
 
 export default function AuthGate({ children, requiredRole }) {
   const { currentUser, login } = useAuth();
@@ -80,8 +81,9 @@ export default function AuthGate({ children, requiredRole }) {
       if ((hierarchy[currentUser.role] || 0) < (hierarchy[requiredRole] || 0)) {
         return (
           <div style={st.container}>
-            <div style={st.card}>
-              <h2 style={st.title}>🔒 Access Denied</h2>
+            <div style={st.card} className="ui-card scale-enter">
+              <div style={st.iconDanger}><ShieldAlert size={24} /></div>
+              <h2 style={st.title}>Access Denied</h2>
               <p style={st.subtitle}>You need <strong>{requiredRole}</strong> access for this page.</p>
               <p style={{ color: 'var(--text-tertiary, #666)', fontSize: 13, marginTop: 8 }}>Logged in as {currentUser.name} ({currentUser.role})</p>
             </div>
@@ -96,7 +98,8 @@ export default function AuthGate({ children, requiredRole }) {
   if (noUsers) {
     return (
       <div style={st.container}>
-        <div style={st.card}>
+        <div style={st.card} className="ui-card scale-enter glow-accent">
+          <div style={st.icon}><LockKeyhole size={24} /></div>
           <h2 style={st.title}>Welcome to BookFlow</h2>
           <p style={st.subtitle}>Create your admin account to get started.</p>
           <input type="text" value={setupName} onChange={(e) => setSetupName(e.target.value)}
@@ -109,7 +112,7 @@ export default function AuthGate({ children, requiredRole }) {
             placeholder="Password" style={{ ...st.input, marginTop: 10 }} />
           {error && <p style={st.error}>{error}</p>}
           <button onClick={handleFirstSetup} disabled={creating || !setupName.trim() || !setupEmail.trim() || !setupPw.trim()}
-            style={{ ...st.btn, opacity: creating ? 0.6 : 1 }}>
+            style={{ ...st.btn, opacity: (creating || !setupName.trim() || !setupEmail.trim() || !setupPw.trim()) ? 0.6 : 1 }}>
             {creating ? 'Creating...' : 'Create Admin Account'}
           </button>
         </div>
@@ -120,8 +123,9 @@ export default function AuthGate({ children, requiredRole }) {
   // Login form
   return (
     <div style={st.container}>
-      <div style={st.card}>
-        <h2 style={st.title}>🔒 BookFlow</h2>
+      <div style={st.card} className="ui-card scale-enter glow-accent">
+        <div style={st.icon}><LockKeyhole size={24} /></div>
+        <h2 style={st.title}>BookFlow</h2>
         <p style={st.subtitle}>Sign in to continue</p>
         <input type="email" value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -142,23 +146,24 @@ export default function AuthGate({ children, requiredRole }) {
 
 const st = {
   container: {
-    minHeight: '100vh', backgroundColor: '#0a0a0a', display: 'flex',
+    minHeight: '100vh', background: 'transparent', display: 'flex',
     alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-sans)', padding: 24,
   },
   card: {
-    backgroundColor: '#141414', borderRadius: 16, padding: '36px 32px', width: '100%', maxWidth: 380,
-    border: '1px solid #222', textAlign: 'center',
+    padding: '36px 32px', width: '100%', maxWidth: 380, textAlign: 'center',
   },
-  title: { color: '#f0f0f0', fontSize: 22, fontWeight: 800, marginTop: 0, marginBottom: 4, letterSpacing: '-0.3px' },
-  subtitle: { color: 'var(--text-tertiary, #666)', fontSize: 14, marginBottom: 24 },
+  icon: { width: 48, height: 48, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', color: 'var(--accent)', backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent-soft)' },
+  iconDanger: { width: 48, height: 48, borderRadius: 16, margin: '0 auto 14px', display: 'grid', placeItems: 'center', color: 'var(--error)', backgroundColor: 'var(--error-soft)', border: '1px solid var(--error-soft)' },
+  title: { color: 'var(--text)', fontSize: 22, fontWeight: 800, marginTop: 0, marginBottom: 4, letterSpacing: 0, fontFamily: 'var(--font-display)' },
+  subtitle: { color: 'var(--text-tertiary)', fontSize: 14, marginBottom: 24 },
   input: {
-    width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #2a2a2a',
-    backgroundColor: '#1a1a1a', color: '#f0f0f0', fontSize: 15, boxSizing: 'border-box', fontWeight: 500,
+    width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)',
+    backgroundColor: 'var(--bg-input)', color: 'var(--text)', fontSize: 15, boxSizing: 'border-box', fontWeight: 500,
   },
-  error: { color: '#f87171', fontSize: 13, marginTop: 8 },
+  error: { color: 'var(--error)', fontSize: 13, marginTop: 8 },
   btn: {
     width: '100%', padding: '12px', borderRadius: 10, border: 'none',
-    backgroundColor: '#3B82F6', color: '#fff', fontSize: 15, fontWeight: 700,
+    backgroundColor: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 15, fontWeight: 700,
     cursor: 'pointer', marginTop: 16,
   },
 };
