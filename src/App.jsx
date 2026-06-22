@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import Home from './pages/Home';
 import Pod from './pages/Pod';
 import AuthGate from './components/AuthGate';
@@ -31,26 +32,28 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div style={{
-          minHeight: '100vh', backgroundColor: 'var(--bg, #111)', display: 'flex',
+          minHeight: '100vh', display: 'flex',
           flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'var(--font-sans)', padding: 24, color: 'var(--text, #fff)',
+          fontFamily: 'var(--font-sans)', padding: 24, color: 'var(--text)',
         }}>
-          <h1 style={{ color: '#EF4444', fontSize: 32, marginBottom: 12 }}>
-            Something went wrong
-          </h1>
-          <p style={{ color: 'var(--text-secondary, #888)', fontSize: 16, marginBottom: 24 }}>
-            The app encountered an error. Please refresh the page.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '12px 32px', borderRadius: 8, border: 'none',
-              backgroundColor: '#3B82F6', color: '#fff', fontSize: 16,
-              fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Refresh Page
-          </button>
+          <div className="ui-card scale-enter" style={{ maxWidth: 380, width: '100%', padding: '32px 28px', textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-lg)', margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--error-soft)', color: 'var(--error)' }}>
+              <AlertTriangle size={26} />
+            </div>
+            <h1 style={{ color: 'var(--text)', fontSize: 22, marginBottom: 8 }}>
+              Something went wrong
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+              The app hit an unexpected error. A refresh usually clears it.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="ui-btn ui-btn-primary"
+              style={{ width: '100%' }}
+            >
+              Refresh page
+            </button>
+          </div>
         </div>
       );
     }
@@ -59,8 +62,9 @@ class ErrorBoundary extends React.Component {
 }
 
 const Loading = () => (
-  <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg, #111)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary, #888)', fontFamily: 'var(--font-sans)' }}>
-    Loading...
+  <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, fontFamily: 'var(--font-sans)' }}>
+    <div className="spinner spinner-lg" />
+    <span style={{ fontFamily: 'var(--font-display)', fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary, #69728a)' }}>Loading</span>
   </div>
 );
 

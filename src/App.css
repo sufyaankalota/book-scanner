@@ -55,6 +55,7 @@
   --shadow-xs: 0 1px 2px rgba(var(--shadow-rgb), 0.20);
   --shadow-card: 0 1px 2px rgba(var(--shadow-rgb), 0.18), 0 4px 12px rgba(var(--shadow-rgb), 0.16);
   --shadow-elev: 0 12px 34px rgba(var(--shadow-rgb), 0.34), 0 2px 6px rgba(var(--shadow-rgb), 0.20);
+  --shadow-glow: 0 0 0 1px var(--accent-soft), 0 12px 32px -12px var(--accent);
 
   /* Text fallbacks (tinted; theme.js sets the live values) */
   --text-primary: #eef1f7;
@@ -72,6 +73,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   line-height: 1.5;
+}
+
+/* Ambient depth — soft accent/signal glows anchored to the top corners so the
+   app never reads as a flat near-black slab. Low-alpha *-soft tokens keep it
+   subtle (restraint over flash). Fixed so it doesn't scroll away. */
+body {
+  background-image:
+    radial-gradient(1100px 560px at 6% -12%, var(--accent-soft), transparent 60%),
+    radial-gradient(920px 620px at 112% -6%, var(--signal-soft), transparent 55%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  min-height: 100vh;
 }
 
 /* Display type for headings + big numbers; tabular figures keep data aligned */
@@ -338,6 +351,150 @@ a {
 }
 .spin {
   animation: spin 0.9s linear infinite;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Motion + component layer
+   Opt-in classes that pages attach alongside their inline styles to gain
+   depth, hover/press affordance, and purposeful entrance motion without
+   rewriting every style object. Spring-ish ease-out, fast, subtle.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Entrance: content rises + fades in. Used on page roots + key sections. */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.page-enter { animation: riseIn var(--dur-slow) var(--ease-out) both; }
+.scale-enter { animation: scaleIn var(--dur-base) var(--ease-out) both; }
+
+/* Stagger direct children (card grids, stat rows, lists) for a considered
+   cascade rather than a single hard pop. */
+.stagger > * { animation: riseIn var(--dur-base) var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 30ms; }
+.stagger > *:nth-child(2) { animation-delay: 70ms; }
+.stagger > *:nth-child(3) { animation-delay: 110ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 190ms; }
+.stagger > *:nth-child(6) { animation-delay: 230ms; }
+.stagger > *:nth-child(7) { animation-delay: 270ms; }
+.stagger > *:nth-child(8) { animation-delay: 310ms; }
+.stagger > *:nth-child(n+9) { animation-delay: 340ms; }
+
+/* Branded ring spinner — replaces bare "Loading..." text. */
+.spinner {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 3px solid var(--border-strong, #333b4f);
+  border-top-color: var(--accent, #4d7cff);
+  animation: spin 0.7s linear infinite;
+}
+.spinner-sm { width: 18px; height: 18px; border-width: 2px; }
+.spinner-lg { width: 54px; height: 54px; border-width: 4px; }
+
+/* Surface card: gradient body + layered shadow + crisp top highlight for real
+   depth (no flat #1a1a1a slabs). Pair with .ui-card-hover for interactive ones. */
+.ui-card {
+  position: relative;
+  background:
+    linear-gradient(180deg, var(--bg-elev, #1b2030) 0%, var(--bg-card, #161a24) 100%);
+  border: 1px solid var(--border, #252b3a);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.ui-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  padding-top: 1px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.07), transparent 40%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+}
+.ui-card-hover {
+  transition: transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+.ui-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elev);
+  border-color: var(--border-strong, #333b4f);
+}
+.ui-card-hover:active { transform: translateY(0); }
+
+/* Stat / KPI tile — gradient, tabular numerals, accent sweep on the hero one. */
+.ui-stat {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--bg-elev, #1b2030), var(--bg-card, #161a24));
+  border: 1px solid var(--border, #252b3a);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+.ui-stat:hover { transform: translateY(-1px); border-color: var(--border-strong, #333b4f); }
+.ui-stat--hero {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: var(--shadow-glow);
+}
+.ui-stat--hero::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 120% at 100% 0%, var(--accent-soft), transparent 60%);
+  pointer-events: none;
+}
+
+/* Buttons — consistent primary / ghost with hover lift + accent glow. */
+.ui-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-sans); font-weight: 650; font-size: var(--text-sm);
+  border-radius: var(--radius-md); border: 1px solid transparent;
+  padding: 10px 16px; cursor: pointer; white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out);
+}
+.ui-btn-primary { background: var(--accent); color: var(--accent-contrast); }
+.ui-btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-glow); }
+.ui-btn-ghost { background: transparent; border-color: var(--border-strong, #333b4f); color: var(--text-secondary); }
+.ui-btn-ghost:hover { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.ui-btn:active { transform: scale(0.98); }
+.ui-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Chip / pill — for legend + breakdown counts. */
+.ui-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-weight: 650;
+  border: 1px solid var(--border, #252b3a); background: var(--bg-subtle);
+  color: var(--text-secondary);
+}
+
+/* Tab — segmented control look with smooth active transition. */
+.ui-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border, #252b3a); background: var(--bg-subtle);
+  color: var(--text-tertiary); font-size: var(--text-xs); font-weight: 650; cursor: pointer;
+  transition: color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+.ui-tab:hover { color: var(--text-secondary); border-color: var(--border-strong, #333b4f); }
+.ui-tab[data-active="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* Accent glow utility. */
+.glow-accent { box-shadow: var(--shadow-glow); }
+
+/* Honour reduced-motion: entrance animations resolve instantly. */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .scale-enter, .stagger > * { animation: none !important; }
 }
 
 /* ── Skeleton loader ── */

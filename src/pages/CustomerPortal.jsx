@@ -1008,11 +1008,13 @@ export default function CustomerPortal() {
   if (!authenticated) {
     return (
       <div style={st.loginContainer}>
-        <div style={st.loginCard}>
+        <div style={st.loginCard} className="ui-card scale-enter glow-accent">
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <img src={brandLogo || '/icon.svg'} alt="Logo" style={{ width: 56, height: 56, borderRadius: 12, marginBottom: 8, objectFit: 'contain' }} />
-            <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
-            <p style={{ color: '#888', fontSize: 14, marginTop: 4 }}>by PrepFort – Sign in to your portal</p>
+            <div style={{ width: 64, height: 64, borderRadius: 16, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', border: '1px solid var(--border)' }}>
+              <img src={brandLogo || '/icon.svg'} alt="Logo" style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'contain' }} />
+            </div>
+            <h1 style={{ color: 'var(--text)', fontSize: 24, fontWeight: 800, margin: 0 }}>BookFlow Portal</h1>
+            <p style={{ color: 'var(--text-tertiary)', fontSize: 14, marginTop: 4 }}>by PrepFort — sign in to your portal</p>
           </div>
           <input type="email" value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
@@ -1021,10 +1023,11 @@ export default function CustomerPortal() {
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
             placeholder="Password" style={{ ...st.loginInput, marginTop: 10 }} />
-          {authError && <p style={{ color: '#EF4444', fontSize: 14, marginTop: 8, textAlign: 'center' }}>{authError}</p>}
+          {authError && <p style={{ color: 'var(--error)', fontSize: 14, marginTop: 10, textAlign: 'center' }}>{authError}</p>}
           <button onClick={handleLogin} disabled={!loginEmail.trim() || !password.trim() || authLoading}
+            className="ui-btn ui-btn-primary"
             style={{ ...st.loginBtn, opacity: !loginEmail.trim() || !password.trim() || authLoading ? 0.5 : 1 }}>
-            {authLoading ? 'Verifying...' : 'Sign In'}
+            {authLoading ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span className="spinner spinner-sm" /> Verifying…</span> : 'Sign In'}
           </button>
         </div>
       </div>
@@ -1032,14 +1035,21 @@ export default function CustomerPortal() {
   }
 
   // LOADING / NO JOB
-  if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;
+  if (loading) return (
+    <div style={{ ...st.container, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <div className="spinner spinner-lg" />
+        <span style={{ color: 'var(--text-tertiary)', fontSize: 13, fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>Loading portal…</span>
+      </div>
+    </div>
+  );
 
   // MAIN PORTAL
   return (
-    <div style={st.container}>
+    <div style={st.container} className="page-enter">
       <div style={st.topBar}>
         <div>
-          <span style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>BookFlow Portal</span>
+          <span style={{ color: 'var(--text)', fontSize: 16, fontWeight: 700 }}>BookFlow Portal</span>
           {allJobs.length > 0 && (
             <select
               value={job?.id || ''}
@@ -1047,7 +1057,7 @@ export default function CustomerPortal() {
                 const picked = allJobs.find((j) => j.id === e.target.value);
                 if (picked) setJob(picked);
               }}
-              style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 6, background: '#1a1a1a', color: '#fff', border: '1px solid #333', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-subtle)', color: 'var(--text)', border: '1px solid var(--border-strong)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
               title="Switch job">
               {allJobs.map((j) => {
                 const closed = j.meta?.closedAt?.toDate?.()?.toLocaleDateString();
@@ -1064,7 +1074,7 @@ export default function CustomerPortal() {
           <button
             onClick={handleResetCache}
             disabled={resettingCache}
-            style={{ ...st.logoutBtn, background: '#1a1a1a', color: '#fbbf24', borderColor: '#3b2f0a' }}
+            style={{ ...st.logoutBtn, background: 'var(--signal-soft)', color: 'var(--signal)', borderColor: 'var(--signal-soft)' }}
             title="Clears local browser cache (IndexedDB, localStorage, service workers) and reloads. Use this if the portal seems stuck or stale.">
             {resettingCache ? '…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Trash2 size={13} /> Reset Cache</span>}
           </button>
@@ -1073,38 +1083,38 @@ export default function CustomerPortal() {
       </div>
 
       {job && (
-        <div style={st.statsRow}>
+        <div style={st.statsRow} className="stagger">
           {/* Today total — sum of all 4 buckets */}
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#fff' }}>{(todayData?.total || 0).toLocaleString()}</div>
+          <div style={st.statBox} className="ui-stat">
+            <div style={{ ...st.statVal, color: 'var(--text)' }}>{(todayData?.total || 0).toLocaleString()}</div>
             <div style={st.statLbl}>Today's Total</div>
           </div>
 
           {/* Today's Est. Gaylords — still based on regular only */}
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#F59E0B' }}>{(todayData?.regular || 0) >= 1500 ? `${Math.floor((todayData?.regular || 0) / 2000)}–${Math.floor((todayData?.regular || 0) / 1500)}` : '—'}</div>
+          <div style={st.statBox} className="ui-stat">
+            <div style={{ ...st.statVal, color: 'var(--signal)' }}>{(todayData?.regular || 0) >= 1500 ? `${Math.floor((todayData?.regular || 0) / 2000)}–${Math.floor((todayData?.regular || 0) / 1500)}` : '—'}</div>
             <div style={st.statLbl}>Today's Est. Gaylords</div>
           </div>
 
           {/* The 4-bucket totals — these sum to Total Processed and match billing exactly */}
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: '#22C55E' }}>{totalRegularCount.toLocaleString()}</div>
+          <div style={st.statBox} className="ui-stat">
+            <div style={{ ...st.statVal, color: 'var(--success)' }}>{totalRegularCount.toLocaleString()}</div>
             <div style={st.statLbl}>Regular Scans <span style={st.rateChip}>$0.50</span></div>
           </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: totalManualCount > 0 ? '#3B82F6' : '#888' }}>{totalManualCount.toLocaleString()}</div>
+          <div style={st.statBox} className="ui-stat">
+            <div style={{ ...st.statVal, color: totalManualCount > 0 ? 'var(--accent)' : 'var(--text-tertiary)' }}>{totalManualCount.toLocaleString()}</div>
             <div style={st.statLbl}>Manual Entries <span style={st.rateChip}>$0.85</span></div>
           </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: totalAiCameraCount > 0 ? '#93C5FD' : '#888' }}>{totalAiCameraCount.toLocaleString()}</div>
+          <div style={st.statBox} className="ui-stat">
+            <div style={{ ...st.statVal, color: totalAiCameraCount > 0 ? 'var(--text)' : 'var(--text-tertiary)' }}>{totalAiCameraCount.toLocaleString()}</div>
             <div style={st.statLbl}>AI Camera <span style={st.rateChip}>$0.85</span></div>
           </div>
-          <div style={st.statBox}>
-            <div style={{ ...st.statVal, color: totalLoggedExcCount > 0 ? '#EF4444' : '#888' }}>{totalLoggedExcCount.toLocaleString()}</div>
+          <div style={st.statBox} className="ui-stat">
+            <div style={{ ...st.statVal, color: totalLoggedExcCount > 0 ? 'var(--error)' : 'var(--text-tertiary)' }}>{totalLoggedExcCount.toLocaleString()}</div>
             <div style={st.statLbl}>Exceptions <span style={st.rateChip}>$0.85</span></div>
           </div>
-          <div style={{ ...st.statBox, borderColor: '#EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
-            <div style={{ ...st.statVal, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
+          <div style={st.statBox} className="ui-stat ui-stat--hero">
+            <div style={{ ...st.statVal, color: 'var(--accent)' }}>{totalProcessed.toLocaleString()}</div>
             <div style={st.statLbl}>Total Processed</div>
           </div>
         </div>
@@ -1121,14 +1131,14 @@ export default function CustomerPortal() {
         <div style={{ ...st.card, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <h3 style={{ ...st.cardTitle, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 8 }}><BarChart3 size={16} /> Job Progress</h3>
-            <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 14 }}>
+            <span style={{ color: 'var(--success)', fontWeight: 700, fontSize: 14 }}>
               {jobProgress.totalScanned.toLocaleString()} scanned
               {jobProgress.totalExpected ? ` / ${jobProgress.totalExpected.toLocaleString()} expected (${jobProgress.pct}%)` : ''}
             </span>
           </div>
           {jobProgress.totalExpected && (
-            <div style={{ height: 6, backgroundColor: '#222', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
-              <div style={{ height: '100%', backgroundColor: jobProgress.pct >= 100 ? '#22C55E' : '#3B82F6', width: `${Math.min(100, jobProgress.pct)}%`, borderRadius: 3, transition: 'width 0.5s ease' }} />
+            <div style={{ height: 6, backgroundColor: 'var(--border)', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
+              <div style={{ height: '100%', backgroundColor: jobProgress.pct >= 100 ? 'var(--success)' : 'var(--accent)', width: `${Math.min(100, jobProgress.pct)}%`, borderRadius: 3, transition: 'width 0.5s ease' }} />
             </div>
           )}
           {job.meta.mode === 'multi' && Object.keys(jobProgress.byPO).length > 1 && (
@@ -1853,8 +1863,7 @@ const st = {
     alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-sans)', padding: 24,
   },
   loginCard: {
-    backgroundColor: 'var(--bg-card, #141414)', borderRadius: 'var(--radius-lg)', padding: '36px 32px', width: '100%', maxWidth: 380,
-    border: '1px solid var(--border, #222)', boxShadow: 'var(--shadow-elev)',
+    borderRadius: 'var(--radius-lg)', padding: '36px 32px', width: '100%', maxWidth: 380,
   },
   loginInput: {
     width: '100%', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #2a2a2a)',
@@ -1881,10 +1890,10 @@ const st = {
   text: { color: 'var(--text-secondary, #888)', fontSize: 14 },
   statsRow: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 },
   statBox: {
-    backgroundColor: 'var(--bg-card, #141414)', borderRadius: 'var(--radius-md)', padding: '14px 14px', flex: 1,
-    minWidth: 90, textAlign: 'center', border: '1px solid var(--border, #1e1e1e)',
+    borderRadius: 'var(--radius-md)', padding: '15px 14px', flex: 1,
+    minWidth: 104, textAlign: 'center',
   },
-  statVal: { fontSize: 'clamp(20px, 4vw, 28px)', fontWeight: 800, color: 'var(--text, #f0f0f0)', lineHeight: 1, letterSpacing: '-0.5px', fontFamily: 'var(--font-display)', fontVariantNumeric: 'tabular-nums' },
+  statVal: { fontSize: 'clamp(17px, 2.5vw, 23px)', fontWeight: 800, color: 'var(--text, #f0f0f0)', lineHeight: 1.05, letterSpacing: '-0.5px', fontFamily: 'var(--font-display)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
   statLbl: { fontSize: 10, color: 'var(--text-tertiary, #555)', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 },
   rateChip: {
     fontSize: 9, fontWeight: 700, padding: '2px 5px', marginLeft: 4, borderRadius: 3,
@@ -1897,7 +1906,7 @@ const st = {
   },
   tabActive: { borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'var(--accent-soft)' },
   card: {
-    backgroundColor: 'var(--bg-card, #141414)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', border: '1px solid var(--border, #1e1e1e)', marginBottom: 12,
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-lg)', padding: '18px 20px', border: '1px solid var(--border, #1e1e1e)', marginBottom: 12, boxShadow: 'var(--shadow-card)',
   },
   cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text-secondary, #aaa)', marginTop: 0, marginBottom: 12, letterSpacing: '-0.2px' },
   label: { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary, #666)', marginBottom: 6, marginTop: 14, textTransform: 'uppercase', letterSpacing: '0.3px' },
