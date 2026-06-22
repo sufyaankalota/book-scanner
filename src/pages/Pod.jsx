@@ -20,7 +20,7 @@ import { displayOperatorName } from '../utils/operator';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
-import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard, CloudUpload, RefreshCw, Trash2, GraduationCap, BookOpen, MessageSquare } from 'lucide-react';
+import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard, CloudUpload, RefreshCw, Trash2, GraduationCap, BookOpen, MessageSquare, Sun, Moon, Circle, Play, Coffee, Repeat, LogOut, X, Clipboard, Search, Trophy, Sparkles, Flame, WifiOff } from 'lucide-react';
 
 const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
@@ -1618,7 +1618,7 @@ export default function Pod() {
     // Training mode: don't write to Firestore, don't count
     if (trainingMode) {
       playSuccessBeep();
-      flash('#818cf8', t('trainingMode') + ' ✓');
+      flash('var(--accent)', t('trainingMode') + ' ✓');
       setRecentScans((prev) => [{ id: scanId, isbn, poName: 'TRAINING', time: new Date(), docId: 'training' }, ...prev].slice(0, 20));
       return;
     }
@@ -1744,7 +1744,7 @@ export default function Pod() {
   const handleException = (data) => {
     if (!job) return;
     if (trainingMode) {
-      flash('#818cf8', t('trainingMode') + ' — ' + t('exceptionNotSaved'));
+      flash('var(--accent)', t('trainingMode') + ' — ' + t('exceptionNotSaved'));
       return;
     }
     addDoc(collection(db, 'exceptions'), {
@@ -1925,7 +1925,7 @@ export default function Pod() {
             </div>
             <div style={styles.readyRow}>
               <span style={styles.readyLabel}>{t('scannerLabel')}:</span>
-              <span style={{ ...styles.readyValue, color: '#22C55E' }}>{t('paired')} ✓</span>
+              <span style={{ ...styles.readyValue, color: 'var(--success)' }}>{t('paired')} ✓</span>
             </div>
             <div style={styles.readyRow}>
               <span style={styles.readyLabel}>{t('job')}:</span>
@@ -1937,13 +1937,13 @@ export default function Pod() {
           {previousBest && previousBest.count > 0 && (
             <div style={{
               backgroundColor: 'var(--bg-input, #0a0a0a)',
-              border: '2px solid #EAB308', borderRadius: 10,
+              border: '2px solid var(--signal)', borderRadius: 10,
               padding: '14px 18px', marginBottom: 16, textAlign: 'center',
             }}>
-              <div style={{ fontSize: 14, color: 'var(--text-secondary, #aaa)', fontWeight: 600, marginBottom: 4 }}>
-                🏆 {t('recordToBeat')} ({previousBest.dateLabel})
+              <div style={{ fontSize: 14, color: 'var(--text-secondary, #aaa)', fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Trophy size={14} /> {t('recordToBeat')} ({previousBest.dateLabel})
               </div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: '#EAB308', lineHeight: 1 }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--signal)', lineHeight: 1 }}>
                 {previousBest.count.toLocaleString()}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-secondary, #888)', marginTop: 4 }}>
@@ -1992,7 +1992,7 @@ export default function Pod() {
               <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 15, minWidth: 95, fontWeight: 600 }}>{t('training')}:</span>
               <button onClick={() => setTrainingMode(!trainingMode)}
                 style={{ padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  backgroundColor: trainingMode ? '#818cf8' : 'var(--bg-input, #333)', color: 'var(--text, #fff)', fontSize: 14, fontWeight: 700 }}>
+                  backgroundColor: trainingMode ? 'var(--accent)' : 'var(--bg-input, #333)', color: trainingMode ? 'var(--accent-contrast)' : 'var(--text, #fff)', fontSize: 14, fontWeight: 700 }}>
                 {trainingMode ? t('onLabel') : t('offLabel')}
               </button>
             </label>
@@ -2027,21 +2027,21 @@ export default function Pod() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ color: 'var(--text-secondary, #ccc)', fontSize: 15, minWidth: 95, fontWeight: 600 }}>{t('theme')}:</span>
               <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
-                style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                {theme === 'light' ? '☀️ Light' : theme === 'dark' ? '🌙 Dark' : '🌑 Dim'}
+                style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                {theme === 'light' ? <><Sun size={15} /> Light</> : theme === 'dark' ? <><Moon size={15} /> Dark</> : <><Circle size={15} /> Dim</>}
               </button>
             </label>
           </div>
 
           {trainingMode && (
-            <div style={{ backgroundColor: '#312e81', border: '1px solid #818cf8', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#c7d2fe', fontSize: 15, fontWeight: 700 }}>
-              🎓 {t('trainingNotSaved')}
+            <div style={styles.trainingBanner}>
+              <GraduationCap size={15} /> {t('trainingNotSaved')}
             </div>
           )}
 
           <button onClick={() => { setPhase(PHASE_SCANNING); startShift(); setTimeout(refocusInput, 100); }}
-            style={{ ...styles.primaryBtn, fontSize: 24, padding: '20px 28px' }}>
-            ▶ {t('startScanning')}
+            style={{ ...styles.primaryBtn, fontSize: 24, padding: '20px 28px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <Play size={24} /> {t('startScanning')}
           </button>
         </div>
       </div>
@@ -2131,9 +2131,9 @@ export default function Pod() {
 
       {/* Milestone celebration */}
       {milestoneMsg && (
-        <div style={{ position: 'fixed', top: '20%', left: '50%', transform: 'translateX(-50%)', zIndex: 800, backgroundColor: 'rgba(0,0,0,0.9)', border: '3px solid #EAB308', borderRadius: 16, padding: '24px 48px', textAlign: 'center', pointerEvents: 'none' }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>🎉</div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: '#EAB308' }}>{milestoneMsg}</div>
+        <div style={{ position: 'fixed', top: '20%', left: '50%', transform: 'translateX(-50%)', zIndex: 800, backgroundColor: 'var(--bg-elev)', border: '3px solid var(--signal)', borderRadius: 16, padding: '24px 48px', textAlign: 'center', pointerEvents: 'none', boxShadow: 'var(--shadow-elev)' }}>
+          <Sparkles size={42} color="var(--signal)" style={{ marginBottom: 8 }} />
+          <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--signal)' }}>{milestoneMsg}</div>
         </div>
       )}
 
@@ -2153,7 +2153,7 @@ export default function Pod() {
       {breakTimer !== null && (
         <div style={styles.pauseOverlay}>
           <div style={{ textAlign: 'center' }}>
-            <h2 style={{ fontSize: 28, color: '#EAB308', margin: 0 }}>☕ {t('breakTimer')}</h2>
+            <h2 style={{ fontSize: 28, color: 'var(--warning)', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}><Coffee size={28} /> {t('breakTimer')}</h2>
             <div style={{ fontSize: 72, fontWeight: 900, color: '#fff', fontFamily: 'monospace', margin: '16px 0' }}>
               {Math.floor(breakTimer / 60)}:{String(breakTimer % 60).padStart(2, '0')}
             </div>
@@ -2163,7 +2163,7 @@ export default function Pod() {
             <button onClick={() => { setBreakTimer(null); setPhase(PHASE_SCANNING); setTimeout(refocusInput, 100); }}
               style={{ ...styles.primaryBtn, width: 'auto', padding: '14px 40px', fontSize: 18 }}
               title="Press Space">
-              ▶ {t('resume')} Early <kbd style={{ ...kbdHintStyle, marginLeft: 8, fontSize: 13 }}>Space</kbd>
+              <Play size={18} /> {t('resume')} Early <kbd style={{ ...kbdHintStyle, marginLeft: 8, fontSize: 13 }}>Space</kbd>
             </button>
           </div>
         </div>
@@ -2173,14 +2173,14 @@ export default function Pod() {
       {isPaused && breakTimer === null && (
         <div style={styles.pauseOverlay}>
           <div style={styles.pauseBox}>
-            <h2 style={{ fontSize: 36, margin: 0, color: '#EAB308' }}>⏸ {t('paused')}</h2>
+            <h2 style={{ fontSize: 36, margin: 0, color: 'var(--warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}><Pause size={34} /> {t('paused')}</h2>
             <p style={{ color: '#999', fontSize: 20, margin: '12px 0' }}>
               {operatorName} · Pod {podId}
             </p>
             <button onClick={() => { setPhase(PHASE_SCANNING); setTimeout(refocusInput, 100); }}
               style={{ ...styles.primaryBtn, fontSize: 24, padding: '18px 40px', width: 'auto', marginBottom: 12 }}
               title="Press Space, R, or 1">
-              ▶ {t('resume')} <kbd style={{ ...kbdHintStyle, marginLeft: 8, fontSize: 13 }}>Space</kbd>
+              <Play size={22} /> {t('resume')} <kbd style={{ ...kbdHintStyle, marginLeft: 8, fontSize: 13 }}>Space</kbd>
             </button>
 
             {/* Break timer buttons */}
@@ -2188,24 +2188,24 @@ export default function Pod() {
               <button onClick={() => { setBreakTimer(15 * 60); setBreakTotal(15 * 60); setBreakMinutesUsed((p) => p + 15); }}
                 style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}
                 title="Press 2">
-                ☕ {t('break15')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>2</kbd>
+                <Coffee size={16} /> {t('break15')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>2</kbd>
               </button>
               <button onClick={() => { setBreakTimer(30 * 60); setBreakTotal(30 * 60); setBreakMinutesUsed((p) => p + 30); }}
                 style={{ ...styles.secondaryBtn, backgroundColor: '#422006', borderColor: '#EAB308', color: '#EAB308' }}
                 title="Press 3">
-                ☕ {t('break30')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>3</kbd>
+                <Coffee size={16} /> {t('break30')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>3</kbd>
               </button>
             </div>
 
             <button onClick={() => setShowSwitchOperator(true)}
               style={{ ...styles.secondaryBtn, marginTop: 0, fontSize: 16, width: 280 }}
               title="Press S">
-              🔄 {t('switchOperator')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>S</kbd>
+              <Repeat size={16} /> {t('switchOperator')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>S</kbd>
             </button>
             <button onClick={handleEndShift}
               style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 16, width: 280, borderColor: '#EF4444', color: '#EF4444' }}
               title="Press E">
-              🚪 {t('endShift')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>E</kbd>
+              <LogOut size={16} /> {t('endShift')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>E</kbd>
             </button>
             <Link to={backPath} style={{ ...styles.secondaryBtn, marginTop: 8, fontSize: 14, textDecoration: 'none', display: 'block', textAlign: 'center', width: 280 }}>
               {fromPods ? t('backToPods') : t('backToHome')}
@@ -2288,7 +2288,7 @@ export default function Pod() {
           <h1 style={styles.podTitle}>Pod {podId}</h1>
           <p style={{ color: '#888', fontSize: 15, margin: 0, fontWeight: 500 }}>
             {operatorName} · {job?.meta?.name || t('noActiveJobLabel')}
-            {trainingMode && <span style={{ color: '#818cf8', marginLeft: 8 }}>🎓 {t('training')}</span>}
+            {trainingMode && <span style={{ color: 'var(--accent)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}><GraduationCap size={14} /> {t('training')}</span>}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2326,12 +2326,12 @@ export default function Pod() {
             </label>
             <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
               <button onClick={() => { const next = cycleTheme(); setThemeState(next); }}
-                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 1 }}>
-                {theme === 'light' ? '☀️ Light' : theme === 'dark' ? '🌙 Dark' : '🌑 Dim'}
+                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {theme === 'light' ? <><Sun size={14} /> Light</> : theme === 'dark' ? <><Moon size={14} /> Dark</> : <><Circle size={14} /> Dim</>}
               </button>
               <button onClick={() => { const next = lang === 'en' ? 'es' : 'en'; setLang(next); setLangState(next); }}
                 style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', flex: 1 }}>
-                {lang === 'en' ? '🇺🇸 English' : '🇲🇽 Español'}
+                {lang === 'en' ? 'English' : 'Español'}
               </button>
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
@@ -2357,8 +2357,8 @@ export default function Pod() {
 
       {/* Duplicate info */}
       {duplicateInfo && (
-        <div style={{ textAlign: 'center', color: '#EAB308', fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
-          ⚠️ {duplicateInfo}
+        <div style={{ textAlign: 'center', color: 'var(--warning)', fontSize: 15, fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <AlertTriangle size={15} /> {duplicateInfo}
         </div>
       )}
 
@@ -2366,8 +2366,8 @@ export default function Pod() {
       {(scanStreak >= 5 || lastBarcodeType) && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginBottom: 8, flexWrap: 'wrap' }}>
           {scanStreak >= 5 && (
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#22C55E' }}>
-              🔥 {scanStreak} {t('scanStreak')}{scanStreak >= bestStreak && scanStreak > 5 ? t('newBest') : ''}
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Flame size={15} /> {scanStreak} {t('scanStreak')}{scanStreak >= bestStreak && scanStreak > 5 ? t('newBest') : ''}
             </span>
           )}
           {lastBarcodeType && (
@@ -2392,6 +2392,7 @@ export default function Pod() {
                 border: `1px solid ${beaten ? '#22C55E' : '#EAB308'}`,
                 color: beaten ? '#86efac' : '#FCD34D',
               }}>
+                <Trophy size={13} />
                 {beaten
                   ? t('beatRecord', { date: previousBest.dateLabel, count: previousBest.count.toLocaleString() })
                   : t('toBeatRecord', { remaining: remaining.toLocaleString(), date: previousBest.dateLabel, count: previousBest.count.toLocaleString() })}
@@ -2407,15 +2408,15 @@ export default function Pod() {
         const hitMin = totalScans >= PER_POD_DAILY_MIN;
         let bg, border, color, text;
         if (hitBonus) {
-          bg = '#14532d'; border = '#22C55E'; color = '#86efac';
+          bg = 'var(--success-soft)'; border = 'var(--success)'; color = 'var(--success)';
           text = t('giftCardEarned', { count: totalScans.toLocaleString() });
         } else if (hitMin) {
           const toBonus = PER_POD_BONUS_TARGET - totalScans;
-          bg = 'var(--bg-card, #1a1a1a)'; border = '#EAB308'; color = '#FCD34D';
+          bg = 'var(--signal-soft)'; border = 'var(--signal)'; color = 'var(--signal)';
           text = t('moreForGiftCard', { n: toBonus.toLocaleString(), target: PER_POD_BONUS_TARGET.toLocaleString() });
         } else {
           const toMin = PER_POD_DAILY_MIN - totalScans;
-          bg = 'var(--bg-card, #1a1a1a)'; border = '#3B82F6'; color = '#93C5FD';
+          bg = 'var(--accent-soft)'; border = 'var(--accent)'; color = 'var(--accent)';
           text = t('toMinimum', { n: toMin.toLocaleString(), min: PER_POD_DAILY_MIN.toLocaleString(), bonus: PER_POD_BONUS_TARGET.toLocaleString() });
         }
         return (
@@ -2468,8 +2469,8 @@ export default function Pod() {
 
       {/* Offline queue indicator */}
       {!isOnline && (
-        <div style={{ textAlign: 'center', backgroundColor: '#7f1d1d', border: '1px solid #EF4444', borderRadius: 8, padding: '8px 16px', marginBottom: 8 }}>
-          <div style={{ color: '#fca5a5', fontSize: 15, fontWeight: 700 }}>📡 {t('offlineMode')}</div>
+        <div style={{ textAlign: 'center', backgroundColor: 'var(--error-soft)', border: '1px solid var(--error)', borderRadius: 8, padding: '8px 16px', marginBottom: 8 }}>
+          <div style={{ color: 'var(--error)', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><WifiOff size={15} /> {t('offlineMode')}</div>
           <div style={{ color: '#f87171', fontSize: 13, marginTop: 2 }}>
             {t('offlineHint')}
           </div>
@@ -2490,7 +2491,7 @@ export default function Pod() {
           <div style={styles.statLabel}>{t('pacePerHour')} · {t('goal')} {targetPerHour}</div>
         </div>
         <div style={styles.stat}>
-          <div style={{ ...styles.statValue, color: manualEntryCount > 0 ? '#3B82F6' : 'var(--text-secondary, #666)' }}>
+          <div style={{ ...styles.statValue, color: manualEntryCount > 0 ? 'var(--warning)' : 'var(--text-secondary, #666)' }}>
             {manualEntryCount}
           </div>
           <div style={styles.statLabel}>{t('manualLabel')}</div>
@@ -2538,32 +2539,32 @@ export default function Pod() {
                   photographed (especially when several books are in flight). */}
               {s.capturedPhoto && (
                 <img src={s.capturedPhoto} alt="cover"
-                  style={{ width: 32, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid #3B82F6', flexShrink: 0 }} />
+                  style={{ width: 32, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--accent)', flexShrink: 0 }} />
               )}
               <span
                 onClick={() => {
                   navigator.clipboard?.writeText(s.isbn).catch(() => {});
-                  flash('#3B82F6', `📋 Copied ${s.isbn}`, 1200);
+                  flash('var(--accent)', `Copied ${s.isbn}`, 1200);
                 }}
                 role="button"
                 tabIndex={0}
                 title="Click to copy ISBN"
                 aria-label={`Copy ISBN ${s.isbn} to clipboard`}
-                style={{ fontFamily: 'monospace', fontSize: i === 0 ? 22 : 18, fontWeight: 900, letterSpacing: 0.5, color: s.isException ? '#EF4444' : s.poName === 'TRAINING' ? '#818cf8' : '#fff', cursor: 'pointer', userSelect: 'all' }}
+                style={{ fontFamily: 'monospace', fontSize: i === 0 ? 22 : 18, fontWeight: 900, letterSpacing: 0.5, color: s.isException ? 'var(--error)' : s.poName === 'TRAINING' ? 'var(--accent)' : 'var(--text)', cursor: 'pointer', userSelect: 'all' }}
               >
                 {s.isbn}
               </span>
               {s.poName && s.poName !== 'EXCEPTIONS' && s.poName !== 'TRAINING' && (
                 <span style={{ fontSize: 15, fontWeight: 800, color: s.color || '#888' }}>{s.poName}</span>
               )}
-              {s.poName === 'TRAINING' && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#312e81', color: '#c7d2fe', fontWeight: 700 }}>TRAINING</span>}
-              {s.isException && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#7f1d1d', color: '#fca5a5', fontWeight: 700 }}>EXCEPTION</span>}
+              {s.poName === 'TRAINING' && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 700 }}>TRAINING</span>}
+              {s.isException && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: 'var(--error-soft)', color: 'var(--error)', fontWeight: 700 }}>EXCEPTION</span>}
               {s.isAiMatch && !s.isException && (
-                <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#1e3a8a', color: '#93C5FD', fontWeight: 700 }}>
+                <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 700 }}>
                   AI{s.aiSeq ? ` #${s.aiSeq}` : ''}
                 </span>
               )}
-              {s.isManual && !s.isAiMatch && !s.isException && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: '#7c2d12', color: '#fdba74', fontWeight: 700 }}>MANUAL</span>}
+              {s.isManual && !s.isAiMatch && !s.isException && <span style={{ fontSize: 13, padding: '3px 8px', borderRadius: 4, backgroundColor: 'var(--warning-soft)', color: 'var(--warning)', fontWeight: 700 }}>MANUAL</span>}
               {s.capturedTitle && (s.isAiMatch || s.isException) && (
                 <span title={s.capturedTitle}
                   style={{ fontSize: 13, color: '#999', fontStyle: 'italic', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2578,13 +2579,14 @@ export default function Pod() {
 
       {/* Manual ISBN Entry */}
       {showManualEntry && (
-        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid #EF4444', borderRadius: 10, padding: 16, marginBottom: 12, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
+        <div style={{ backgroundColor: 'var(--bg-card, #1a1a1a)', border: '2px solid var(--warning)', borderRadius: 10, padding: 16, marginBottom: 12, maxWidth: 640, alignSelf: 'center', width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ color: '#fdba74', fontWeight: 800, fontSize: 17 }}>⌨️ {t('manualIsbnEntry')}</span>
+            <span style={{ color: 'var(--warning)', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', gap: 8 }}><Hash size={17} /> {t('manualIsbnEntry')}</span>
             <button onClick={() => { setShowManualEntry(false); setManualIsbn(''); setTimeout(refocusInput, 100); }}
-              style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              aria-label="Close manual ISBN entry"
+              style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
           </div>
-          <p style={{ color: '#EF4444', fontSize: 14, margin: '0 0 4px', fontWeight: 700 }}>⚠️ {t('manualBilled')}</p>
+          <p style={{ color: 'var(--warning)', fontSize: 14, margin: '0 0 4px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={15} /> {t('manualBilled')}</p>
           <p style={{ color: '#999', fontSize: 14, margin: '0 0 8px', lineHeight: 1.4 }}>{t('manualEntryHint')}</p>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
@@ -2610,7 +2612,7 @@ export default function Pod() {
                 }
               }}
               placeholder="e.g. 978-0-13-468599-1"
-              style={{ flex: 1, padding: '14px 16px', borderRadius: 8, border: '2px solid #EF4444', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', fontWeight: 600, outline: 'none' }}
+              style={{ flex: 1, padding: '14px 16px', borderRadius: 8, border: '2px solid var(--warning)', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 18, fontFamily: 'monospace', fontWeight: 600, outline: 'none' }}
               autoFocus
             />
             <button
@@ -2624,14 +2626,14 @@ export default function Pod() {
                 }
               }}
               disabled={!manualIsbn.trim()}
-              style={{ padding: '14px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? '#EF4444' : '#333', color: '#fff', fontSize: 17, fontWeight: 800, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
+              style={{ padding: '14px 20px', borderRadius: 8, border: 'none', backgroundColor: manualIsbn.trim() ? 'var(--warning)' : 'var(--bg-input)', color: manualIsbn.trim() ? 'var(--accent-contrast)' : 'var(--text-tertiary)', fontSize: 17, fontWeight: 800, cursor: manualIsbn.trim() ? 'pointer' : 'not-allowed' }}
             >{t('scanArrow')}</button>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button
               onClick={() => setShowIsbnCamera(true)}
-              style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid #3B82F6', backgroundColor: 'transparent', color: '#93C5FD', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {t('useCamera')}
+              style={{ flex: 1, padding: '12px 16px', borderRadius: 8, border: '2px solid var(--accent)', backgroundColor: 'transparent', color: 'var(--accent)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Camera size={16} /> {t('useCamera')}
             </button>
           </div>
         </div>
@@ -2644,15 +2646,16 @@ export default function Pod() {
 
       {/* Type-a-title search — manual fuzzy match against the manifest */}
       {showTitleSearch && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 16 }}
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(5,10,18,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 16, backdropFilter: 'blur(8px)' }}
           onClick={() => { if (!titleSearchBusy) { setShowTitleSearch(false); setTimeout(refocusInput, 100); } }}>
           <div onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: 'var(--bg-elev, #0f0f0f)', border: '2px solid var(--accent)', borderRadius: 14, padding: 22, width: '100%', maxWidth: 600, fontFamily: 'var(--font-sans)' }}>
+            style={{ background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', border: '2px solid var(--signal)', borderRadius: 14, padding: 22, width: '100%', maxWidth: 600, fontFamily: 'var(--font-sans)', boxShadow: 'var(--shadow-elev)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h2 style={{ color: '#fff', margin: 0, fontSize: 20, fontWeight: 800 }}>⌨️ {t('searchByTitle')}</h2>
+              <h2 style={{ color: '#fff', margin: 0, fontSize: 20, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><Search size={20} /> {t('searchByTitle')}</h2>
               <button onClick={() => { setShowTitleSearch(false); setTimeout(refocusInput, 100); }}
                 disabled={titleSearchBusy}
-                style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: titleSearchBusy ? 'not-allowed' : 'pointer' }}>✕</button>
+                aria-label="Close title search"
+                style={{ background: 'none', border: '1px solid #555', borderRadius: 6, color: '#888', fontSize: 18, width: 36, height: 36, cursor: titleSearchBusy ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
             </div>
             <p style={{ color: '#aaa', fontSize: 14, margin: '0 0 12px', lineHeight: 1.5 }}>
               {t('searchByTitleHint')}
@@ -2684,7 +2687,7 @@ export default function Pod() {
               placeholder={t('searchByTitlePlaceholder')}
               autoFocus
               disabled={titleSearchBusy}
-              style={{ width: '100%', padding: '14px 16px', borderRadius: 8, border: '2px solid #8B5CF6', backgroundColor: '#0a0a0a', color: '#fff', fontSize: 17, fontWeight: 600, outline: 'none', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: 8, border: '2px solid var(--signal)', backgroundColor: 'var(--bg-input)', color: 'var(--text)', fontSize: 17, fontWeight: 600, outline: 'none', boxSizing: 'border-box' }}
             />
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <button
@@ -2702,7 +2705,7 @@ export default function Pod() {
                   }
                 }}
                 disabled={!titleSearchQuery.trim() || titleSearchBusy}
-                style={{ flex: 1, padding: '14px 18px', borderRadius: 8, border: 'none', backgroundColor: titleSearchQuery.trim() && !titleSearchBusy ? '#8B5CF6' : '#333', color: '#fff', fontSize: 16, fontWeight: 800, cursor: titleSearchQuery.trim() && !titleSearchBusy ? 'pointer' : 'not-allowed' }}>
+                style={{ flex: 1, padding: '14px 18px', borderRadius: 8, border: 'none', backgroundColor: titleSearchQuery.trim() && !titleSearchBusy ? 'var(--signal)' : 'var(--bg-input)', color: titleSearchQuery.trim() && !titleSearchBusy ? 'var(--accent-contrast)' : 'var(--text-tertiary)', fontSize: 16, fontWeight: 800, cursor: titleSearchQuery.trim() && !titleSearchBusy ? 'pointer' : 'not-allowed' }}>
                 {titleSearchBusy ? t('searching') : t('searchManifest')}
               </button>
               <button onClick={() => { setShowTitleSearch(false); setTimeout(refocusInput, 100); }}
@@ -2730,11 +2733,11 @@ export default function Pod() {
           style={{
             position: 'fixed', top: 70, right: 12, bottom: 12,
             width: 380, maxWidth: '94vw', zIndex: 350,
-            backgroundColor: '#0f0f0f',
-            border: `2px solid ${aiPulse ? aiPulse.color : aiMatchCandidates ? '#EAB308' : aiProcessing ? '#3B82F6' : '#333'}`,
+            background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))',
+            border: `2px solid ${aiPulse ? aiPulse.color : aiMatchCandidates ? 'var(--signal)' : aiProcessing ? 'var(--accent)' : 'var(--border)'}`,
             borderRadius: 14,
             padding: 16, overflowY: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            boxShadow: 'var(--shadow-elev)',
             transition: 'border-color 0.25s ease',
             // CSS variable feeds the @keyframes aipanelpulse ring color.
             '--pulse-color': aiPulse ? aiPulse.color : 'transparent',
@@ -2743,10 +2746,10 @@ export default function Pod() {
 
           {/* Panel header — always visible regardless of state */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <h2 style={{ color: '#dbeafe', margin: 0, fontSize: 15, fontWeight: 800, letterSpacing: 0.3 }}>
-              📷 {t('aiWorkspace')}
+            <h2 style={{ color: 'var(--text)', margin: 0, fontSize: 15, fontWeight: 800, letterSpacing: 0.3, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Camera size={15} /> {t('aiWorkspace')}
             </h2>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#22C55E', padding: '2px 7px', borderRadius: 999, backgroundColor: '#14532d', border: '1px solid #22C55E' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', padding: '2px 7px', borderRadius: 999, backgroundColor: 'var(--success-soft)', border: '1px solid var(--success)' }}>
               {t('keepScanning')}
             </span>
           </div>
@@ -2775,18 +2778,18 @@ export default function Pod() {
           {aiProcessing && !aiMatchCandidates && (
             <div style={{
               padding: '14px 16px', marginBottom: 12, borderRadius: 10,
-              backgroundColor: '#1e3a8a', border: '1px solid #3B82F6',
-              color: '#dbeafe', fontSize: 14, fontWeight: 700,
+              backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent)',
+              color: 'var(--text)', fontSize: 14, fontWeight: 700,
               display: 'flex', alignItems: 'center', gap: 10,
             }}>
               <span style={{
                 display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
-                backgroundColor: '#60a5fa', animation: 'aipulse 1s ease-in-out infinite',
+                backgroundColor: 'var(--accent)', animation: 'aipulse 1s ease-in-out infinite',
                 flexShrink: 0,
               }} />
               <div>
                 <div>{t('matchingCover')} #{aiSeqRef.current + 1}…</div>
-                <div style={{ fontSize: 11, fontWeight: 500, color: '#93c5fd', marginTop: 2 }}>
+                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 2 }}>
                   {t('keepScanningRegular')}
                 </div>
               </div>
@@ -2797,10 +2800,10 @@ export default function Pod() {
           {aiMatchCandidates && (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <h3 style={{ color: '#EAB308', margin: 0, fontSize: 16, fontWeight: 800 }}>
+                <h3 style={{ color: 'var(--signal)', margin: 0, fontSize: 16, fontWeight: 800 }}>
                   {aiMatchCandidates.candidates.length ? t('pickAiMatch') : t('noMatch')}
                   {aiMatchCandidates.seq && (
-                    <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, color: '#93C5FD', backgroundColor: '#1e3a8a', padding: '2px 8px', borderRadius: 6 }}>
+                    <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, color: 'var(--accent)', backgroundColor: 'var(--accent-soft)', padding: '2px 8px', borderRadius: 6 }}>
                       AI #{aiMatchCandidates.seq}
                     </span>
                   )}
@@ -2809,7 +2812,7 @@ export default function Pod() {
               {aiMatchCandidates.photo && (
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
                   <img src={aiMatchCandidates.photo} alt="captured cover"
-                    style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, border: '2px solid #EAB308' }} />
+                    style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8, border: '2px solid var(--signal)' }} />
                 </div>
               )}
               <p style={{ color: '#bbb', margin: '0 0 12px', fontSize: 13 }}>
@@ -2843,7 +2846,7 @@ export default function Pod() {
                   setShowManualEntry(true);
                   setTimeout(() => manualInputRef.current?.focus(), 100);
                 }}
-                  style={{ padding: '10px', borderRadius: 8, border: '1px solid #3B82F6', backgroundColor: 'transparent', color: '#93c5fd', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                  style={{ padding: '10px', borderRadius: 8, border: '1px solid var(--accent)', backgroundColor: 'transparent', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
                   {t('typeIsbnManually')} <kbd style={{ ...kbdHintStyle, marginLeft: 6 }}>M</kbd>
                 </button>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -2895,13 +2898,13 @@ export default function Pod() {
                 onClick={() => setShowIsbnCamera(true)}
                 style={{
                   width: '100%', padding: '14px', borderRadius: 10,
-                  border: '2px solid #3B82F6', backgroundColor: '#1e3a8a',
-                  color: '#dbeafe', fontSize: 15, fontWeight: 800, cursor: 'pointer',
+                  border: '2px solid var(--accent)', backgroundColor: 'var(--accent-soft)',
+                  color: 'var(--text)', fontSize: 15, fontWeight: 800, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   marginBottom: 14,
                 }}>
-                📷 {t('snapNextCover', { n: aiSeqRef.current + 1 })}
-                <kbd style={{ ...kbdHintStyle, marginLeft: 4, backgroundColor: '#1e3a8a', borderColor: '#3B82F6' }}>NumPad 1</kbd>
+                <Camera size={16} /> {t('snapNextCover', { n: aiSeqRef.current + 1 })}
+                <kbd style={{ ...kbdHintStyle, marginLeft: 4 }}>NumPad 1</kbd>
               </button>
               {aiHistory.length > 0 && (
                 <>
@@ -2983,8 +2986,8 @@ export default function Pod() {
         </button>
         <button onClick={() => { setShowTitleSearch(true); setTitleSearchQuery(''); }}
           title="Press Ctrl+4 — type the title, matches to manifest, picks ISBN"
-          style={{ ...styles.secondaryBtn, margin: 0, borderColor: '#a78bfa', backgroundColor: 'rgba(139,92,246,0.12)', color: 'var(--text)', fontSize: 16, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontWeight: 800 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Type size={20} color="#a78bfa" /> {t('typeBookTitleAi')}</span>
+          style={{ ...styles.secondaryBtn, margin: 0, borderColor: 'var(--signal)', backgroundColor: 'var(--signal-soft)', color: 'var(--text)', fontSize: 16, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, fontWeight: 800 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Type size={20} color="var(--signal)" /> {t('typeBookTitleAi')}</span>
           <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>{t('typeBookTitleHint')}</span>
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <kbd style={kbdHintStyle}>NumPad 4</kbd>
