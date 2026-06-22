@@ -934,17 +934,24 @@ export default function Dashboard() {
     } catch (err) { toast('Failed to save summary: ' + err.message, 'error'); }
   };
 
-  if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;
+  if (loading) return (
+    <div style={{ ...st.container, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <div className="spinner spinner-lg" />
+        <span style={{ color: 'var(--text-tertiary)', fontSize: 13, fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>Loading dashboard…</span>
+      </div>
+    </div>
+  );
   if (!job) return (
     <div style={st.container}>
       <Link to="/" style={st.backLink}>← Back to Home</Link>
       <h1 style={st.title}>Dashboard</h1>
-      <p style={st.text}>No active job. <Link to="/setup" style={{ color: '#3B82F6' }}>Go to Setup</Link></p>
+      <p style={st.text}>No active job. <Link to="/setup" style={{ color: 'var(--accent)' }}>Go to Setup</Link></p>
     </div>
   );
 
   return (
-    <div className="dashboard-screen" style={st.container}>
+    <div className="dashboard-screen page-enter" style={st.container}>
       <Link to="/" style={st.backLink}>← Back to Home</Link>
 
       <div style={st.headerRow}>
@@ -965,7 +972,7 @@ export default function Dashboard() {
           <button onClick={() => setShowBilling(true)} style={{ ...st.exportBtn, borderColor: 'var(--success)', color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Receipt size={15} /> Billing</button>
           {/* Reconciliation export removed — manifest size is not meaningful
               relative to actual books received (8M+ vs ~1M typical). */}
-          <button onClick={generateDailySummary} style={{ ...st.exportBtn, borderColor: '#a78bfa', color: '#a78bfa', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Mail size={15} /> Daily Summary</button>
+          <button onClick={generateDailySummary} style={{ ...st.exportBtn, borderColor: 'var(--accent)', color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Mail size={15} /> Daily Summary</button>
           <Link to="/kiosk" style={{ ...st.exportBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}><MonitorPlay size={15} /> Kiosk</Link>
           <Link to="/setup" style={st.setupLink}>Setup</Link>
         </div>
@@ -1013,29 +1020,29 @@ export default function Dashboard() {
       {/* Summary bar — buckets match billing exactly. Trimmed for density:
           % of Target removed (already shown in the progress bar below); Est.
           Gaylords removed (too rough to be actionable for ops). */}
-      <div data-summary-row style={st.summaryRow}>
+      <div data-summary-row style={st.summaryRow} className="stagger">
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: '#22C55E' }}>{totalRegular.toLocaleString()}</div>
+          <div style={{ ...st.summaryValue, color: 'var(--success)' }}>{totalRegular.toLocaleString()}</div>
           <div style={st.summaryLabel}>Regular{isOwner ? ' @ $0.50' : ''}</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalManual > 0 ? '#3B82F6' : '#888' }}>{totalManual.toLocaleString()}</div>
+          <div style={{ ...st.summaryValue, color: totalManual > 0 ? 'var(--accent)' : 'var(--text-tertiary)' }}>{totalManual.toLocaleString()}</div>
           <div style={st.summaryLabel}>Manual{isOwner ? ' @ $0.85' : ''}</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalAiMatch > 0 ? '#93C5FD' : '#888' }}>{totalAiMatch.toLocaleString()}</div>
+          <div style={{ ...st.summaryValue, color: totalAiMatch > 0 ? 'var(--text)' : 'var(--text-tertiary)' }}>{totalAiMatch.toLocaleString()}</div>
           <div style={st.summaryLabel}>AI Camera{isOwner ? ' @ $0.85' : ''}</div>
         </div>
         <div style={st.summaryItem}>
-          <div style={{ ...st.summaryValue, color: totalExceptions > 0 ? '#EF4444' : '#888' }}>{totalExceptions.toLocaleString()}</div>
+          <div style={{ ...st.summaryValue, color: totalExceptions > 0 ? 'var(--error)' : 'var(--text-tertiary)' }}>{totalExceptions.toLocaleString()}</div>
           <div style={st.summaryLabel}>Logged Exc{isOwner ? ' @ $0.85' : ''}</div>
         </div>
-        <div style={{ ...st.summaryItem, border: '1px solid #EAB308', backgroundColor: 'rgba(234,179,8,0.06)' }}>
-          <div style={{ ...st.summaryValue, color: '#EAB308' }}>{totalProcessed.toLocaleString()}</div>
+        <div style={{ ...st.summaryItem, border: '1px solid var(--accent)', backgroundColor: 'var(--accent-soft)', borderRadius: 'var(--radius-md)', padding: '8px 10px' }}>
+          <div style={{ ...st.summaryValue, color: 'var(--accent)' }}>{totalProcessed.toLocaleString()}</div>
           <div style={st.summaryLabel}>
             Total / {dailyTarget.toLocaleString()}
             {dailyTarget > 0 && (
-              <span style={{ marginLeft: 6, color: totalProcessed >= dailyTarget ? '#22C55E' : '#aaa', fontWeight: 700 }}>
+              <span style={{ marginLeft: 6, color: totalProcessed >= dailyTarget ? 'var(--success)' : 'var(--text-secondary)', fontWeight: 700 }}>
                 ({Math.min(100, Math.round((totalProcessed / dailyTarget) * 100))}%)
               </span>
             )}
@@ -1563,17 +1570,17 @@ const st = {
   title: { fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: 800, margin: 0, letterSpacing: '-0.3px', overflowWrap: 'anywhere' },
   subtitle: { fontSize: 14, color: 'var(--text-secondary, #666)', marginTop: 4 },
   text: { color: 'var(--text-secondary, #ccc)', fontSize: 14 },
-  exportBtn: { padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'var(--bg-card, #161616)', color: 'var(--text-secondary, #aaa)', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+  exportBtn: { padding: '8px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #2a2a2a)', background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', color: 'var(--text-secondary, #aaa)', fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: 'var(--shadow-xs)' },
   setupLink: { padding: '8px 14px', borderRadius: 8, backgroundColor: 'var(--bg-card, #161616)', border: '1px solid var(--border, #222)', color: 'var(--text-secondary, #888)', fontSize: 12, fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center' },
   summaryRow: { display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 16 },
   summaryItem: { textAlign: 'center', flex: 1, minWidth: 90 },
-  summaryValue: { fontSize: 'clamp(26px, 5vw, 36px)', fontWeight: 800, color: 'var(--text, #f0f0f0)', lineHeight: 1, letterSpacing: '-1px' },
+  summaryValue: { fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 800, color: 'var(--text, #f0f0f0)', lineHeight: 1.05, letterSpacing: '-1px', fontFamily: 'var(--font-display)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
   summaryLabel: { fontSize: 'clamp(10px, 1.5vw, 12px)', color: 'var(--text-secondary, #666)', marginTop: 4, textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.3px' },
   progressContainer: { height: 6, backgroundColor: 'var(--bg-input, #1a1a1a)', borderRadius: 3, overflow: 'hidden', marginBottom: 20 },
   progressBar: { height: '100%', backgroundColor: 'var(--success)', borderRadius: 3, transition: 'width 0.5s ease' },
   podGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, marginBottom: 16 },
   panelBtn: { padding: '7px 14px', borderRadius: 8, borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--border, #222)', backgroundColor: 'transparent', color: 'var(--text-secondary, #888)', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
-  panel: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 12, border: '1px solid var(--border, #222)', maxHeight: 400, overflowY: 'auto', marginBottom: 16 },
+  panel: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border, #222)', maxHeight: 400, overflowY: 'auto', marginBottom: 16, boxShadow: 'var(--shadow-card)' },
   exRow: { display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border, #1e1e1e)', flexWrap: 'wrap' },
   exTag: { padding: '2px 8px', borderRadius: 4, backgroundColor: 'rgba(239,68,68,0.1)', color: '#f87171', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', border: '1px solid rgba(239,68,68,0.15)' },
   exDetail: { fontSize: 13, color: 'var(--text-secondary, #bbb)', flex: 1, minWidth: 0 },

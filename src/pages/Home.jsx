@@ -10,7 +10,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import TodayLeaderboard from '../components/TodayLeaderboard';
 import { computeDailyTarget } from '../utils/target';
-import { Settings, LayoutDashboard, MonitorPlay, History, Receipt, TrendingUp, Package, Download } from 'lucide-react';
+import { Settings, LayoutDashboard, MonitorPlay, History, Receipt, TrendingUp, Package, Download, Pause } from 'lucide-react';
 
 export default function Home() {
   const { currentUser, logout } = useAuth();
@@ -95,13 +95,16 @@ export default function Home() {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loader}>Loading...</div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 120 }}>
+          <div className="spinner spinner-lg" />
+          <span style={{ color: 'var(--text-tertiary)', fontSize: 13, fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>Loading…</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="page-enter">
       {/* Top bar */}
       <div style={styles.topBar}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -152,7 +155,7 @@ export default function Home() {
       {job && <TodayLeaderboard job={job} compact />}
 
       {/* Navigation */}
-      <nav className="home-nav" style={styles.nav}>
+      <nav className="home-nav stagger" style={styles.nav}>
         <Link to="/setup" style={styles.navLink}>
           <Settings size={22} />
           <span>Setup</span>
@@ -189,7 +192,7 @@ export default function Home() {
         Open the link for your pod on its laptop. Scanner connects automatically via USB.
       </p>
 
-      <div className="home-podgrid" style={styles.podGrid}>
+      <div className="home-podgrid stagger" style={styles.podGrid}>
         {pods.map((podId) => {
           const p = presence[podId];
           const isOnline = p?.online;
@@ -232,8 +235,8 @@ export default function Home() {
               {/* Operator */}
               {operator && isOnline && (
                 <p style={{ color: 'var(--text-secondary, #aaa)', fontSize: 13, margin: '0 0 8px' }}>
-                  Operator: <strong style={{ color: '#fff' }}>{operator}</strong>
-                  {isPaused && <span style={{ color: '#EAB308', marginLeft: 8 }}>⏸ Paused</span>}
+                  Operator: <strong style={{ color: 'var(--text)' }}>{operator}</strong>
+                  {isPaused && <span style={{ color: 'var(--warning)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Pause size={11} /> Paused</span>}
                 </p>
               )}
 
@@ -422,9 +425,10 @@ const styles = {
     alignItems: 'center',
     gap: 4,
     padding: '12px 20px',
-    borderRadius: 10,
-    backgroundColor: 'var(--bg-card, #161616)',
+    borderRadius: 'var(--radius-md)',
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))',
     border: '1px solid var(--border, #222)',
+    boxShadow: 'var(--shadow-xs)',
     color: 'var(--text-secondary, #aaa)',
     fontSize: 13,
     fontWeight: 600,
@@ -456,12 +460,13 @@ const styles = {
   },
   podCard: {
     display: 'block',
-    backgroundColor: 'var(--bg-card, #161616)',
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))',
     border: '1px solid var(--border, #222)',
-    borderRadius: 12,
+    borderRadius: 'var(--radius-lg)',
     padding: '18px 20px',
     textDecoration: 'none',
     color: 'var(--text, #f0f0f0)',
+    boxShadow: 'var(--shadow-card)',
     transition: 'border-color 0.2s, background-color 0.2s',
   },
   podHeader: {
@@ -514,10 +519,11 @@ const styles = {
     marginTop: 8,
   },
   instructions: {
-    backgroundColor: 'var(--bg-card, #161616)',
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))',
     border: '1px solid var(--border, #222)',
-    borderRadius: 12,
+    borderRadius: 'var(--radius-lg)',
     padding: '20px 24px',
+    boxShadow: 'var(--shadow-card)',
   },
   instructionsTitle: {
     fontSize: 16,
