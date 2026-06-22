@@ -3256,11 +3256,11 @@ const styles = {
   warning: { marginTop: 24, padding: 16, backgroundColor: '#7f1d1d', borderRadius: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 },
   paceBar: { height: '100%', borderRadius: 7, transition: 'width 0.5s ease, background-color 0.5s ease' },
   recentScans: {
-    marginTop: 'clamp(12px, 2vh, 20px)', backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 10,
+    marginTop: 'clamp(12px, 2vh, 20px)', background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 10,
     border: '1px solid var(--border, #333)', overflow: 'hidden', maxHeight: 'clamp(180px, 32vh, 320px)',
-    overflowY: 'auto', width: '100%',
+    overflowY: 'auto', width: '100%', boxShadow: 'var(--shadow-card)',
   },
-  recentTitle: { padding: '10px 14px', borderBottom: '1px solid var(--border, #333)', color: '#999', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
+  recentTitle: { padding: '10px 14px', borderBottom: '1px solid var(--border, #333)', color: 'var(--text-tertiary, #999)', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5 },
   // Most-recent row is highlighted (subtle accent border) so operators can
   // verify the latest scan at arm's length without leaning in.
   recentRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid #222', flexWrap: 'nowrap', overflow: 'hidden', minHeight: 44 },
@@ -3271,8 +3271,8 @@ const styles = {
   },
   pauseBox: { textAlign: 'center' },
   setupCard: {
-    backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, padding: 'clamp(16px, 3vw, 22px) clamp(14px, 3vw, 20px)',
-    maxWidth: 480, margin: 'clamp(8px, 2vh, 16px) auto', width: '100%',
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 12, padding: 'clamp(16px, 3vw, 22px) clamp(14px, 3vw, 20px)',
+    maxWidth: 480, margin: 'clamp(8px, 2vh, 16px) auto', width: '100%', boxShadow: 'var(--shadow-card)',
   },
   stepIndicator: { fontSize: 13, color: '#777', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 },
   setupHeading: { color: 'var(--text, #fff)', fontSize: 'clamp(22px, 4vw, 28px)', fontWeight: 800, marginBottom: 8, marginTop: 0 },
@@ -3302,11 +3302,11 @@ const styles = {
   readyValue: { color: 'var(--text, #fff)', fontSize: 14, fontWeight: 700 },
   primaryBtn: {
     width: '100%', padding: '14px 22px', borderRadius: 10, border: 'none',
-    backgroundColor: '#22C55E', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer',
+    backgroundColor: 'var(--success)', color: 'var(--accent-contrast, #fff)', fontSize: 16, fontWeight: 800, cursor: 'pointer',
   },
   secondaryBtn: {
     padding: '10px 18px', borderRadius: 8, border: '1px solid var(--border, #444)',
     backgroundColor: 'var(--bg-input, #222)', color: 'var(--text-secondary, #ccc)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
-  miniModal: { backgroundColor: 'var(--bg-card, #1a1a1a)', borderRadius: 12, padding: 24, minWidth: 320, maxWidth: '90vw' },
+  miniModal: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 12, padding: 24, minWidth: 320, maxWidth: '90vw', boxShadow: 'var(--shadow-elev)' },
 };
