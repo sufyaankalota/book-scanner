@@ -20,7 +20,7 @@ import { displayOperatorName } from '../utils/operator';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
-import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard, CloudUpload, RefreshCw, Trash2 } from 'lucide-react';
+import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard, CloudUpload, RefreshCw, Trash2, GraduationCap, BookOpen, MessageSquare } from 'lucide-react';
 
 const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
@@ -2086,14 +2086,14 @@ export default function Pod() {
 
       {/* Training mode banner */}
       {trainingMode && (
-        <div style={{ backgroundColor: '#312e81', border: '1px solid #818cf8', borderRadius: 8, padding: '8px 14px', textAlign: 'center', color: '#c7d2fe', fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
-            🎓 {t('trainingMode')} — {t('trainingNotSaved').split('—')[1]?.trim() || ''}
+        <div style={styles.trainingBanner}>
+          <GraduationCap size={15} /> {t('trainingMode')} — {t('trainingNotSaved').split('—')[1]?.trim() || ''}
         </div>
       )}
 
       {/* ISBN search tip banner */}
-      <div className="pod-banner" style={{ backgroundColor: '#1a1a2e', border: '1px solid #334155', borderRadius: 8, padding: '10px 14px', marginBottom: 8, color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
-        📖 <strong style={{ color: '#e2e8f0' }}>{t('cantScanTip')}</strong> {t('cantScanHint')}
+      <div className="pod-banner" style={styles.tipBanner}>
+        <BookOpen size={15} /> <span><strong style={{ color: 'var(--text)' }}>{t('cantScanTip')}</strong> {t('cantScanHint')}</span>
       </div>
 
       {!isOnline && (
@@ -2109,21 +2109,21 @@ export default function Pod() {
       {isOnline && xpodLag > 0 && (
         <div
           title="Cross-pod duplicate checks are timing out — wifi may be slow. Scans still accepted; dupes will be caught after the fact."
-          style={{ backgroundColor: '#78350f', border: '1px solid #F59E0B', borderRadius: 8, padding: '8px 14px', marginBottom: 8, color: '#fde68a', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
+          style={styles.lagBanner}
         >
-          ⚠️ Cross-pod dedup lag — {xpodLag} recent check{xpodLag === 1 ? '' : 's'} timed out (wifi slow)
+          <AlertTriangle size={15} /> Cross-pod dedup lag — {xpodLag} recent check{xpodLag === 1 ? '' : 's'} timed out (wifi slow)
         </div>
       )}
       {showIdleWarning && !isPaused && <div style={styles.idleWarning}>{t('idleWarning')}</div>}
 
       {/* Supervisor message */}
       {supervisorMessage && (
-        <div style={{ backgroundColor: '#1e3a5f', border: '2px solid #3B82F6', borderRadius: 8, padding: '12px 16px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={styles.supervisorBanner}>
           <div>
-            <div style={{ fontSize: 12, color: '#93c5fd', fontWeight: 700, marginBottom: 4 }}>📩 {t('messageFromSupervisor')}</div>
-            <div style={{ color: '#fff', fontSize: 17, fontWeight: 700 }}>{supervisorMessage}</div>
+            <div style={styles.supervisorLabel}><MessageSquare size={13} /> {t('messageFromSupervisor')}</div>
+            <div style={styles.supervisorText}>{supervisorMessage}</div>
           </div>
-          <button onClick={dismissMessage} style={{ background: 'none', border: '1px solid #3B82F6', borderRadius: 6, color: '#93c5fd', padding: '8px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
+          <button onClick={dismissMessage} style={styles.supervisorDismiss}>
             {t('dismiss')}
           </button>
         </div>
@@ -3176,7 +3176,7 @@ const styles = {
     // No max-width cap — operators want big, glanceable numbers across the
     // full display whether the AI panel is open or not. The setup cards
     // (operator name / pair scanner / ready) cap themselves via setupCard.
-    backgroundColor: 'var(--bg, #111)', margin: '0 auto', width: '100%', boxSizing: 'border-box',
+    backgroundColor: 'var(--bg, #111)', margin: 0, width: '100%', boxSizing: 'border-box',
   },
   backLink: { color: '#888', textDecoration: 'none', fontSize: 14, marginBottom: 12, display: 'inline-block', fontWeight: 600 },
   header: {
@@ -3191,6 +3191,13 @@ const styles = {
     color: 'var(--success)', fontSize: 13, fontWeight: 700,
   },
   dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+  trainingBanner: { backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 14px', textAlign: 'center', color: 'var(--accent)', fontSize: 15, fontWeight: 800, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  tipBanner: { backgroundColor: 'var(--bg-elev)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 8, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 8 },
+  lagBanner: { backgroundColor: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 8, padding: '8px 14px', marginBottom: 8, color: 'var(--warning)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 },
+  supervisorBanner: { backgroundColor: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 8, padding: '12px 16px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  supervisorLabel: { fontSize: 12, color: 'var(--accent)', fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 },
+  supervisorText: { color: 'var(--text)', fontSize: 17, fontWeight: 800 },
+  supervisorDismiss: { background: 'transparent', border: '1px solid var(--accent)', borderRadius: 6, color: 'var(--accent)', padding: '8px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 800, flexShrink: 0 },
   // Header action buttons sized to WCAG 44x44 minimum so gloved/wet hands
   // on a tablet hit them reliably.
   undoBtn: {
