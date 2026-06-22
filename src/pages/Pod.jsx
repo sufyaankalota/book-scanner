@@ -20,7 +20,7 @@ import { displayOperatorName } from '../utils/operator';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
-import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard, CloudUpload } from 'lucide-react';
+import { Camera, Type, Hash, AlertTriangle, Settings, Pause, Undo2, Target, Gift, Keyboard, CloudUpload, RefreshCw, Trash2 } from 'lucide-react';
 
 const COLOR_NAMES = {
   '#EF4444': 'RED', '#3B82F6': 'BLUE', '#EAB308': 'YELLOW',
@@ -3032,13 +3032,13 @@ export default function Pod() {
             <>Loading active job…</>
           ) : jobError ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-              <div>⚠️ Can't reach Firestore — {jobError}</div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={18} /> Can't reach Firestore — {jobError}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                 <button
                   onClick={() => window.location.reload()}
-                  style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #3B82F6', backgroundColor: '#1e3a8a', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
+                  style={styles.recoveryBtn}
                 >
-                  🔄 Reload
+                  <RefreshCw size={15} /> Reload
                 </button>
                 <button
                   onClick={async () => {
@@ -3064,9 +3064,9 @@ export default function Pod() {
                     }
                     window.location.reload();
                   }}
-                  style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #DC2626', backgroundColor: '#7f1d1d', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
+                  style={{ ...styles.recoveryBtn, ...styles.recoveryBtnDanger }}
                 >
-                  🧹 Reset Cache & Reload
+                  <Trash2 size={15} /> Reset Cache & Reload
                 </button>
               </div>
               <div style={{ fontSize: 11, opacity: 0.7 }}>
@@ -3254,6 +3254,8 @@ const styles = {
   idleWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '10px 16px', textAlign: 'center', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 10 },
   lockWarning: { backgroundColor: '#422006', border: '1px solid #F97316', borderRadius: 8, padding: '12px 16px', color: '#fdba74', fontSize: 14, fontWeight: 700, marginBottom: 14, lineHeight: 1.5 },
   warning: { marginTop: 24, padding: 16, backgroundColor: '#7f1d1d', borderRadius: 8, textAlign: 'center', fontSize: 16, fontWeight: 600 },
+  recoveryBtn: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px 16px', borderRadius: 8, border: '1px solid var(--accent)', backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 800, cursor: 'pointer', fontSize: 14, minHeight: 40 },
+  recoveryBtnDanger: { border: '1px solid var(--error)', backgroundColor: 'var(--error-soft)', color: 'var(--error)' },
   paceBar: { height: '100%', borderRadius: 7, transition: 'width 0.5s ease, background-color 0.5s ease' },
   recentScans: {
     marginTop: 'clamp(12px, 2vh, 20px)', background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 10,
