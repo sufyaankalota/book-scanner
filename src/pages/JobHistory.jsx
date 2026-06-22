@@ -239,12 +239,16 @@ export default function JobHistory() {
     }
   };
 
-  if (loading) return <div style={s.container}><p style={s.text}>Loading...</p></div>;
+  if (loading) return (
+    <div style={{ ...s.container, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <div className="spinner spinner-lg" />
+    </div>
+  );
 
   // Detail view
   if (viewMode === 'detail' && selectedJob) {
     return (
-      <div style={s.container}>
+      <div style={s.container} className="page-enter">
         <button onClick={() => { setViewMode('list'); setSelectedJob(null); }} style={s.backBtn}>← Back to Job List</button>
         <h1 style={s.title}>{selectedJob.meta.name}</h1>
         <p style={s.subtitle}>
@@ -369,7 +373,7 @@ export default function JobHistory() {
 
   // Job list
   return (
-    <div style={s.container}>
+    <div style={s.container} className="page-enter">
       <Link to="/" style={s.backLink}>← Back to Home</Link>
       <h1 style={s.title}>Job History</h1>
       {loading ? (
@@ -413,14 +417,14 @@ const s = {
   backBtn: { background: 'none', border: 'none', color: 'var(--text-secondary, #555)', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 12, minHeight: 32, fontWeight: 600 },
   jobRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: 'var(--bg-card, #161616)', border: '1px solid var(--border, #222)', borderRadius: 12,
-    padding: '14px 18px', cursor: 'pointer', textAlign: 'left', width: '100%',
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', border: '1px solid var(--border, #222)', borderRadius: 'var(--radius-lg)',
+    padding: '14px 18px', cursor: 'pointer', textAlign: 'left', width: '100%', boxShadow: 'var(--shadow-card)',
   },
   statsRow: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 },
-  statBox: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 10, padding: '14px 18px', flex: 1, minWidth: 100, textAlign: 'center', border: '1px solid var(--border, #222)' },
+  statBox: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-md)', padding: '14px 18px', flex: 1, minWidth: 100, textAlign: 'center', border: '1px solid var(--border, #222)', boxShadow: 'var(--shadow-xs)' },
   statVal: { fontSize: 24, fontWeight: 800, color: 'var(--text, #f0f0f0)', letterSpacing: '-0.5px' },
   statLbl: { fontSize: 10, color: 'var(--text-secondary, #666)', marginTop: 4, textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.3px' },
-  card: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 12, padding: '18px 20px', border: '1px solid var(--border, #222)', marginBottom: 14 },
+  card: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-lg)', padding: '18px 20px', border: '1px solid var(--border, #222)', marginBottom: 14, boxShadow: 'var(--shadow-card)' },
   cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text-secondary, #aaa)', marginTop: 0, marginBottom: 14, letterSpacing: '-0.2px' },
   miniStat: { textAlign: 'center', flex: 1, color: 'var(--text, #f0f0f0)', fontSize: 16, fontWeight: 700 },
   miniLbl: { fontSize: 11, color: 'var(--text-secondary, #666)' },

@@ -488,7 +488,7 @@ const k = {
     gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(130px, 11vw, 180px), 1fr))',
     gap: 'clamp(6px, 0.8vw, 12px)',
   },
-  podCard: { backgroundColor: 'var(--bg-card, #161616)', borderRadius: 8, padding: 'clamp(8px, 0.9vw, 14px)', border: '2px solid var(--border, #222)', transition: 'box-shadow 0.4s ease' },
+  podCard: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 8, padding: 'clamp(8px, 0.9vw, 14px)', border: '2px solid var(--border, #222)', boxShadow: 'var(--shadow-xs)', transition: 'box-shadow 0.4s ease' },
   podHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 },
   podName: { fontSize: 'clamp(15px, 1.4vw, 22px)', fontWeight: 900, letterSpacing: '-0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   podStatus: { fontSize: 'clamp(9px, 0.8vw, 12px)', fontWeight: 800, letterSpacing: 1, whiteSpace: 'nowrap' },

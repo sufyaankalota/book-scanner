@@ -135,7 +135,7 @@ export default function PodSelect() {
   // ─── Setup Mode ───
   if (setupMode) {
     return (
-      <div style={styles.container}>
+      <div style={styles.container} className="page-enter">
         <div style={styles.setupCard}>
           <h1 style={styles.heading}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><Monitor size={28} /> Device Setup</span></h1>
           <p style={styles.hint}>
@@ -201,7 +201,7 @@ export default function PodSelect() {
 
   // ─── Pod Selector ───
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="page-enter">
       {/* Header */}
       <div style={styles.header}>
         <div>
@@ -428,14 +428,15 @@ const styles = {
   podCard: {
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: 'var(--bg-card, #161616)',
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))',
     border: '2px solid',
     borderRadius: 16,
     padding: 'clamp(18px, 3vw, 28px)',
     cursor: 'pointer',
     textAlign: 'left',
     color: 'var(--text, #f0f0f0)',
-    transition: 'transform 0.1s ease, border-color 0.2s ease',
+    boxShadow: 'var(--shadow-card)',
+    transition: 'transform 0.1s ease, border-color 0.2s ease, box-shadow 0.2s ease',
     fontFamily: 'inherit',
     width: '100%',
     boxSizing: 'border-box',

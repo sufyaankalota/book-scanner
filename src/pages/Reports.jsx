@@ -846,7 +846,7 @@ export default function Reports() {
   };
 
   return (
-    <div style={st.page}>
+    <div style={st.page} className="page-enter">
       <Link to="/" style={st.back}>← Back to Home</Link>
       <div style={st.headerRow}>
         <div>
@@ -1568,8 +1568,8 @@ const st = {
   kpiValue: { fontSize: 26, fontWeight: 700, margin: '6px 0 2px 0', letterSpacing: '-0.5px', fontFamily: 'var(--font-display)', fontVariantNumeric: 'tabular-nums' },
   kpiSub: { fontSize: 12, color: 'var(--text-secondary, #888)' },
   card: {
-    background: 'var(--bg-card, #161616)', border: '1px solid var(--border, #222)',
-    borderRadius: 'var(--radius-lg)', padding: 20, marginBottom: 20,
+    background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', border: '1px solid var(--border, #222)',
+    borderRadius: 'var(--radius-lg)', padding: 20, marginBottom: 20, boxShadow: 'var(--shadow-card)',
   },
   cardTitle: { fontSize: 16, fontWeight: 700, margin: '0 0 16px 0' },
   cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, gap: 12, flexWrap: 'wrap' },

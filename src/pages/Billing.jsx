@@ -239,10 +239,14 @@ export default function Billing() {
     }
   };
 
-  if (loading) return <div style={st.container}><p style={st.text}>Loading...</p></div>;
+  if (loading) return (
+    <div style={{ ...st.container, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <div className="spinner spinner-lg" />
+    </div>
+  );
 
   return (
-    <div style={st.container}>
+    <div style={st.container} className="page-enter">
       <Link to="/" style={st.backLink}>← Back to Home</Link>
       <h1 style={st.title}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><Receipt size={24} /> Billing</span></h1>
       <p style={st.subtitle}>Export weekly billing for any job — active or closed.</p>
@@ -330,7 +334,7 @@ const st = {
   title: { fontSize: 28, marginTop: 12, marginBottom: 4 },
   subtitle: { color: 'var(--text-secondary, #888)', fontSize: 14, marginTop: 0, marginBottom: 24 },
   text: { color: 'var(--text-secondary, #aaa)', fontSize: 14 },
-  card: { backgroundColor: 'var(--bg-card, #1a1a1a)', border: '1px solid var(--border, #333)', borderRadius: 'var(--radius-lg)', padding: 20, marginBottom: 16 },
+  card: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', border: '1px solid var(--border, #333)', borderRadius: 'var(--radius-lg)', padding: 20, marginBottom: 16, boxShadow: 'var(--shadow-card)' },
   label: { display: 'block', color: 'var(--text-secondary, #ccc)', fontSize: 13, fontWeight: 600, marginBottom: 6 },
   input: { width: '100%', padding: '12px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #444)', backgroundColor: 'var(--bg-input, #0a0a0a)', color: 'var(--text, #fff)', fontSize: 15, boxSizing: 'border-box' },
   hint: { color: 'var(--text-secondary, #888)', fontSize: 12, marginTop: 6, marginBottom: 0 },

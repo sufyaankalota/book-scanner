@@ -175,11 +175,11 @@ export default function Users() {
   };
 
   return (
-    <div style={s.container}>
+    <div style={s.container} className="page-enter">
       <Link to="/setup" style={s.backLink}>← Back to Setup</Link>
       <h1 style={s.title}>User Management</h1>
-      <p style={{ color: '#888', fontSize: 14, marginBottom: 24 }}>
-        Manage who can access the BookFlow application. Logged in as <strong style={{ color: '#ccc' }}>{currentUser?.name}</strong>.
+      <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>
+        Manage who can access the BookFlow application. Logged in as <strong style={{ color: 'var(--text)' }}>{currentUser?.name}</strong>.
       </p>
 
       {/* Role Permissions */}
@@ -309,7 +309,7 @@ const s = {
   container: { minHeight: '100vh', backgroundColor: 'var(--bg, #0a0a0a)', color: 'var(--text, #f0f0f0)', padding: '20px 20px 40px', fontFamily: 'var(--font-sans)', maxWidth: 640, margin: '0 auto' },
   backLink: { color: 'var(--text-tertiary, #555)', textDecoration: 'none', fontSize: 13, display: 'inline-block', marginBottom: 14, fontWeight: 600 },
   title: { fontSize: 22, fontWeight: 800, margin: '0 0 8px', color: 'var(--text, #f0f0f0)', letterSpacing: '-0.3px' },
-  card: { backgroundColor: 'var(--bg-card, #141414)', borderRadius: 'var(--radius-lg)', padding: '14px 16px', border: '1px solid var(--border, #1e1e1e)', marginBottom: 10 },
+  card: { background: 'linear-gradient(180deg, var(--bg-elev), var(--bg-card))', borderRadius: 'var(--radius-lg)', padding: '14px 16px', border: '1px solid var(--border, #1e1e1e)', marginBottom: 10, boxShadow: 'var(--shadow-card)' },
   cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text-secondary, #aaa)', marginTop: 0, marginBottom: 10, letterSpacing: '-0.2px' },
   input: { width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border, #2a2a2a)', backgroundColor: 'var(--bg-input, #1a1a1a)', color: 'var(--text, #f0f0f0)', fontSize: 14, boxSizing: 'border-box', fontWeight: 500 },
   addBtn: { padding: '10px 20px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-strong, #2a2a2a)', backgroundColor: 'transparent', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 14 },
