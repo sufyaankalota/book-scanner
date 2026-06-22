@@ -67,25 +67,43 @@ export default function BookCamera({ mode, podId, jobId, onResult, onClose, embe
           audio: false,
         });
       } catch (e) {
+        if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
+          throw new Error('Camera permission denied. Allow camera access in browser settings and try again.');
+        }
         // Fall back to no exact deviceId if the requested one is gone
         if (id) {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-            audio: false,
-          });
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+              audio: false,
+            });
+          } catch (fallbackErr) {
+            if (fallbackErr?.name === 'NotAllowedError' || fallbackErr?.name === 'PermissionDeniedError') {
+              throw new Error('Camera permission denied. Allow camera access in browser settings and try again.');
+            }
+            throw fallbackErr;
+          }
         } else { throw e; }
       }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         // Wait for video to actually have frames before resuming detection
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
           const v = videoRef.current;
           if (!v) return resolve();
           if (v.readyState >= 2) return resolve();
-          const onReady = () => { v.removeEventListener('loadeddata', onReady); resolve(); };
+          let timeoutId;
+          const onReady = () => {
+            clearTimeout(timeoutId);
+            v.removeEventListener('loadeddata', onReady);
+            resolve();
+          };
           v.addEventListener('loadeddata', onReady);
-          setTimeout(resolve, 1500); // safety timeout
+          timeoutId = setTimeout(() => {
+            v.removeEventListener('loadeddata', onReady);
+            reject(new Error('Camera opened but did not produce frames. Try reconnecting it or selecting another camera.'));
+          }, 5000);
         });
         await videoRef.current.play().catch(() => {});
       }

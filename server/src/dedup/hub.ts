@@ -32,6 +32,11 @@ type ClientState = {
   alive: boolean;
 };
 
+const MAX_WS_MESSAGE_BYTES = 16_384;
+const MAX_JOB_ID_LENGTH = 128;
+const MAX_BARCODE_LENGTH = 64;
+const MAX_CLIENT_LABEL_LENGTH = 128;
+
 const clients = new Map<WebSocket, ClientState>();
 const byJob = new Map<string, Set<WebSocket>>();
 
@@ -76,6 +81,11 @@ function send(ws: WebSocket, payload: unknown): void {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
 }
 
+function textField(msg: Record<string, unknown>, key: string, maxLength: number): string {
+  const value = String(msg[key] ?? '').trim();
+  return value.length <= maxLength ? value : '';
+}
+
 function authorize(req: IncomingMessage): { ok: boolean; jobId?: string } {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const apiKey = url.searchParams.get('apiKey') ?? req.headers['x-api-key'];
@@ -90,6 +100,10 @@ function authorize(req: IncomingMessage): { ok: boolean; jobId?: string } {
 }
 
 async function handleMessage(ws: WebSocket, raw: Buffer): Promise<void> {
+  if (raw.length > MAX_WS_MESSAGE_BYTES) {
+    send(ws, { type: 'error', message: 'message_too_large' });
+    return;
+  }
   let msg: Record<string, unknown>;
   try {
     msg = JSON.parse(raw.toString());
@@ -105,7 +119,7 @@ async function handleMessage(ws: WebSocket, raw: Buffer): Promise<void> {
   }
 
   if (type === 'subscribe') {
-    const jobId = String(msg.jobId ?? '');
+    const jobId = textField(msg, 'jobId', MAX_JOB_ID_LENGTH);
     if (!jobId) {
       send(ws, { type: 'error', message: 'jobId_required' });
       return;
@@ -116,11 +130,11 @@ async function handleMessage(ws: WebSocket, raw: Buffer): Promise<void> {
   }
 
   if (type === 'claim') {
-    const jobId = String(msg.jobId ?? '');
-    const barcode = String(msg.barcode ?? '');
-    const podId = String(msg.podId ?? '');
-    const scannerId = String(msg.scannerId ?? '');
-    const scanId = msg.scanId ? String(msg.scanId) : undefined;
+    const jobId = textField(msg, 'jobId', MAX_JOB_ID_LENGTH);
+    const barcode = textField(msg, 'barcode', MAX_BARCODE_LENGTH);
+    const podId = textField(msg, 'podId', MAX_CLIENT_LABEL_LENGTH);
+    const scannerId = textField(msg, 'scannerId', MAX_CLIENT_LABEL_LENGTH);
+    const scanId = msg.scanId ? textField(msg, 'scanId', MAX_CLIENT_LABEL_LENGTH) : undefined;
     if (!jobId || !barcode || !podId || !scannerId) {
       send(ws, { type: 'error', message: 'missing_fields' });
       return;
@@ -140,8 +154,8 @@ async function handleMessage(ws: WebSocket, raw: Buffer): Promise<void> {
   }
 
   if (type === 'release') {
-    const jobId = String(msg.jobId ?? '');
-    const barcode = String(msg.barcode ?? '');
+    const jobId = textField(msg, 'jobId', MAX_JOB_ID_LENGTH);
+    const barcode = textField(msg, 'barcode', MAX_BARCODE_LENGTH);
     if (!jobId || !barcode) {
       send(ws, { type: 'error', message: 'missing_fields' });
       return;
@@ -158,8 +172,8 @@ async function handleMessage(ws: WebSocket, raw: Buffer): Promise<void> {
   }
 
   if (type === 'inspect') {
-    const jobId = String(msg.jobId ?? '');
-    const barcode = String(msg.barcode ?? '');
+    const jobId = textField(msg, 'jobId', MAX_JOB_ID_LENGTH);
+    const barcode = textField(msg, 'barcode', MAX_BARCODE_LENGTH);
     if (!jobId || !barcode) {
       send(ws, { type: 'error', message: 'missing_fields' });
       return;

@@ -84,8 +84,10 @@ export function startMirror<T>(db: Firestore, opts: MirrorOptions<T>): MirrorHan
         if (c) lastCursor = c;
         count += 1;
       } catch (err) {
-        log.error({ err, docId: doc.id }, 'upsert failed; aborting batch so cursor stays put');
-        throw err;
+        const c = resolve(doc);
+        if (c) lastCursor = c;
+        count += 1;
+        log.error({ err, docId: doc.id, cursor: c }, 'upsert failed; skipping poison doc so mirror can keep draining');
       }
     }
     return { count, lastCursor };
@@ -129,7 +131,10 @@ export function startMirror<T>(db: Firestore, opts: MirrorOptions<T>): MirrorHan
               if (c) lastCursor = c;
               count += 1;
             } catch (err) {
-              log.error({ err, docId: ch.doc.id }, 'live upsert failed');
+              const c = resolve(ch.doc);
+              if (c) lastCursor = c;
+              count += 1;
+              log.error({ err, docId: ch.doc.id, cursor: c }, 'live upsert failed; skipping poison doc');
             }
           }
           if (lastCursor) await saveCursor(lastCursor, count);

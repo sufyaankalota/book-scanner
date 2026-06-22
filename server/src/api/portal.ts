@@ -15,6 +15,7 @@ import { createGzip } from 'node:zlib';
 // ---------------------------------------------------------------------------
 
 const limitSchema = z.coerce.number().int().min(1).max(5000).default(500);
+const MAX_EXPORT_ROWS = 1_000_000;
 const isoDate = z
   .string()
   .refine((s) => !Number.isNaN(Date.parse(s)), { message: 'invalid ISO date' });
@@ -186,7 +187,7 @@ export function portalRouter(): Router {
 
   // GET /api/portal/scans/export?jobId=&since=ISO&until=ISO
   // Streams every scan in the range as CSV straight from Postgres using keyset
-  // pagination — bounded memory, NO row cap, finishes in seconds even for a
+  // pagination — bounded memory, capped for runaway ranges, finishes in seconds even for a
   // full multi-month job. This is the "give me all ISBNs from X to Y" report.
   r.get('/scans/export', async (req: Request, res: Response) => {
     const parsed = exportScansQuery.safeParse(req.query);
@@ -218,6 +219,8 @@ export function portalRouter(): Router {
 
     const BATCH = 10000;
     let cursor: { ts: Date; id: string } | null = null;
+  let exportedRows = 0;
+  let capped = false;
     for (;;) {
       const where: Prisma.ScanWhereInput = {
         jobId,
@@ -239,6 +242,10 @@ export function portalRouter(): Router {
       if (batch.length === 0) break;
       let chunk = '';
       for (const row of batch) {
+        if (exportedRows >= MAX_EXPORT_ROWS) {
+          capped = true;
+          break;
+        }
         chunk += [
           csvCell(row.isbn),
           csvCell(row.poName),
@@ -249,8 +256,13 @@ export function portalRouter(): Router {
           csvCell(row.capturedTitle),
           csvCell(row.timestamp.toISOString()),
         ].join(',') + '\n';
+        exportedRows += 1;
       }
-      sink.write(chunk);
+      if (chunk) sink.write(chunk);
+      if (capped) {
+        sink.write(`# Export capped at ${MAX_EXPORT_ROWS} rows. Narrow the date range for the full file.\n`);
+        break;
+      }
       if (batch.length < BATCH) break;
       const lastRow = batch[batch.length - 1];
       if (!lastRow) break;

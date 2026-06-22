@@ -3,10 +3,33 @@
  */
 import * as XLSX from 'xlsx';
 
-function toDateString(ts) {
-  if (!ts) return '';
+const EXPORT_DISCLAIMER = 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.';
+const MAX_SHEET_NAME_LENGTH = 31;
+const INVALID_SHEET_NAME_CHARS = /[\\/?*:\[\]]/g;
+
+function dateFromTimestamp(ts) {
+  if (!ts) return null;
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleString();
+  return d instanceof Date && Number.isFinite(d.getTime()) ? d : null;
+}
+
+function toDateString(ts) {
+  const d = dateFromTimestamp(ts);
+  return d ? d.toLocaleString() : '';
+}
+
+function sheetNameFor(name, used) {
+  const clean = String(name || 'Sheet').replace(INVALID_SHEET_NAME_CHARS, ' ').trim() || 'Sheet';
+  const hash = Array.from(clean).reduce((sum, ch) => (sum + ch.charCodeAt(0)) % 1296, 0).toString(36).padStart(2, '0');
+  let base = clean.length > MAX_SHEET_NAME_LENGTH ? `${clean.slice(0, MAX_SHEET_NAME_LENGTH - 3)}_${hash}` : clean;
+  let sheetName = base;
+  let i = 2;
+  while (used.has(sheetName)) {
+    const suffix = `_${i++}`;
+    sheetName = `${base.slice(0, MAX_SHEET_NAME_LENGTH - suffix.length)}${suffix}`;
+  }
+  used.add(sheetName);
+  return sheetName;
 }
 
 export function exportTodayXLSX(scans, exceptions, jobMeta) {
@@ -14,12 +37,12 @@ export function exportTodayXLSX(scans, exceptions, jobMeta) {
   today.setHours(0, 0, 0, 0);
 
   const todayScans = scans.filter((s) => {
-    const d = s.timestamp?.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
-    return d >= today;
+    const d = dateFromTimestamp(s.timestamp);
+    return d ? d >= today : false;
   });
   const todayExceptions = exceptions.filter((ex) => {
-    const d = ex.timestamp?.toDate ? ex.timestamp.toDate() : new Date(ex.timestamp);
-    return d >= today;
+    const d = dateFromTimestamp(ex.timestamp);
+    return d ? d >= today : false;
   });
 
   return buildWorkbook(todayScans, todayExceptions, jobMeta, 'Today');
@@ -39,6 +62,7 @@ export function exportPerPO(scans, exceptions, jobMeta) {
   }
 
   // One tab per PO
+  const usedSheetNames = new Set();
   for (const [po, poScans] of Object.entries(byPO).sort(([a], [b]) => a.localeCompare(b))) {
     const data = poScans.map((s) => ({
       ISBN: s.isbn,
@@ -48,9 +72,7 @@ export function exportPerPO(scans, exceptions, jobMeta) {
       Timestamp: toDateString(s.timestamp),
     }));
     const ws = XLSX.utils.json_to_sheet(data);
-    // Sheet names max 31 chars
-    const sheetName = po.length > 31 ? po.slice(0, 31) : po;
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.utils.book_append_sheet(wb, ws, sheetNameFor(po, usedSheetNames));
   }
 
   // Exceptions tab — consolidated from all POs
@@ -81,7 +103,7 @@ export function exportPerPO(scans, exceptions, jobMeta) {
     { Metric: 'Total Standard Scans', Value: scans.filter((s) => s.type === 'standard').length },
     { Metric: 'Total Exceptions', Value: allExcs.length },
     { Metric: '', Value: '' },
-    { Metric: 'DISCLAIMER', Value: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
+    { Metric: 'DISCLAIMER', Value: EXPORT_DISCLAIMER },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
 
@@ -143,7 +165,7 @@ function buildWorkbook(scans, exceptions, jobMeta, label) {
       Value: scans.filter((s) => s.podId === pod).length,
     })),
     { Metric: '', Value: '' },
-    { Metric: 'DISCLAIMER', Value: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
+    { Metric: 'DISCLAIMER', Value: EXPORT_DISCLAIMER },
   ];
   const ws3 = XLSX.utils.json_to_sheet(summaryData);
   XLSX.utils.book_append_sheet(wb, ws3, 'Summary');
@@ -161,10 +183,16 @@ export function downloadBlob(data, fileName) {
   const a = document.createElement('a');
   a.href = url;
   a.download = fileName;
+  a.style.display = 'none';
   document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const defer = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
+  defer(() => {
+    a.click();
+    defer(() => {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  });
 }
 
 /**
@@ -202,7 +230,7 @@ export function exportReconciliation(scans, manifestData, jobMeta) {
     { Metric: 'Scanned (matched)', Value: found.length },
     { Metric: 'Missing', Value: missing.length },
     { Metric: 'Extra (not in manifest)', Value: extra.length },
-    { Metric: 'Completion %', Value: `${Math.round((found.length / Object.keys(manifestData).length) * 100)}%` },
+    { Metric: 'Completion %', Value: `${Object.keys(manifestData).length ? Math.round((found.length / Object.keys(manifestData).length) * 100) : 0}%` },
   ]);
   XLSX.utils.book_append_sheet(wb, ws3, 'Summary');
 
@@ -234,7 +262,7 @@ export function exportExceptionsXLSX(scans, exceptions, jobMeta) {
     { Metric: 'Manual Exceptions', Value: exceptions.length },
     { Metric: 'Export Date', Value: new Date().toLocaleString() },
     { Metric: '', Value: '' },
-    { Metric: 'DISCLAIMER', Value: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.' },
+    { Metric: 'DISCLAIMER', Value: EXPORT_DISCLAIMER },
   ]);
   XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -309,7 +337,7 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
     { Item: 'TOTAL UNITS', Detail: '', Qty: standardScans.length + totalExceptionBucket, Rate: '', Amount: `$${totalAmount.toFixed(2)}` },
     { Item: '', Detail: '', Qty: '', Rate: '', Amount: '' },
-    { Item: 'DISCLAIMER', Detail: 'Book titles in this report may have been extracted from cover images using AI (OCR). Titles should be verified for accuracy.', Qty: '', Rate: '', Amount: '' },
+    { Item: 'DISCLAIMER', Detail: EXPORT_DISCLAIMER, Qty: '', Rate: '', Amount: '' },
   ];
   const ws1 = XLSX.utils.json_to_sheet(summaryRows);
   // Widen columns
