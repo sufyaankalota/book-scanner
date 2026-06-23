@@ -91,3 +91,22 @@ export async function deleteBox(boxId) {
   await Promise.all(items.docs.map((d) => deleteDoc(d.ref)));
   await deleteDoc(doc(db, 'boxes', boxId));
 }
+
+/** One-shot list of every box for a job (any status). */
+export async function listBoxesForJob(jobId) {
+  const snap = await getDocs(query(collection(db, 'boxes'), where('jobId', '==', jobId)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/** One-shot list of a box's items. */
+export async function listBoxItems(boxId) {
+  const snap = await getDocs(collection(db, 'boxes', boxId, 'items'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/** Every box for a job with its items attached — for the EOD content export. */
+export async function listBoxesWithItems(jobId) {
+  const boxes = await listBoxesForJob(jobId);
+  await Promise.all(boxes.map(async (b) => { b.items = await listBoxItems(b.id); }));
+  return boxes;
+}

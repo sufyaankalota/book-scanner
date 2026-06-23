@@ -30,6 +30,7 @@ export default function JobHistory() {
       try {
         const snap = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', false)));
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          .filter((j) => !j.meta?.test) // hide TEST jobs from live history
           .sort((a, b) => {
             const ta = a.meta.closedAt?.toDate?.() || new Date(0);
             const tb = b.meta.closedAt?.toDate?.() || new Date(0);

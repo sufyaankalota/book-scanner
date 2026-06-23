@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Hash, Search, Package, Printer, CheckCircle2, AlertTriangle, Box as BoxIcon, GraduationCap, X } from 'lucide-react';
+import { Hash, Search, Package, Printer, CheckCircle2, AlertTriangle, Box as BoxIcon, GraduationCap, X, Download } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { cleanISBN, isValidISBN, isbnAlternates } from '../utils/isbn';
 import { lookupEntry, loadTitleIndex } from '../utils/manifestStore';
 import { findMatches } from '../utils/fuzzy';
-import { openBox, addBoxItem, closeBox, watchOpenBoxes } from '../utils/boxStore';
+import { openBox, addBoxItem, closeBox, watchOpenBoxes, listBoxesWithItems } from '../utils/boxStore';
+import { listPalletsForJob } from '../utils/palletStore';
 import { printBookLabel, printBoxLabel } from '../utils/labels';
+import { exportBoxPalletXLSX } from '../utils/export';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useScanInput } from '../hooks/useScanInput';
 
@@ -25,6 +27,7 @@ export default function Pack() {
   const boxesByPoRef = useRef({});
   const [flash, setFlash] = useState(null); // { tone, msg }
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [recent, setRecent] = useState([]); // [{ isbn, title, po, boxId, t }]
   const [trainCount, setTrainCount] = useState(0);
 
@@ -44,11 +47,29 @@ export default function Pack() {
     flashTimer.current = setTimeout(() => setFlash(null), 2600);
   }, []);
 
-  // ── Active packing job ──
+  const exportContent = useCallback(async () => {
+    if (!job) return;
+    setExporting(true);
+    try {
+      const [boxes, pallets] = await Promise.all([listBoxesWithItems(job.id), listPalletsForJob(job.id)]);
+      exportBoxPalletXLSX(boxes, pallets, job.meta || {});
+    } catch (e) {
+      showFlash('error', e.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }, [job, showFlash]);
+
+  // ── Packing job: prefer the live (active) pack job; fall back to a test
+  //    pack job so the stations can be exercised before go-live WITHOUT
+  //    deactivating the live scan job (book-scanner allows one active job). ──
   useEffect(() => {
-    const q = query(collection(db, 'jobs'), where('meta.workflow', '==', 'pack'), where('meta.active', '==', true));
+    const q = query(collection(db, 'jobs'), where('meta.workflow', '==', 'pack'));
     const unsub = onSnapshot(q, (snap) => {
-      setJob(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
+      const jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const active = jobs.find((j) => j.meta?.active);
+      const test = jobs.find((j) => j.meta?.test);
+      setJob(active || test || null);
       setJobLoading(false);
     }, () => setJobLoading(false));
     return unsub;
@@ -188,10 +209,15 @@ export default function Pack() {
           <h1 style={st.h1}>{`Pack \u2014 ${job.meta?.name || ''}${job.meta?.test ? ' (TEST)' : ''}`}</h1>
           <p style={st.dim}>{`${operator} \u00b7 ${station} \u00b7 ${hasManifest ? `${(job.manifestMeta?.totalIsbns || 0).toLocaleString()} ISBNs` : 'no manifest'}`}</p>
         </div>
-        <label style={st.trainToggle}>
-          <input type="checkbox" checked={training} onChange={(e) => setTraining(e.target.checked)} />
-          <GraduationCap size={15} /> Training (no save)
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button style={st.exportBtn} disabled={exporting} onClick={exportContent}>
+            <Download size={15} /> {exporting ? 'Exporting\u2026' : 'Export content'}
+          </button>
+          <label style={st.trainToggle}>
+            <input type="checkbox" checked={training} onChange={(e) => setTraining(e.target.checked)} />
+            <GraduationCap size={15} /> Training (no save)
+          </label>
+        </div>
       </div>
 
       {flash && (
@@ -248,7 +274,7 @@ export default function Pack() {
               onChange={(e) => setTitleQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runTitleSearch(); }} />
             <button style={st.primary} disabled={titleBusy || !titleQuery.trim()} onClick={runTitleSearch}>{titleBusy ? '\u2026' : 'Search'}</button>
           </div>
-          {candidates && candidates.length === 0 && <p style={st.warn}>No matches \u2014 try fewer words.</p>}
+          {candidates && candidates.length === 0 && <p style={st.warn}>{'No matches \u2014 try fewer words.'}</p>}
           {candidates && candidates.map((c, i) => (
             <button key={c.isbn} style={st.candidate} onClick={() => pickCandidate(c)}>
               <span style={st.candIdx}>{i + 1}</span>
@@ -308,6 +334,7 @@ const st = {
   primary: { marginTop: 16, padding: '12px 20px', borderRadius: 10, border: 'none', background: 'var(--accent, #4d7cff)', color: 'var(--accent-contrast, #fff)', fontSize: 16, fontWeight: 800, cursor: 'pointer' },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 },
   trainToggle: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text-secondary,#ccc)', cursor: 'pointer' },
+  exportBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   flash: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 10, fontSize: 17, fontWeight: 800, marginBottom: 12 },
   flashOk: { background: 'var(--success-soft)', border: '1px solid var(--success)', color: 'var(--success)' },
   flashWarn: { background: 'var(--warning-soft)', border: '1px solid var(--warning)', color: 'var(--warning)' },

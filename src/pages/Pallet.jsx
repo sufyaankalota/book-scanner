@@ -32,11 +32,15 @@ export default function Pallet() {
     flashTimer.current = setTimeout(() => setFlash(null), 2800);
   }, []);
 
-  // Active packing job
+  // Packing job: prefer the live (active) pack job; fall back to a test pack
+  // job so the station works pre-launch without touching the live scan job.
   useEffect(() => {
-    const q = query(collection(db, 'jobs'), where('meta.workflow', '==', 'pack'), where('meta.active', '==', true));
+    const q = query(collection(db, 'jobs'), where('meta.workflow', '==', 'pack'));
     const unsub = onSnapshot(q, (snap) => {
-      setJob(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() });
+      const jobs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const active = jobs.find((j) => j.meta?.active);
+      const test = jobs.find((j) => j.meta?.test);
+      setJob(active || test || null);
       setJobLoading(false);
     }, () => setJobLoading(false));
     return unsub;

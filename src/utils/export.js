@@ -438,3 +438,95 @@ export function exportBillingXLSX(scans, exceptions, jobMeta, weekStart, weekEnd
     },
   };
 }
+
+/**
+ * Box + Pallet content export for the packing workflow.
+ * @param {Array} boxes   — boxes for the job, each with an `items` array attached
+ * @param {Array} pallets — pallets for the job
+ * @param {Object} jobMeta
+ */
+export function exportBoxPalletXLSX(boxes, pallets, jobMeta) {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Pallets
+  const palletRows = [...pallets]
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    .map((p) => ({
+      Pallet: p.id,
+      PO: p.poName || '',
+      Status: p.status || '',
+      Boxes: p.boxCount || (p.boxIds ? p.boxIds.length : 0),
+      'Weight (lb)': p.totalWeightLb ?? '',
+      'Height (in)': p.totalHeightIn ?? '',
+      'Assigned By': p.assignedBy || '',
+      Opened: toDateString(p.createdAt),
+      Closed: toDateString(p.closedAt),
+    }));
+  const ws1 = XLSX.utils.json_to_sheet(palletRows.length ? palletRows : [{ Pallet: '', PO: '', Status: '', Boxes: '', 'Weight (lb)': '', 'Height (in)': '', 'Assigned By': '', Opened: '', Closed: '' }]);
+  ws1['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 11 }, { wch: 11 }, { wch: 14 }, { wch: 20 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Pallets');
+
+  // Sheet 2: Boxes
+  const boxRows = [...boxes]
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    .map((b) => ({
+      Box: b.id,
+      PO: b.poName || '',
+      Pallet: b.palletId || '',
+      Status: b.status || '',
+      Books: b.itemCount || (b.items ? b.items.length : 0),
+      'Packed By': b.packedBy || '',
+      Station: b.station || '',
+      Opened: toDateString(b.createdAt),
+      Closed: toDateString(b.closedAt),
+    }));
+  const ws2 = XLSX.utils.json_to_sheet(boxRows.length ? boxRows : [{ Box: '', PO: '', Pallet: '', Status: '', Books: '', 'Packed By': '', Station: '', Opened: '', Closed: '' }]);
+  ws2['!cols'] = [{ wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 7 }, { wch: 14 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Boxes');
+
+  // Sheet 3: Box Contents (one row per book)
+  const contentRows = [];
+  for (const b of [...boxes].sort((a, c) => String(a.id).localeCompare(String(c.id)))) {
+    for (const it of (b.items || [])) {
+      contentRows.push({
+        Box: b.id,
+        PO: b.poName || '',
+        Pallet: b.palletId || '',
+        ISBN: it.isbn13 || it.isbn || '',
+        Title: it.title || '',
+        Source: it.source || '',
+        Added: toDateString(it.addedAt),
+      });
+    }
+  }
+  const ws3 = XLSX.utils.json_to_sheet(contentRows.length ? contentRows : [{ Box: '', PO: '', Pallet: '', ISBN: '', Title: '', Source: '', Added: '' }]);
+  ws3['!cols'] = [{ wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Box Contents');
+
+  // Sheet 4: Summary
+  const totalBooks = boxes.reduce((n, b) => n + (b.itemCount || (b.items ? b.items.length : 0)), 0);
+  const closedBoxes = boxes.filter((b) => b.status === 'closed').length;
+  const closedPallets = pallets.filter((p) => p.status === 'closed').length;
+  const byPo = {};
+  for (const b of boxes) {
+    const po = b.poName || 'UNASSIGNED';
+    byPo[po] = (byPo[po] || 0) + (b.itemCount || (b.items ? b.items.length : 0));
+  }
+  const summaryRows = [
+    { Metric: 'Job', Value: jobMeta?.name || '' },
+    { Metric: 'Export Date', Value: new Date().toLocaleString() },
+    { Metric: 'Total Pallets', Value: pallets.length },
+    { Metric: 'Closed Pallets', Value: closedPallets },
+    { Metric: 'Total Boxes', Value: boxes.length },
+    { Metric: 'Closed Boxes', Value: closedBoxes },
+    { Metric: 'Total Books Packed', Value: totalBooks },
+    { Metric: '', Value: '' },
+    ...Object.entries(byPo).sort(([a], [b]) => a.localeCompare(b)).map(([po, n]) => ({ Metric: `${po} — Books`, Value: n })),
+    { Metric: '', Value: '' },
+    { Metric: 'DISCLAIMER', Value: EXPORT_DISCLAIMER },
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  downloadBlob(buf, `${jobMeta?.name || 'packing'}_boxes_pallets_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}

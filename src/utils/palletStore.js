@@ -13,7 +13,7 @@
  */
 import { db } from '../firebase';
 import {
-  collection, doc, setDoc, updateDoc, getDoc, deleteDoc,
+  collection, doc, setDoc, updateDoc, getDoc, getDocs, deleteDoc,
   runTransaction, serverTimestamp, query, where, onSnapshot,
 } from 'firebase/firestore';
 import { nextSeq } from './boxStore';
@@ -103,4 +103,10 @@ export function watchOpenPallets(jobId, cb) {
 
 export async function deletePallet(palletId) {
   await deleteDoc(doc(db, 'pallets', palletId));
+}
+
+/** One-shot list of every pallet for a job (any status) — for the EOD export. */
+export async function listPalletsForJob(jobId) {
+  const snap = await getDocs(query(collection(db, 'pallets'), where('jobId', '==', jobId)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }

@@ -33,6 +33,7 @@ export default function Setup() {
   const [jobName, setJobName] = useState('');
   const [mode, setMode] = useState('single');
   const [workflow, setWorkflow] = useState('scan');
+  const [testJob, setTestJob] = useState(false);
   const [dailyTarget, setDailyTarget] = useState(22000);
   const [workingHours, setWorkingHours] = useState(8);
   const [pods, setPods] = useState(DEFAULT_PODS);
@@ -351,7 +352,7 @@ export default function Setup() {
     setSaving(true);
     try {
       const existing = await getDocs(query(collection(db, 'jobs'), where('meta.active', '==', true)));
-      if (!existing.empty) {
+      if (!existing.empty && !testJob) {
         toast('Another job is already active. Close it first.', 'error');
         const d = existing.docs[0]; setActiveJob({ id: d.id, ...d.data() }); setSaving(false); return;
       }
@@ -359,7 +360,7 @@ export default function Setup() {
       const excColor = mode === 'multi' ? (exceptionColor || DEFAULT_EXCEPTION_COLOR) : DEFAULT_EXCEPTION_COLOR;
       const excNumber = mode === 'multi' && exceptionNumber !== '' ? Number(exceptionNumber) : null;
       await setDoc(doc(db, 'jobs', jobId), {
-        meta: { name: jobName.trim(), mode, workflow, dailyTarget: target, workingHours: hours, pods, active: true,
+        meta: { name: jobName.trim(), mode, workflow, dailyTarget: target, workingHours: hours, pods, active: !testJob, test: testJob || false,
           floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0,
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
@@ -392,13 +393,17 @@ export default function Setup() {
           setSelectedUploadId(null);
         }
       }
-      logAudit('job_created', { jobId, name: jobName.trim(), mode });
+      logAudit(testJob ? 'test_job_created' : 'job_created', { jobId, name: jobName.trim(), mode, workflow });
       setActivateProgress({ written: 0, total: 0, label: '' });
-      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, workflow, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, exceptionColor: excColor, exceptionNumber: excNumber, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
-      setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
-      setEditFloaters(Number(floaters) || 0); setEditRunners(Number(runners) || 0);
-      setEditSupervisors(Number(supervisors) || 0);
-      setEditExceptionColor(excColor); setEditExceptionNumber(excNumber ?? '');
+      if (testJob) {
+        toast(`Test job "${jobName.trim()}" created (not active). Open /pack or /pallet to test — the live job is untouched.`, 'success');
+      } else {
+        setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, workflow, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, exceptionColor: excColor, exceptionNumber: excNumber, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
+        setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
+        setEditFloaters(Number(floaters) || 0); setEditRunners(Number(runners) || 0);
+        setEditSupervisors(Number(supervisors) || 0);
+        setEditExceptionColor(excColor); setEditExceptionNumber(excNumber ?? '');
+      }
     } catch (err) { toast('Failed to create job: ' + err.message, 'error'); }
     setSaving(false);
   };
@@ -1502,11 +1507,17 @@ export default function Setup() {
         )}
 
         <label style={{ ...s.label, marginTop: 16 }}>Workflow</label>
-        <select value={workflow} onChange={(e) => setWorkflow(e.target.value)} style={s.input}>
+        <select value={workflow} onChange={(e) => { setWorkflow(e.target.value); if (e.target.value !== 'pack') setTestJob(false); }} style={s.input}>
           <option value="scan">Scan only (current flow)</option>
           <option value="pack">Packing — box + pallet (new)</option>
         </select>
         <p style={{ color: '#999', fontSize: 13, marginTop: 4 }}>Packing routes books into single-PO boxes, prints labels, and builds pallets. Leave on "Scan only" for the existing flow.</p>
+        {workflow === 'pack' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, color: '#bbb', fontSize: 14, cursor: 'pointer' }}>
+            <input type="checkbox" checked={testJob} onChange={(e) => setTestJob(e.target.checked)} />
+            Create as TEST job — not active, excluded from history, for trying /pack &amp; /pallet without touching the live job
+          </label>
+        )}
 
         <label style={{ ...s.label, marginTop: 16 }}>Daily Target</label>
         <input type="number" value={dailyTarget} onChange={(e) => { setDailyTarget(e.target.value); setFieldError((p) => ({ ...p, dailyTarget: undefined })); }} style={s.input} />
@@ -1529,7 +1540,7 @@ export default function Setup() {
 
         <button onClick={handleActivateJob} disabled={saving}
           style={{ ...s.primaryBtn, marginTop: 24, opacity: saving ? 0.6 : 1 }}>
-          {saving ? 'Activating...' : 'Activate Job'}
+          {saving ? (testJob ? 'Creating...' : 'Activating...') : (testJob ? 'Create Test Job' : 'Activate Job')}
         </button>
         {saving && activateProgress.total > 0 && (
           <div style={{ marginTop: 12 }}>
