@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Hash, Search, Package, Printer, CheckCircle2, AlertTriangle, Box as BoxIcon, GraduationCap, X, Download } from 'lucide-react';
+import { Hash, Search, Package, Printer, CheckCircle2, AlertTriangle, Box as BoxIcon, GraduationCap, X, Download, Camera } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { cleanISBN, isValidISBN, isbnAlternates } from '../utils/isbn';
@@ -12,6 +12,7 @@ import { printBookLabel, printBoxLabel } from '../utils/labels';
 import { exportBoxPalletXLSX } from '../utils/export';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useScanInput } from '../hooks/useScanInput';
+import BookCamera from '../components/BookCamera';
 
 const CLAIM_TTL = 60 * 24 * 3600; // 60 days — a packing job can span weeks
 
@@ -39,6 +40,10 @@ export default function Pack() {
 
   const [showManual, setShowManual] = useState(false);
   const [manualIsbn, setManualIsbn] = useState('');
+
+  const [showCamera, setShowCamera] = useState(false);
+  const [camCandidates, setCamCandidates] = useState(null); // null = capturing; [] = no match; [...] = pick
+  const [camTitle, setCamTitle] = useState('');
 
   const flashTimer = useRef(null);
   const showFlash = useCallback((tone, msg) => {
@@ -145,7 +150,7 @@ export default function Pack() {
   }, [job, hasManifest, manifestPath, numChunks, training, station, operator, showFlash, pushRecent]);
 
   // ── Scan input (wedge / native bridge / manual) ──
-  const submitScan = useScanInput((code) => resolveAndPack(code, { source: 'scan' }), { enabled: entered && !showTitle && !showManual });
+  const submitScan = useScanInput((code) => resolveAndPack(code, { source: 'scan' }), { enabled: entered && !showTitle && !showManual && !showCamera });
 
   // ── Title search (no-barcode books) ──
   const runTitleSearch = useCallback(async () => {
@@ -166,6 +171,27 @@ export default function Pack() {
     setShowTitle(false); setCandidates(null); setTitleQuery('');
     resolveAndPack(cand.isbn, { source: 'title' });
   }, [resolveAndPack]);
+
+  // ── AI cover camera (no-barcode books): extract title + match manifest server-side ──
+  const openCamera = useCallback(() => { setCamCandidates(null); setCamTitle(''); setShowCamera(true); }, []);
+  const closeCamera = useCallback(() => { setShowCamera(false); setCamCandidates(null); setCamTitle(''); }, []);
+
+  const onCameraResult = useCallback(({ title, candidates }) => {
+    setCamTitle(title || '');
+    setCamCandidates(Array.isArray(candidates) ? candidates : []);
+  }, []);
+
+  const pickCamCandidate = useCallback((cand) => {
+    closeCamera();
+    resolveAndPack(cand.isbn, { source: 'camera' });
+  }, [closeCamera, resolveAndPack]);
+
+  // Couldn't auto-match — hand the extracted title to the title-search modal.
+  const camTitleFallback = useCallback(() => {
+    const t = camTitle;
+    closeCamera();
+    setTitleQuery(t); setCandidates(null); setShowTitle(true);
+  }, [camTitle, closeCamera]);
 
   const handleCloseBox = useCallback(async (box) => {
     try {
@@ -244,12 +270,15 @@ export default function Pack() {
         <button style={st.actionBtn} disabled={busy} onClick={() => { setShowTitle(true); setCandidates(null); setTitleQuery(''); }}>
           <Search size={18} /> Type title (no barcode)
         </button>
+        <button style={st.actionBtn} disabled={busy} onClick={openCamera}>
+          <Camera size={18} /> Scan cover (AI)
+        </button>
         <button style={st.actionBtn} disabled={busy} onClick={() => { setShowManual(true); setManualIsbn(''); }}>
           <Hash size={18} /> Type ISBN
         </button>
       </div>
 
-      <p style={st.hint}><Package size={14} />{' Scan a book to pack it. No barcode? Use Type title or Type ISBN \u2014 a label prints to apply.'}</p>
+      <p style={st.hint}><Package size={14} />{' Scan a book to pack it. No barcode? Use Scan cover (AI), Type title, or Type ISBN \u2014 a label prints to apply.'}</p>
 
       {/* Recent */}
       {(recent.length > 0 || training) && (
@@ -295,6 +324,38 @@ export default function Pack() {
             <button style={st.primary} disabled={!manualIsbn.trim()} onClick={() => { setShowManual(false); resolveAndPack(manualIsbn, { source: 'manual' }); }}>Pack</button>
           </div>
           <p style={st.hint}>A 2.25 x 1.25 ISBN label prints to apply to the book.</p>
+        </Modal>
+      )}
+
+      {/* AI cover camera modal */}
+      {showCamera && (
+        <Modal onClose={closeCamera} title="Scan cover (AI)">
+          {camCandidates === null ? (
+            <BookCamera mode="title" jobId={job.id} podId={station} embedded onResult={onCameraResult} onClose={closeCamera} />
+          ) : camCandidates.length > 0 ? (
+            <div>
+              <p style={st.dim}>{camTitle ? `Read: \u201c${camTitle}\u201d \u2014 pick the match:` : 'Pick the match:'}</p>
+              {camCandidates.map((c, i) => (
+                <button key={c.isbn} style={st.candidate} onClick={() => pickCamCandidate(c)}>
+                  <span style={st.candIdx}>{i + 1}</span>
+                  <span style={st.candTitle}>{c.title}</span>
+                  <span style={st.candMeta}>{`${c.po} \u00b7 ${c.isbn} \u00b7 ${Math.round((c.score || 0) * 100)}%`}</span>
+                </button>
+              ))}
+              <button style={{ ...st.actionBtn, marginTop: 12 }} onClick={() => setCamCandidates(null)}>
+                <Camera size={16} /> Retake
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p style={st.warn}><AlertTriangle size={16} /> {camTitle ? `No manifest match for \u201c${camTitle}\u201d.` : 'Could not read the cover.'}</p>
+              <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                <button style={st.actionBtn} onClick={() => setCamCandidates(null)}><Camera size={16} /> Retake</button>
+                {camTitle && <button style={st.actionBtn} onClick={camTitleFallback}><Search size={16} /> Search by title</button>}
+                <button style={st.actionBtn} onClick={() => { closeCamera(); setShowManual(true); setManualIsbn(''); }}><Hash size={16} /> Type ISBN</button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
     </Shell>
