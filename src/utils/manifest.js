@@ -7,6 +7,11 @@
  *   - manifest[isbn] = po (string)    for legacy CSVs without titles
  * (writeManifestChunks transparently handles both shapes.)
  *
+ * Columns are auto-detected. A manifest with BOTH "ISBN-10" and "ISBN-13"
+ * columns (the packing-job format: PO, Title, ISBN-10, ISBN-13) maps each
+ * row to BOTH ISBN forms under the same {po,title}. A single generic "ISBN"
+ * column behaves exactly as before.
+ *
  * First occurrence of a duplicate ISBN wins.
  *
  * Sibling backfill: many manifests duplicate each book as ISBN-13 (with title)
@@ -16,6 +21,34 @@
  */
 import * as XLSX from 'xlsx';
 import { isbnAlternates } from './isbn';
+
+/**
+ * Split a single CSV line into fields. Handles double-quoted fields,
+ * escaped "" quotes, and EMPTY fields (e.g. a missing ISBN-10 for a 979-
+ * prefixed book) so column indices stay aligned with the header row.
+ */
+function splitCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = false;
+      } else { cur += ch; }
+    } else if (ch === '"') {
+      inQ = true;
+    } else if (ch === ',') {
+      out.push(cur); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map((c) => c.trim());
+}
 
 /**
  * Walk the parsed manifest and propagate titles + POs across ISBN-10/13
@@ -71,6 +104,8 @@ function parseCSVStream(file, onProgress) {
     const poSet = new Set();
     let header = null;
     let isbnIdx = -1;
+    let isbn13Idx = -1;
+    let isbn10Idx = -1;
     let poIdx = -1;
     let titleIdx = -1;
     let skipped = 0;
@@ -92,31 +127,43 @@ function parseCSVStream(file, onProgress) {
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        // Parse CSV row (handles quoted fields)
-        const cols = trimmed.match(/("(?:[^"]|"")*"|[^,]*)/g)?.map((c) =>
-          c.replace(/^"|"$/g, '').replace(/""/g, '"').trim()
-        ) || [];
+        // Parse CSV row (quoted fields + empty fields, column-aligned)
+        const cols = splitCsvLine(trimmed);
 
         if (!header) {
           header = cols;
           isbnIdx = cols.findIndex((c) => /isbn/i.test(c));
+          isbn13Idx = cols.findIndex((c) => /isbn.?13/i.test(c));
+          isbn10Idx = cols.findIndex((c) => /isbn.?10/i.test(c));
           poIdx = cols.findIndex((c) => /^(po|po.?name|purchase.?order)/i.test(c));
           titleIdx = cols.findIndex((c) => /title|book.?name/i.test(c));
-          if (isbnIdx === -1 || poIdx === -1) {
+          const hasAnyIsbn = isbnIdx !== -1 || isbn13Idx !== -1 || isbn10Idx !== -1;
+          if (!hasAnyIsbn || poIdx === -1) {
             reject(new Error('Could not find ISBN and PO columns. Headers found: ' + cols.join(', ')));
             return false;
           }
           continue;
         }
 
-        const isbn = String(cols[isbnIdx] || '').replace(/[-\s]/g, '').trim();
         const po = String(cols[poIdx] || '').trim();
         const title = titleIdx >= 0 ? String(cols[titleIdx] || '').trim() : '';
 
-        if (!isbn || !po) { skipped++; continue; }
-        if (!manifest[isbn]) {
-          manifest[isbn] = title ? { po, title } : po;
+        // Dual-ISBN manifests (PO, Title, ISBN-10, ISBN-13) map BOTH forms to
+        // the same {po,title}. Single-ISBN manifests use the generic column.
+        if (isbn13Idx !== -1 && isbn10Idx !== -1) {
+          const i13 = String(cols[isbn13Idx] || '').replace(/[-\s]/g, '').trim();
+          const i10 = String(cols[isbn10Idx] || '').replace(/[-\s]/g, '').trim();
+          if (!po || (!i13 && !i10)) { skipped++; continue; }
+          if (i13 && !manifest[i13]) manifest[i13] = title ? { po, title } : po;
+          if (i10 && !manifest[i10]) manifest[i10] = title ? { po, title } : po;
           poSet.add(po);
+        } else {
+          const isbn = String(cols[isbnIdx] || '').replace(/[-\s]/g, '').trim();
+          if (!isbn || !po) { skipped++; continue; }
+          if (!manifest[isbn]) {
+            manifest[isbn] = title ? { po, title } : po;
+            poSet.add(po);
+          }
         }
         processed++;
       }
@@ -181,11 +228,13 @@ export function parseManifestFile(file, onProgress) {
 
         // Find column headers from first row
         const keys = Object.keys(rows[0]);
+        const isbn13Key = keys.find((k) => /isbn.?13/i.test(k));
+        const isbn10Key = keys.find((k) => /isbn.?10/i.test(k));
         const isbnKey = keys.find((k) => /isbn/i.test(k));
         const poKey = keys.find((k) => /^(po|po.?name|purchase.?order)/i.test(k));
         const titleKey = keys.find((k) => /title|book.?name/i.test(k));
 
-        if (!isbnKey || !poKey) {
+        if ((!isbnKey && !isbn13Key && !isbn10Key) || !poKey) {
           reject(
             new Error(
               'Could not find ISBN and PO columns. Headers found: ' +
@@ -196,18 +245,23 @@ export function parseManifestFile(file, onProgress) {
         }
 
         let skipped = 0;
+        const dualIsbn = Boolean(isbn13Key && isbn10Key);
         for (const row of rows) {
-          const isbn = String(row[isbnKey] || '').replace(/[-\s]/g, '').trim();
           const po = String(row[poKey] || '').trim();
           const title = titleKey ? String(row[titleKey] || '').trim() : '';
 
-          if (!isbn || !po) {
-            skipped++;
-            continue;
-          }
-
-          if (!manifest[isbn]) {
-            manifest[isbn] = title ? { po, title } : po;
+          if (dualIsbn) {
+            const i13 = String(row[isbn13Key] || '').replace(/[-\s]/g, '').trim();
+            const i10 = String(row[isbn10Key] || '').replace(/[-\s]/g, '').trim();
+            if (!po || (!i13 && !i10)) { skipped++; continue; }
+            if (i13 && !manifest[i13]) manifest[i13] = title ? { po, title } : po;
+            if (i10 && !manifest[i10]) manifest[i10] = title ? { po, title } : po;
+          } else {
+            const isbn = String(row[isbnKey] || '').replace(/[-\s]/g, '').trim();
+            if (!isbn || !po) { skipped++; continue; }
+            if (!manifest[isbn]) {
+              manifest[isbn] = title ? { po, title } : po;
+            }
           }
         }
 

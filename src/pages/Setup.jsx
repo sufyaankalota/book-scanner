@@ -32,6 +32,7 @@ export default function Setup() {
     : null;
   const [jobName, setJobName] = useState('');
   const [mode, setMode] = useState('single');
+  const [workflow, setWorkflow] = useState('scan');
   const [dailyTarget, setDailyTarget] = useState(22000);
   const [workingHours, setWorkingHours] = useState(8);
   const [pods, setPods] = useState(DEFAULT_PODS);
@@ -358,7 +359,7 @@ export default function Setup() {
       const excColor = mode === 'multi' ? (exceptionColor || DEFAULT_EXCEPTION_COLOR) : DEFAULT_EXCEPTION_COLOR;
       const excNumber = mode === 'multi' && exceptionNumber !== '' ? Number(exceptionNumber) : null;
       await setDoc(doc(db, 'jobs', jobId), {
-        meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true,
+        meta: { name: jobName.trim(), mode, workflow, dailyTarget: target, workingHours: hours, pods, active: true,
           floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0,
           location: location.trim() || '', createdAt: serverTimestamp() },
         poColors: mode === 'multi' ? poColors : {},
@@ -393,7 +394,7 @@ export default function Setup() {
       }
       logAudit('job_created', { jobId, name: jobName.trim(), mode });
       setActivateProgress({ written: 0, total: 0, label: '' });
-      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, exceptionColor: excColor, exceptionNumber: excNumber, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
+      setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, workflow, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, exceptionColor: excColor, exceptionNumber: excNumber, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
       setEditTarget(target); setEditHours(hours); setEditPods(pods.join(', '));
       setEditFloaters(Number(floaters) || 0); setEditRunners(Number(runners) || 0);
       setEditSupervisors(Number(supervisors) || 0);
@@ -454,7 +455,7 @@ export default function Setup() {
       const qExcColor = qMode === 'multi' ? (qExceptionColor || DEFAULT_EXCEPTION_COLOR) : DEFAULT_EXCEPTION_COLOR;
       const qExcNumber = qMode === 'multi' && qExceptionNumber !== '' ? Number(qExceptionNumber) : null;
       await setDoc(doc(db, 'jobs', jobId), {
-        meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false,
+        meta: { name: qJobName.trim(), mode: qMode, workflow: 'scan', dailyTarget: target, workingHours: hours, pods: qPods, active: false,
           floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0,
           queued: true, queueOrder: Date.now(), location: qLocation.trim() || '', createdAt: serverTimestamp() },
         poColors: qMode === 'multi' ? qPoColors : {},
@@ -485,7 +486,7 @@ export default function Setup() {
       }
       logAudit('job_queued', { jobId, name: qJobName.trim(), mode: qMode });
       setQueueProgress({ written: 0, total: 0, label: '' });
-      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, dailyTarget: target, workingHours: hours, pods: qPods, active: false, floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {}, poNumbers: qMode === 'multi' ? qPoNumbers : {} };
+      const newJob = { id: jobId, meta: { name: qJobName.trim(), mode: qMode, workflow: 'scan', dailyTarget: target, workingHours: hours, pods: qPods, active: false, floaters: Number(qFloaters) || 0, runners: Number(qRunners) || 0, supervisors: Number(qSupervisors) || 0, queued: true, queueOrder: Date.now(), location: qLocation.trim() || '' }, poColors: qMode === 'multi' ? qPoColors : {}, poNumbers: qMode === 'multi' ? qPoNumbers : {} };
       setQueuedJobs((prev) => [...prev, newJob]);
       // Reset form
       setQJobName(''); setQMode('single'); setQDailyTarget(22000); setQWorkingHours(8);
@@ -1499,6 +1500,13 @@ export default function Setup() {
             )}
           </div>
         )}
+
+        <label style={{ ...s.label, marginTop: 16 }}>Workflow</label>
+        <select value={workflow} onChange={(e) => setWorkflow(e.target.value)} style={s.input}>
+          <option value="scan">Scan only (current flow)</option>
+          <option value="pack">Packing — box + pallet (new)</option>
+        </select>
+        <p style={{ color: '#999', fontSize: 13, marginTop: 4 }}>Packing routes books into single-PO boxes, prints labels, and builds pallets. Leave on "Scan only" for the existing flow.</p>
 
         <label style={{ ...s.label, marginTop: 16 }}>Daily Target</label>
         <input type="number" value={dailyTarget} onChange={(e) => { setDailyTarget(e.target.value); setFieldError((p) => ({ ...p, dailyTarget: undefined })); }} style={s.input} />

@@ -122,6 +122,41 @@ async function _lookupIsbnRaw(parentPath, isbn, numChunks) {
 }
 
 /**
+ * Like lookupIsbn but returns the FULL manifest entry { po, title } (or null).
+ * Used by the packing flow, which needs the PO (to route the book to its
+ * single-PO box) AND the title (for the box-content ledger + label). Same
+ * chunk cache + ISBN-10/13 alternate-form retry as lookupIsbn.
+ */
+export async function lookupEntry(parentPath, isbn, numChunks) {
+  const direct = await _lookupEntryRaw(parentPath, isbn, numChunks);
+  if (direct) return direct;
+  const { isbn13, isbn10 } = isbnAlternates(isbn);
+  const alt = isbn === isbn13 ? isbn10 : isbn13;
+  if (!alt || alt === isbn) return null;
+  return _lookupEntryRaw(parentPath, alt, numChunks);
+}
+
+async function _lookupEntryRaw(parentPath, isbn, numChunks) {
+  const idx = hashIsbn(isbn, numChunks);
+  const chunkId = `c${String(idx).padStart(5, '0')}`;
+  const key = `${parentPath}/${chunkId}`;
+
+  let isbns;
+  if (_cache.has(key)) {
+    isbns = _cache.get(key);
+  } else {
+    const snap = await getDoc(doc(db, parentPath, 'manifest-chunks', chunkId));
+    if (!snap.exists()) return null;
+    isbns = snap.data().isbns || {};
+    if (_cache.size >= CACHE_MAX) _cache.delete(_cache.keys().next().value);
+    _cache.set(key, isbns);
+  }
+  const raw = isbns[isbn];
+  if (raw == null) return null;
+  return { po: getPoFromEntry(raw), title: getTitleFromEntry(raw) };
+}
+
+/**
  * Load every chunk under parentPath, returning a flat title-index for
  * AI cover→ISBN fuzzy matching. Caller decides when to invoke (typically
  * when the operator first opens the AI camera flow). Cached per-parentPath.
