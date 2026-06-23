@@ -34,6 +34,11 @@ service cloud.firestore {
         allow create, update: if true;
         allow delete: if false;
       }
+
+      // Packing workflow — atomic box/pallet sequence counters
+      match /counters/{key} {
+        allow read, write: if true;
+      }
     }
 
     // Scans — pods write, dashboard/portal read
@@ -150,6 +155,21 @@ service cloud.firestore {
 
     // AI usage telemetry — written by Cloud Function, read by Dashboard for cost reporting
     match /ai-usage/{usageId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Packing workflow — boxes (single-PO) + their item ledger
+    match /boxes/{boxId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+      match /items/{isbn} {
+        allow read, write: if true;
+      }
+    }
+
+    // Packing workflow — pallets (single-PO)
+    match /pallets/{palletId} {
       allow read: if true;
       allow create, update, delete: if true;
     }
