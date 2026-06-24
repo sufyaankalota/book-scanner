@@ -16,6 +16,11 @@ function palletName(p) {
   return p && p.number != null ? `Pallet ${p.number}` : (p && p.id) || 'Pallet';
 }
 
+// Per-PO color so the one-pallet-per-PO build is unmistakable at a glance. Uses
+// the job's Setup PO colors when present, else a stable fallback palette.
+const FALLBACK_PO_COLORS = ['#4d7cff', '#f5a524', '#2fbf71', '#a855f7', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
+function poHashIdx(s) { let h = 0; const str = String(s || ''); for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h % FALLBACK_PO_COLORS.length; }
+
 export default function Pallet() {
   const [job, setJob] = useState(null);
   const [jobLoading, setJobLoading] = useState(true);
@@ -159,6 +164,9 @@ export default function Pallet() {
     return <Shell><h2 style={st.h2}>Pallet station</h2><p style={st.warn}><AlertTriangle size={16} /> No active packing job.</p></Shell>;
   }
 
+  const poColors = job.poColors || {};
+  const poColorFor = (po) => poColors[po] || FALLBACK_PO_COLORS[poHashIdx(po)];
+
   return (
     <Shell>
       <div style={st.topBar}>
@@ -171,13 +179,15 @@ export default function Pallet() {
       <p style={st.sub}>{`${operator} \u00b7 ${station}`}</p>
 
       {/* The one thing that matters after a scan: which pallet to stack it on */}
+      {/* The one thing that matters after a scan: which PO pallet to stack it on */}
       {lastAdd ? (
-        <div style={st.hero}>
-          <CheckCircle2 size={34} />
+        <div style={{ ...st.hero, borderLeftColor: poColorFor(lastAdd.po) }}>
           <div style={st.heroBody}>
-            <div style={st.heroTitle}>{lastAdd.number != null ? `Put it on Pallet ${lastAdd.number}` : 'Put it on the pallet'}</div>
-            <div style={st.heroSub}>{`${lastAdd.boxCount} box${lastAdd.boxCount === 1 ? '' : 'es'} on it now \u00b7 PO ${lastAdd.po}`}</div>
+            <div style={st.heroKicker}>Put this box on</div>
+            <div style={st.heroTitle}><span style={{ ...st.dot, background: poColorFor(lastAdd.po) }} /> {lastAdd.po}</div>
+            <div style={st.heroSub}>{`${lastAdd.number != null ? `Pallet ${lastAdd.number} \u00b7 ` : ''}${lastAdd.boxCount} box${lastAdd.boxCount === 1 ? '' : 'es'} now`}</div>
           </div>
+          <CheckCircle2 size={32} style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--success)' }} />
         </div>
       ) : (
         <div style={st.scanCue}><Layers size={24} /> Scan a box to begin</div>
@@ -196,14 +206,16 @@ export default function Pallet() {
         const over = checkPalletLimits({ weightLb: m.w === '' || m.w == null ? null : Number(m.w), heightIn: m.h === '' || m.h == null ? null : Number(m.h) });
         const showWarn = !over.ok && (m.w || m.h);
         const closing = closingId === p.id;
+        const color = poColorFor(p.poName);
+        const active = lastAdd && lastAdd.number != null && lastAdd.number === p.number;
         return (
-          <div key={p.id} style={st.pCard}>
+          <div key={p.id} style={{ ...st.pCard, borderLeft: `8px solid ${color}`, ...(active ? { boxShadow: `0 0 0 2px ${color}`, borderColor: color } : null) }}>
             <div style={st.pHead}>
               <div style={{ minWidth: 0 }}>
-                <div style={st.pName}>{palletName(p)}</div>
-                <div style={st.pMeta}>{`${p.boxCount || 0} box${(p.boxCount || 0) === 1 ? '' : 'es'} \u00b7 PO ${p.poName}`}</div>
+                <div style={st.pName}><span style={{ ...st.dot, background: color }} /> {p.poName}</div>
+                <div style={st.pMeta}>{`${palletName(p)} \u00b7 ${p.boxCount || 0} box${(p.boxCount || 0) === 1 ? '' : 'es'}`}</div>
               </div>
-              <div style={st.pBig}>{p.boxCount || 0}</div>
+              <div style={{ ...st.pBig, color }}>{p.boxCount || 0}</div>
             </div>
 
             {closing ? (
@@ -252,10 +264,12 @@ const st = {
   primary: { marginTop: 16, padding: '16px 20px', borderRadius: 12, border: 'none', background: 'var(--accent, #4d7cff)', color: 'var(--accent-contrast, #fff)', fontSize: 17, fontWeight: 800, cursor: 'pointer', width: '100%' },
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   trainToggle: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text-secondary,#ccc)', cursor: 'pointer', flexShrink: 0 },
-  hero: { display: 'flex', alignItems: 'center', gap: 14, padding: 20, borderRadius: 16, background: 'var(--success-soft)', border: '2px solid var(--success)', color: 'var(--success)', marginBottom: 16 },
+  hero: { display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderRadius: 16, background: 'var(--success-soft)', border: '2px solid var(--success)', borderLeftWidth: 8, color: 'var(--text,#e8eef7)', marginBottom: 16 },
   heroBody: { minWidth: 0 },
-  heroTitle: { fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-display)', lineHeight: 1.1 },
-  heroSub: { fontSize: 14, fontWeight: 700, color: 'var(--text,#e8eef7)', marginTop: 4, opacity: 0.85 },
+  heroKicker: { fontSize: 12, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--success)' },
+  heroTitle: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-display)', lineHeight: 1.1, margin: '2px 0' },
+  heroSub: { fontSize: 14, fontWeight: 700, color: 'var(--text-secondary,#9aa4b2)' },
+  dot: { width: 14, height: 14, borderRadius: 4, flexShrink: 0, display: 'inline-block' },
   scanCue: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: '24px 16px', borderRadius: 16, border: '2px dashed var(--border,#3a4150)', color: 'var(--text-secondary,#bbb)', fontSize: 18, fontWeight: 800, marginBottom: 16 },
   flash: { display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderRadius: 12, fontSize: 16, fontWeight: 800, marginBottom: 14 },
   flashOk: { background: 'var(--success-soft)', border: '1px solid var(--success)', color: 'var(--success)' },
@@ -264,7 +278,7 @@ const st = {
   sectionLabel: { color: 'var(--text-tertiary,#999)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '6px 0 10px' },
   pCard: { background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 16, padding: 18, marginBottom: 14, boxShadow: 'var(--shadow-card)' },
   pHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  pName: { fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-display)' },
+  pName: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-display)' },
   pMeta: { fontSize: 14, color: 'var(--text-secondary,#9aa4b2)', marginTop: 2, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   pBig: { fontSize: 44, fontWeight: 800, fontFamily: 'var(--font-display)', lineHeight: 1, color: 'var(--accent,#4d7cff)', flexShrink: 0 },
   cardActions: { display: 'flex', gap: 10, alignItems: 'stretch', marginTop: 14 },
