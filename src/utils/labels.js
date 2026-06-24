@@ -121,14 +121,14 @@ export function printBoxLabel({ boxId, po, itemCount, jobName }) {
 }
 
 /** Print a pallet label (4 x 6) x4 copies: QR(palletId) + branding + PO + box count. */
-export function printPalletLabel({ palletId, po, boxCount, jobName }, copies = 4) {
+export function printPalletLabel({ palletId, number, po, boxCount, jobName }, copies = 4) {
   const img = qrDataUrl(palletId);
   const html = `
     <div class="brand">${esc(CO_BRAND)}</div>
     <div class="row small">${esc(jobName || '')}</div>
     <img class="qr" src="${img}" alt="" />
-    <div class="row big">PALLET</div>
-    <div class="row mid">${esc(palletId)}</div>
+    <div class="row big">PALLET${number != null ? ' ' + esc(number) : ''}</div>
+    <div class="row small">${esc(palletId)}</div>
     <div class="row mid">PO: ${esc(po || '')}</div>
     <div class="row small">${Number(boxCount || 0)} boxes</div>
   `;

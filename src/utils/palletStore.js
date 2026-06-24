@@ -27,10 +27,15 @@ function slug(s) {
 
 /** Open a new single-PO pallet (per-PO sequence). */
 export async function openPallet({ jobId, poName, assignedBy, test = false }) {
-  const seq = await nextSeq(jobId, `palletSeq_${slug(poName)}`);
+  // `number` is a job-wide human label (Pallet 1, 2, 3 …) so every physical
+  // pallet has ONE unmistakable name; `id` stays the QR license-plate.
+  const [seq, number] = await Promise.all([
+    nextSeq(jobId, `palletSeq_${slug(poName)}`),
+    nextSeq(jobId, 'palletNumber'),
+  ]);
   const id = `PLT-${slug(poName)}-${String(seq).padStart(3, '0')}`;
   const data = {
-    id, jobId, poName: poName || '', status: 'open',
+    id, number, jobId, poName: poName || '', status: 'open',
     boxIds: [], boxCount: 0, totalWeightLb: null, totalHeightIn: null,
     assignedBy: assignedBy || '', test: !!test,
     createdAt: serverTimestamp(), closedAt: null,
