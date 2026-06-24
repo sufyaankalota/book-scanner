@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Layers, Printer, CheckCircle2, AlertTriangle, GraduationCap, Plus } from 'lucide-react';
+import { Layers, Printer, CheckCircle2, AlertTriangle, GraduationCap, Plus, Trash2 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import {
-  openPallet, addBoxToPallet, closePallet, checkPalletLimits, watchOpenPallets,
+  openPallet, addBoxToPallet, closePallet, checkPalletLimits, watchOpenPallets, deletePallet,
   MAX_PALLET_WEIGHT_LB, MAX_PALLET_HEIGHT_IN,
 } from '../utils/palletStore';
 import { getBox } from '../utils/boxStore';
@@ -118,6 +118,21 @@ export default function Pallet() {
 
   const setM = (palletId, key, val) => setMeasure((prev) => ({ ...prev, [palletId]: { ...prev[palletId], [key]: val } }));
 
+  // Undo an extra / mistaken pallet. Frees its boxes so they can be re-scanned.
+  const removePallet = useCallback(async (pallet) => {
+    const n = pallet.boxCount || 0;
+    const msg = n > 0
+      ? `Delete ${pallet.id}?\n\nIts ${n} box${n === 1 ? '' : 'es'} will be freed to scan onto another pallet.`
+      : `Delete empty ${pallet.id}?`;
+    if (!window.confirm(msg)) return;
+    try {
+      if (!training) await deletePallet(pallet.id);
+      palletByPoRef.current[pallet.poName] = undefined;
+      setMeasure((prev) => { const next = { ...prev }; delete next[pallet.id]; return next; });
+      showFlash('success', `Removed ${pallet.id}`);
+    } catch (e) { showFlash('error', e.message || 'Failed to remove pallet'); }
+  }, [training, showFlash]);
+
   // ── Render ──
   if (jobLoading) return <Shell><p style={st.dim}>{'Loading\u2026'}</p></Shell>;
 
@@ -145,57 +160,64 @@ export default function Pallet() {
   const pos = Array.from(new Set([...(openPallets.map((p) => p.poName)), ...Object.keys(job.manifestMeta?.poCounts || {})])).filter(Boolean);
 
   return (
-    <Shell wide>
-      <div style={st.headerRow}>
-        <div>
-          <h1 style={st.h1}>{`Pallet \u2014 ${job.meta?.name || ''}${job.meta?.test ? ' (TEST)' : ''}`}</h1>
-          <p style={st.dim}>{`${operator} \u00b7 ${station} \u00b7 limits ${MAX_PALLET_WEIGHT_LB} lb / ${MAX_PALLET_HEIGHT_IN} in`}</p>
-        </div>
+    <Shell>
+      <div style={st.topBar}>
+        <h1 style={st.h1}>{`Pallet${job.meta?.test ? ' \u00b7 TEST' : ''}`}</h1>
         <label style={st.trainToggle}>
           <input type="checkbox" checked={training} onChange={(e) => setTraining(e.target.checked)} />
-          <GraduationCap size={15} /> Training (no save)
+          <GraduationCap size={14} /> Training
         </label>
       </div>
+      <p style={st.sub}>{`${operator} \u00b7 ${station} \u00b7 max ${MAX_PALLET_WEIGHT_LB} lb / ${MAX_PALLET_HEIGHT_IN} in`}</p>
 
       {flash && (
         <div style={{ ...st.flash, ...(flash.tone === 'success' ? st.flashOk : flash.tone === 'warn' ? st.flashWarn : st.flashErr) }}>
-          {flash.tone === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />} {flash.msg}
+          {flash.tone === 'success' ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />} {flash.msg}
         </div>
       )}
 
-      <p style={st.hint}><Layers size={14} />{' Scan a box label to add it to its PO pallet. Pallets are single-PO. Enter weight + height to close.'}</p>
+      <div style={st.scanCue}><Layers size={20} /> Scan a box label to add it to its pallet</div>
 
-      <div style={st.palletGrid}>
-        {openPallets.length === 0 && <p style={st.dim}>{'No open pallets - scan a box to open one, or start one below.'}</p>}
-        {openPallets.map((p) => {
-          const m = measure[p.id] || {};
-          const over = checkPalletLimits({ weightLb: m.w === '' || m.w == null ? null : Number(m.w), heightIn: m.h === '' || m.h == null ? null : Number(m.h) });
-          return (
-            <div key={p.id} style={st.palletCard}>
-              <div style={st.palletTop}><Layers size={16} /> <strong>{p.poName}</strong></div>
-              <div style={st.palletId}>{p.id}</div>
-              <div style={st.palletCount}>{p.boxCount || 0} boxes</div>
-              <div style={st.measRow}>
-                <input style={st.measInput} inputMode="decimal" placeholder="Weight lb" value={m.w ?? ''} onChange={(e) => setM(p.id, 'w', e.target.value)} />
-                <input style={st.measInput} inputMode="decimal" placeholder="Height in" value={m.h ?? ''} onChange={(e) => setM(p.id, 'h', e.target.value)} />
-              </div>
-              {!over.ok && (m.w || m.h) ? <div style={st.limitWarn}><AlertTriangle size={13} /> {over.error}</div> : null}
-              <button style={{ ...st.closeBtn, opacity: busy ? 0.6 : 1 }} onClick={() => handleClose(p)}>
-                <Printer size={14} /> Close + label x4
-              </button>
+      {openPallets.length === 0 && (
+        <div style={st.empty}>No open pallets yet. Scan a box, or start one below.</div>
+      )}
+
+      {openPallets.map((p) => {
+        const m = measure[p.id] || {};
+        const over = checkPalletLimits({ weightLb: m.w === '' || m.w == null ? null : Number(m.w), heightIn: m.h === '' || m.h == null ? null : Number(m.h) });
+        const showWarn = !over.ok && (m.w || m.h);
+        return (
+          <div key={p.id} style={st.pCard}>
+            <button style={st.pRemove} onClick={() => removePallet(p)} aria-label="Remove pallet" title="Remove this pallet">
+              <Trash2 size={18} />
+            </button>
+            <div style={st.pPo}><Layers size={18} /> {p.poName}</div>
+            <div style={st.pCount}>{p.boxCount || 0}<span style={st.pCountUnit}> boxes</span></div>
+            <div style={st.pId}>{p.id}</div>
+            <div style={st.measRow}>
+              <input style={st.measInput} inputMode="decimal" placeholder="Weight lb" value={m.w ?? ''} onChange={(e) => setM(p.id, 'w', e.target.value)} />
+              <input style={st.measInput} inputMode="decimal" placeholder="Height in" value={m.h ?? ''} onChange={(e) => setM(p.id, 'h', e.target.value)} />
             </div>
-          );
-        })}
-      </div>
+            {showWarn ? <div style={st.limitWarn}><AlertTriangle size={14} /> {over.error}</div> : null}
+            <button style={st.closeBtn} onClick={() => handleClose(p)}>
+              <Printer size={18} /> Close + print x4
+            </button>
+          </div>
+        );
+      })}
 
       {pos.length > 0 && (
-        <div style={st.startRow}>
-          <span style={st.dim}>Start a new pallet:</span>
-          {pos.map((po) => (
-            <button key={po} style={st.startBtn} onClick={() => startPallet(po)}><Plus size={14} /> {po}</button>
-          ))}
+        <div style={st.startWrap}>
+          <div style={st.startLabel}>Start a new pallet</div>
+          <div style={st.startRow}>
+            {pos.map((po) => (
+              <button key={po} style={st.startBtn} onClick={() => startPallet(po)}><Plus size={18} /> {po}</button>
+            ))}
+          </div>
         </div>
       )}
+
+      <p style={st.syncNote}>Pallets sync live across every station {'\u2014'} numbers are assigned once and never repeat.</p>
     </Shell>
   );
 }
@@ -210,29 +232,35 @@ function Shell({ children, wide }) {
 }
 
 const st = {
-  h1: { fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: 800, margin: 0, fontFamily: 'var(--font-display)' },
+  h1: { fontSize: 22, fontWeight: 800, margin: 0, fontFamily: 'var(--font-display)' },
   h2: { fontSize: 20, fontWeight: 800, margin: '0 0 12px', fontFamily: 'var(--font-display)' },
   dim: { color: 'var(--text-secondary, #888)', fontSize: 14, margin: '4px 0' },
+  sub: { color: 'var(--text-secondary,#888)', fontSize: 13, margin: '2px 0 14px' },
   warn: { color: 'var(--warning, #f5a524)', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 },
   label: { display: 'block', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 700, margin: '14px 0 6px' },
-  input: { width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border, #444)', background: 'var(--bg-input, #1a1a1a)', color: 'var(--text, #fff)', fontSize: 16, boxSizing: 'border-box' },
-  primary: { marginTop: 16, padding: '12px 20px', borderRadius: 10, border: 'none', background: 'var(--accent, #4d7cff)', color: 'var(--accent-contrast, #fff)', fontSize: 16, fontWeight: 800, cursor: 'pointer' },
-  headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 },
-  trainToggle: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text-secondary,#ccc)', cursor: 'pointer' },
-  flash: { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 10, fontSize: 17, fontWeight: 800, marginBottom: 12 },
+  input: { width: '100%', padding: '14px', borderRadius: 10, border: '1px solid var(--border, #444)', background: 'var(--bg-input, #1a1a1a)', color: 'var(--text, #fff)', fontSize: 17, boxSizing: 'border-box' },
+  primary: { marginTop: 16, padding: '16px 20px', borderRadius: 12, border: 'none', background: 'var(--accent, #4d7cff)', color: 'var(--accent-contrast, #fff)', fontSize: 17, fontWeight: 800, cursor: 'pointer', width: '100%' },
+  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  trainToggle: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text-secondary,#ccc)', cursor: 'pointer', flexShrink: 0 },
+  flash: { display: 'flex', alignItems: 'center', gap: 10, padding: '16px 18px', borderRadius: 12, fontSize: 18, fontWeight: 800, margin: '8px 0 14px' },
   flashOk: { background: 'var(--success-soft)', border: '1px solid var(--success)', color: 'var(--success)' },
   flashWarn: { background: 'var(--warning-soft)', border: '1px solid var(--warning)', color: 'var(--warning)' },
   flashErr: { background: 'var(--error-soft)', border: '1px solid var(--error)', color: 'var(--error)' },
-  hint: { color: 'var(--text-secondary,#888)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 },
-  palletGrid: { display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12, marginBottom: 16 },
-  palletCard: { background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 12, padding: 14, minWidth: 240, boxShadow: 'var(--shadow-card)' },
-  palletTop: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 },
-  palletId: { fontFamily: 'monospace', fontSize: 13, color: 'var(--text-secondary,#aaa)', marginTop: 4 },
-  palletCount: { fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '6px 0' },
-  measRow: { display: 'flex', gap: 8, margin: '6px 0' },
-  measInput: { width: '50%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#1a1a1a)', color: 'var(--text,#fff)', fontSize: 15, boxSizing: 'border-box' },
-  limitWarn: { color: 'var(--error)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 8px' },
-  closeBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--success)', background: 'var(--success-soft)', color: 'var(--success)', fontWeight: 800, fontSize: 13, cursor: 'pointer', width: '100%', justifyContent: 'center' },
-  startRow: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  startBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
+  scanCue: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center', padding: '14px 16px', borderRadius: 12, border: '1px dashed var(--border,#3a4150)', color: 'var(--text-secondary,#bbb)', fontSize: 15, fontWeight: 700, marginBottom: 16 },
+  empty: { color: 'var(--text-secondary,#888)', fontSize: 15, textAlign: 'center', padding: '16px 0' },
+  pCard: { position: 'relative', background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 16, padding: 18, marginBottom: 14, boxShadow: 'var(--shadow-card)' },
+  pRemove: { position: 'absolute', top: 12, right: 12, width: 40, height: 40, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: '1px solid var(--border,#3a2330)', background: 'var(--error-soft)', color: 'var(--error,#f0506e)', cursor: 'pointer' },
+  pPo: { fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: 8, paddingRight: 48 },
+  pCount: { fontSize: 44, fontWeight: 800, fontFamily: 'var(--font-display)', lineHeight: 1.05, margin: '6px 0' },
+  pCountUnit: { fontSize: 16, fontWeight: 700, color: 'var(--text-secondary,#888)' },
+  pId: { fontFamily: 'monospace', fontSize: 13, color: 'var(--text-secondary,#aaa)', marginBottom: 10 },
+  measRow: { display: 'flex', gap: 10, margin: '6px 0' },
+  measInput: { width: '50%', padding: '14px', borderRadius: 10, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#1a1a1a)', color: 'var(--text,#fff)', fontSize: 17, textAlign: 'center', boxSizing: 'border-box' },
+  limitWarn: { color: 'var(--error)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, margin: '8px 0' },
+  closeBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '16px', borderRadius: 12, border: '1px solid var(--success)', background: 'var(--success-soft)', color: 'var(--success)', fontWeight: 800, fontSize: 16, cursor: 'pointer', width: '100%', marginTop: 10 },
+  startWrap: { marginTop: 8, marginBottom: 8 },
+  startLabel: { textAlign: 'center', color: 'var(--text-tertiary,#999)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
+  startRow: { display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' },
+  startBtn: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 20px', borderRadius: 12, border: '1px solid var(--accent,#4d7cff)', background: 'var(--accent-soft)', color: 'var(--accent,#4d7cff)', fontWeight: 800, fontSize: 16, cursor: 'pointer' },
+  syncNote: { textAlign: 'center', color: 'var(--text-tertiary,#777)', fontSize: 12, marginTop: 18 },
 };

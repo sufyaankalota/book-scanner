@@ -13,8 +13,8 @@
  */
 import { db } from '../firebase';
 import {
-  collection, doc, setDoc, updateDoc, getDoc, getDocs, deleteDoc,
-  runTransaction, serverTimestamp, query, where, onSnapshot,
+  collection, doc, setDoc, updateDoc, getDoc, getDocs,
+  runTransaction, writeBatch, serverTimestamp, query, where, onSnapshot,
 } from 'firebase/firestore';
 import { nextSeq } from './boxStore';
 
@@ -101,8 +101,20 @@ export function watchOpenPallets(jobId, cb) {
   return onSnapshot(q, (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 }
 
+/**
+ * Delete a pallet and FREE any boxes attached to it (clears box.palletId) so
+ * they can be scanned onto another pallet. Lets a palletizer undo an extra or
+ * mistaken pallet without orphaning its boxes.
+ */
 export async function deletePallet(palletId) {
-  await deleteDoc(doc(db, 'pallets', palletId));
+  const pref = doc(db, 'pallets', palletId);
+  const snap = await getDoc(pref);
+  if (!snap.exists()) return;
+  const boxIds = snap.data().boxIds || [];
+  const batch = writeBatch(db);
+  for (const bId of boxIds) batch.update(doc(db, 'boxes', bId), { palletId: null });
+  batch.delete(pref);
+  await batch.commit();
 }
 
 /** One-shot list of every pallet for a job (any status) — for the EOD export. */

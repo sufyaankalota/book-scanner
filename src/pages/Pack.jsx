@@ -266,19 +266,26 @@ export default function Pack() {
       </div>
 
       {/* Action buttons */}
-      <div style={st.actions}>
-        <button style={st.actionBtn} disabled={busy} onClick={() => { setShowTitle(true); setCandidates(null); setTitleQuery(''); }}>
-          <Search size={18} /> Type title (no barcode)
-        </button>
-        <button style={st.actionBtn} disabled={busy} onClick={openCamera}>
-          <Camera size={18} /> Scan cover (AI)
-        </button>
-        <button style={st.actionBtn} disabled={busy} onClick={() => { setShowManual(true); setManualIsbn(''); }}>
-          <Hash size={18} /> Type ISBN
-        </button>
+      <div style={st.scanFocal}>
+        <div style={st.scanFocalIcon}><BoxIcon size={26} /></div>
+        <div>
+          <div style={st.scanFocalTitle}>Scan a book to pack it</div>
+          <div style={st.scanFocalSub}>It drops into the matching PO{'\u2019'}s open box automatically.</div>
+        </div>
       </div>
 
-      <p style={st.hint}><Package size={14} />{' Scan a book to pack it. No barcode? Use Scan cover (AI), Type title, or Type ISBN \u2014 a label prints to apply.'}</p>
+      <div style={st.noBarcode}>No barcode?</div>
+      <div style={st.actions}>
+        <button style={{ ...st.actionTile, ...st.tileAI }} disabled={busy} onClick={openCamera}>
+          <Camera size={26} /> Scan cover (AI)
+        </button>
+        <button style={{ ...st.actionTile, ...st.tileTitle }} disabled={busy} onClick={() => { setShowTitle(true); setCandidates(null); setTitleQuery(''); }}>
+          <Search size={26} /> Type title
+        </button>
+        <button style={{ ...st.actionTile, ...st.tileIsbn }} disabled={busy} onClick={() => { setShowManual(true); setManualIsbn(''); }}>
+          <Hash size={26} /> Type ISBN
+        </button>
+      </div>
 
       {/* Recent */}
       {(recent.length > 0 || training) && (
@@ -406,7 +413,16 @@ const st = {
   boxId: { fontFamily: 'monospace', fontSize: 13, color: 'var(--text-secondary,#aaa)', marginTop: 4 },
   boxCount: { fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '6px 0' },
   closeBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text-secondary,#ccc)', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
-  actions: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 },
+  actions: { display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 16 },
+  scanFocal: { display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center', background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 14, padding: '16px 20px', margin: '4px auto 16px', maxWidth: 560, boxShadow: 'var(--shadow-card)' },
+  scanFocalIcon: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 52, borderRadius: 12, background: 'var(--accent-soft)', color: 'var(--accent)', flexShrink: 0 },
+  scanFocalTitle: { fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-display)' },
+  scanFocalSub: { fontSize: 13, color: 'var(--text-secondary,#aaa)', marginTop: 2 },
+  noBarcode: { textAlign: 'center', color: 'var(--text-tertiary,#999)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 10px' },
+  actionTile: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '18px 16px', minWidth: 140, flex: '1 1 140px', maxWidth: 200, borderRadius: 14, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: 'var(--shadow-card)' },
+  tileAI: { borderColor: 'rgba(139,92,246,0.55)', background: 'rgba(139,92,246,0.14)', color: '#c4b5fd' },
+  tileTitle: { borderColor: 'var(--accent)', background: 'var(--accent-soft)', color: 'var(--accent)' },
+  tileIsbn: { borderColor: 'rgba(56,189,248,0.45)', background: 'rgba(56,189,248,0.12)', color: '#7dd3fc' },
   actionBtn: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 20px', borderRadius: 10, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 800, fontSize: 15, cursor: 'pointer' },
   hint: { color: 'var(--text-secondary,#888)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 },
   recent: { marginTop: 12, background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 12, overflow: 'hidden' },
