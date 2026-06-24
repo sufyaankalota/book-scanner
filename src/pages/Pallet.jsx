@@ -9,17 +9,13 @@ import {
 import { getBox } from '../utils/boxStore';
 import { printPalletLabel } from '../utils/labels';
 import { useScanInput } from '../hooks/useScanInput';
+import { makePoColorFor } from '../utils/poColors';
 
 // Human-friendly pallet name. `number` is the job-wide Pallet 1,2,3…; older
 // pallets created before numbering fall back to the license-plate id.
 function palletName(p) {
   return p && p.number != null ? `Pallet ${p.number}` : (p && p.id) || 'Pallet';
 }
-
-// Per-PO color so the one-pallet-per-PO build is unmistakable at a glance. Uses
-// the job's Setup PO colors when present, else a stable fallback palette.
-const FALLBACK_PO_COLORS = ['#4d7cff', '#f5a524', '#2fbf71', '#a855f7', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
-function poHashIdx(s) { let h = 0; const str = String(s || ''); for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h % FALLBACK_PO_COLORS.length; }
 
 export default function Pallet() {
   const [job, setJob] = useState(null);
@@ -164,8 +160,7 @@ export default function Pallet() {
     return <Shell><h2 style={st.h2}>Pallet station</h2><p style={st.warn}><AlertTriangle size={16} /> No active packing job.</p></Shell>;
   }
 
-  const poColors = job.poColors || {};
-  const poColorFor = (po) => poColors[po] || FALLBACK_PO_COLORS[poHashIdx(po)];
+  const poColorFor = makePoColorFor(job);
 
   return (
     <Shell>

@@ -10,6 +10,7 @@ import { openBox, addBoxItem, closeBox, watchOpenBoxes, listBoxesWithItems } fro
 import { listPalletsForJob } from '../utils/palletStore';
 import { printBookLabel, printBoxLabel } from '../utils/labels';
 import { exportBoxPalletXLSX } from '../utils/export';
+import { makePoColorFor } from '../utils/poColors';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useScanInput } from '../hooks/useScanInput';
 import BookCamera from '../components/BookCamera';
@@ -228,6 +229,8 @@ export default function Pack() {
     return <Shell><h2 style={st.h2}>Pack station</h2><p style={st.warn}><AlertTriangle size={16} /> No active packing job. Create one in Setup (Workflow = Packing) and activate it.</p></Shell>;
   }
 
+  const poColorFor = makePoColorFor(job);
+
   return (
     <Shell wide>
       <div style={st.headerRow}>
@@ -255,14 +258,17 @@ export default function Pack() {
       {/* Open boxes per PO */}
       <div style={st.boxRow}>
         {openBoxes.length === 0 && <p style={st.dim}>{'No open boxes yet \u2014 scan a book to open one.'}</p>}
-        {openBoxes.map((b) => (
-          <div key={b.id} style={st.boxCard}>
-            <div style={st.boxTop}><BoxIcon size={16} /> <strong>{b.poName}</strong></div>
-            <div style={st.boxId}>{b.id}</div>
-            <div style={st.boxCount}>{b.itemCount || 0} items</div>
-            <button style={st.closeBtn} onClick={() => handleCloseBox(b)}><Printer size={14} /> Close + label</button>
-          </div>
-        ))}
+        {openBoxes.map((b) => {
+          const color = poColorFor(b.poName);
+          return (
+            <div key={b.id} style={{ ...st.boxCard, borderLeft: `8px solid ${color}` }}>
+              <div style={st.boxTop}><span style={{ ...st.dot, background: color }} /> <strong>{b.poName}</strong></div>
+              <div style={st.boxId}>{b.id}</div>
+              <div style={{ ...st.boxCount, color }}>{b.itemCount || 0} items</div>
+              <button style={st.closeBtn} onClick={() => handleCloseBox(b)}><Printer size={14} /> Close + label</button>
+            </div>
+          );
+        })}
       </div>
 
       {/* Action buttons */}
@@ -295,7 +301,7 @@ export default function Pack() {
             <div key={r.t} style={st.recentRow}>
               <span style={st.mono}>{r.isbn}</span>
               <span style={st.recentTitleText}>{r.title || '\u2014'}</span>
-              <span style={st.recentPo}>{r.po}</span>
+              <span style={{ ...st.recentPo, color: poColorFor(r.po) }}>{r.po}</span>
               <span style={st.recentBox}>{r.boxId}</span>
             </div>
           ))}
@@ -410,6 +416,7 @@ const st = {
   boxRow: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 },
   boxCard: { background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 12, padding: 14, minWidth: 200, boxShadow: 'var(--shadow-card)' },
   boxTop: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 },
+  dot: { width: 14, height: 14, borderRadius: 4, flexShrink: 0, display: 'inline-block' },
   boxId: { fontFamily: 'monospace', fontSize: 13, color: 'var(--text-secondary,#aaa)', marginTop: 4 },
   boxCount: { fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '6px 0' },
   closeBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text-secondary,#ccc)', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
