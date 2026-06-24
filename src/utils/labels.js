@@ -31,16 +31,18 @@ function renderDataUrl(opts) {
 export function ean13DataUrl(isbn13) {
   const digits = String(isbn13 || '').replace(/[^0-9]/g, '');
   try {
-    return renderDataUrl({ bcid: 'ean13', text: digits, scale: 3, height: 16, includetext: true, textxalign: 'center' });
+    // scale 6 → ~680px wide; well above 203 dpi at the 2.05in print width so
+    // the printer never has to upscale (the cause of fuzzy, mis-reading bars).
+    return renderDataUrl({ bcid: 'ean13', text: digits, scale: 6, height: 18, includetext: true, textxalign: 'center' });
   } catch {
     // A bad check digit must never block printing — fall back to Code-128.
-    return renderDataUrl({ bcid: 'code128', text: digits, scale: 2, height: 16, includetext: true, textxalign: 'center' });
+    return renderDataUrl({ bcid: 'code128', text: digits, scale: 5, height: 18, includetext: true, textxalign: 'center' });
   }
 }
 
 /** QR code (PNG data URL) for an opaque box/pallet license-plate id. */
 export function qrDataUrl(text) {
-  return renderDataUrl({ bcid: 'qrcode', text: String(text || ''), scale: 5, eclevel: 'M' });
+  return renderDataUrl({ bcid: 'qrcode', text: String(text || ''), scale: 10, eclevel: 'M' });
 }
 
 function esc(s) {
@@ -66,10 +68,13 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
     @page { size: ${w}in ${h}in; margin: 0; }
     html, body { margin: 0; padding: 0; }
     * { box-sizing: border-box; }
-    .label { width: ${w}in; height: ${h}in; padding: 0.12in; page-break-after: always;
+    .label { width: ${w}in; height: ${h}in; padding: 0.08in; page-break-after: always; overflow: hidden;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       text-align: center; font-family: Arial, Helvetica, sans-serif; color: #000; }
     .label:last-child { page-break-after: auto; }
+    /* Keep thermal output sharp: print the high-res barcode 1:1 with no
+       smoothing so 203-dpi bars/modules stay crisp and scannable. */
+    .qr, .ean { image-rendering: -webkit-optimize-contrast; image-rendering: pixelated; }
     .brand { font-weight: 800; font-size: 12pt; letter-spacing: 0.4px; }
     .qr { width: 2.4in; height: 2.4in; }
     .ean { width: 2.05in; }
