@@ -31,12 +31,12 @@ function renderDataUrl(opts) {
 export function ean13DataUrl(isbn13) {
   const digits = String(isbn13 || '').replace(/[^0-9]/g, '');
   try {
-    // scale 6 → ~680px wide; well above 203 dpi at the 2.05in print width so
-    // the printer never has to upscale (the cause of fuzzy, mis-reading bars).
-    return renderDataUrl({ bcid: 'ean13', text: digits, scale: 6, height: 18, includetext: true, textxalign: 'center' });
+    // Short bars (height 9mm) so the barcode + its digits leave room for the
+    // title on a 2.25x1.25 label; scale 6 keeps it well above 203 dpi (crisp).
+    return renderDataUrl({ bcid: 'ean13', text: digits, scale: 6, height: 9, includetext: true, textxalign: 'center', textsize: 9 });
   } catch {
     // A bad check digit must never block printing — fall back to Code-128.
-    return renderDataUrl({ bcid: 'code128', text: digits, scale: 5, height: 18, includetext: true, textxalign: 'center' });
+    return renderDataUrl({ bcid: 'code128', text: digits, scale: 5, height: 9, includetext: true, textxalign: 'center', textsize: 9 });
   }
 }
 
@@ -77,7 +77,9 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
     .qr, .ean { image-rendering: -webkit-optimize-contrast; image-rendering: pixelated; }
     .brand { font-weight: 800; font-size: 12pt; letter-spacing: 0.4px; }
     .qr { width: 2.4in; height: 2.4in; }
-    .ean { width: 2.05in; }
+    .ean { width: 1.95in; max-height: 0.72in; object-fit: contain; }
+    .bk-title { font-size: 8.5pt; font-weight: 700; line-height: 1.12; max-width: 2.05in; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bk-po { font-size: 8pt; line-height: 1.1; }
     .big { font-size: 20pt; font-weight: 800; }
     .mid { font-size: 13pt; font-weight: 700; }
     .small { font-size: 9pt; }
@@ -98,9 +100,9 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
 export function printBookLabel({ isbn13, title, po }) {
   const img = ean13DataUrl(isbn13);
   const html = `
+    <div class="bk-title">${esc(truncate(title, 30))}</div>
     <img class="ean" src="${img}" alt="" />
-    <div class="row small">${esc(truncate(title, 38))}</div>
-    <div class="row small">PO: ${esc(po || '')}</div>
+    <div class="bk-po">PO: ${esc(po || '')}</div>
   `;
   printLabels([html], { ...LABEL_SIZES.book, title: 'ISBN label' });
 }
