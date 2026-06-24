@@ -5,7 +5,7 @@ import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { cleanISBN, isValidISBN, isbnAlternates } from '../utils/isbn';
 import { lookupEntry, loadTitleIndex } from '../utils/manifestStore';
-import { findMatches } from '../utils/fuzzy';
+import { suggestTitles } from '../utils/fuzzy';
 import { openBox, addBoxItem, closeBox, watchOpenBoxes, listBoxesWithItems } from '../utils/boxStore';
 import { listPalletsForJob } from '../utils/palletStore';
 import { printBookLabel, printBoxLabel } from '../utils/labels';
@@ -16,6 +16,20 @@ import { useScanInput } from '../hooks/useScanInput';
 import BookCamera from '../components/BookCamera';
 
 const CLAIM_TTL = 60 * 24 * 3600; // 60 days — a packing job can span weeks
+
+// Live ISBN type-ahead: manifest entries whose ISBN starts with the typed
+// digits, deduped to one row per book.
+function suggestIsbns(digits, index, limit = 7) {
+  const d = String(digits || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+  if (d.length < 3 || !index?.length) return [];
+  const seen = new Map();
+  for (const row of index) {
+    if (!String(row.isbn).toUpperCase().startsWith(d)) continue;
+    const key = isbnAlternates(row.isbn).isbn13 || row.isbn;
+    if (!seen.has(key)) { seen.set(key, row); if (seen.size >= limit) break; }
+  }
+  return Array.from(seen.values());
+}
 
 export default function Pack() {
   const [job, setJob] = useState(null);
@@ -36,7 +50,8 @@ export default function Pack() {
   const [showTitle, setShowTitle] = useState(false);
   const [titleQuery, setTitleQuery] = useState('');
   const [candidates, setCandidates] = useState(null);
-  const [titleBusy, setTitleBusy] = useState(false);
+  const [indexLoading, setIndexLoading] = useState(false);
+  const [isbnSugg, setIsbnSugg] = useState([]);
   const titleIndexRef = useRef(null);
 
   const [showManual, setShowManual] = useState(false);
@@ -153,20 +168,36 @@ export default function Pack() {
   // ── Scan input (wedge / native bridge / manual) ──
   const submitScan = useScanInput((code) => resolveAndPack(code, { source: 'scan' }), { enabled: entered && !showTitle && !showManual && !showCamera });
 
-  // ── Title search (no-barcode books) ──
-  const runTitleSearch = useCallback(async () => {
-    if (!titleQuery.trim() || !job || !hasManifest) return;
-    setTitleBusy(true);
-    try {
-      if (!titleIndexRef.current) titleIndexRef.current = await loadTitleIndex(manifestPath, numChunks);
-      const matches = findMatches(titleQuery.trim(), titleIndexRef.current, { topK: 8, minScore: 0.5 });
-      setCandidates(matches);
-    } catch (e) {
-      showFlash('error', e.message || 'Title search failed');
-    } finally {
-      setTitleBusy(false);
-    }
-  }, [titleQuery, job, hasManifest, manifestPath, numChunks, showFlash]);
+  // ── Live type-ahead (title + ISBN): load the title index when a typeahead
+  //    modal opens, then suggest from it (debounced) as the packer types. ──
+  useEffect(() => {
+    if (!(showTitle || showManual) || !hasManifest || titleIndexRef.current) return undefined;
+    let cancelled = false;
+    setIndexLoading(true);
+    loadTitleIndex(manifestPath, numChunks)
+      .then((idx) => { if (!cancelled) titleIndexRef.current = idx; })
+      .catch((e) => { if (!cancelled) showFlash('error', e.message || 'Could not load suggestions'); })
+      .finally(() => { if (!cancelled) setIndexLoading(false); });
+    return () => { cancelled = true; };
+  }, [showTitle, showManual, hasManifest, manifestPath, numChunks, showFlash]);
+
+  useEffect(() => {
+    if (!showTitle) return undefined;
+    const q = titleQuery.trim();
+    if (!q) { setCandidates(null); return undefined; }
+    const t = setTimeout(() => {
+      if (titleIndexRef.current) setCandidates(suggestTitles(q, titleIndexRef.current, 7));
+    }, 120);
+    return () => clearTimeout(t);
+  }, [titleQuery, showTitle, indexLoading]);
+
+  useEffect(() => {
+    if (!showManual) return undefined;
+    const t = setTimeout(() => {
+      setIsbnSugg(titleIndexRef.current ? suggestIsbns(manualIsbn, titleIndexRef.current, 7) : []);
+    }, 120);
+    return () => clearTimeout(t);
+  }, [manualIsbn, showManual, indexLoading]);
 
   const pickCandidate = useCallback((cand) => {
     setShowTitle(false); setCandidates(null); setTitleQuery('');
@@ -308,26 +339,25 @@ export default function Pack() {
         </div>
       )}
 
-      {/* Title search modal */}
+      {/* Title search modal — live suggestions as you type */}
       {showTitle && (
         <Modal onClose={() => setShowTitle(false)} title="Find by title">
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input style={st.input} value={titleQuery} autoFocus placeholder={'Type the book title\u2026'}
-              onChange={(e) => setTitleQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runTitleSearch(); }} />
-            <button style={st.primary} disabled={titleBusy || !titleQuery.trim()} onClick={runTitleSearch}>{titleBusy ? '\u2026' : 'Search'}</button>
-          </div>
-          {candidates && candidates.length === 0 && <p style={st.warn}>{'No matches \u2014 try fewer words.'}</p>}
+          <input style={st.input} value={titleQuery} autoFocus placeholder={'Start typing the title\u2026'}
+            onChange={(e) => setTitleQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && candidates && candidates[0]) pickCandidate(candidates[0]); }} />
+          {indexLoading && <p style={st.hint}>{'Loading suggestions\u2026'}</p>}
+          {!indexLoading && titleQuery.trim() && candidates && candidates.length === 0 && <p style={st.warn}>{'No matches \u2014 try fewer words.'}</p>}
           {candidates && candidates.map((c, i) => (
             <button key={c.isbn} style={st.candidate} onClick={() => pickCandidate(c)}>
               <span style={st.candIdx}>{i + 1}</span>
               <span style={st.candTitle}>{c.title}</span>
-              <span style={st.candMeta}>{`${c.po} \u00b7 ${c.isbn} \u00b7 ${Math.round(c.score * 100)}%`}</span>
+              <span style={st.candMeta}>{`${c.po} \u00b7 ${c.isbn}${c.score != null ? ` \u00b7 ${Math.round(c.score * 100)}%` : ''}`}</span>
             </button>
           ))}
         </Modal>
       )}
 
-      {/* Manual ISBN modal */}
+      {/* Manual ISBN modal — live suggestions as you type */}
       {showManual && (
         <Modal onClose={() => setShowManual(false)} title="Type ISBN">
           <div style={{ display: 'flex', gap: 8 }}>
@@ -336,6 +366,13 @@ export default function Pack() {
               onKeyDown={(e) => { if (e.key === 'Enter' && manualIsbn.trim()) { setShowManual(false); resolveAndPack(manualIsbn, { source: 'manual' }); } }} />
             <button style={st.primary} disabled={!manualIsbn.trim()} onClick={() => { setShowManual(false); resolveAndPack(manualIsbn, { source: 'manual' }); }}>Pack</button>
           </div>
+          {indexLoading && <p style={st.hint}>{'Loading suggestions\u2026'}</p>}
+          {isbnSugg.map((c) => (
+            <button key={c.isbn} style={st.candidate} onClick={() => { setShowManual(false); resolveAndPack(c.isbn, { source: 'manual' }); }}>
+              <span style={st.candTitle}>{c.title}</span>
+              <span style={st.candMeta}>{`${c.po} \u00b7 ${c.isbn}`}</span>
+            </button>
+          ))}
           <p style={st.hint}>A 2.25 x 1.25 ISBN label prints to apply to the book.</p>
         </Modal>
       )}

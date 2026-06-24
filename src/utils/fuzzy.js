@@ -124,6 +124,36 @@ export function similarity(a, b) {
 // candidates. The ISBN-13 form is preferred for downstream display/billing.
 import { isbnAlternates } from './isbn';
 
+// Live "type-ahead" suggestions for the pack title box. Prefers substring
+// matches (title contains what's typed — like Google suggest), ranked
+// prefix > word-start > contains; falls back to fuzzy similarity for typos so
+// a misspelling still surfaces something. `index` is the [{isbn,po,title}] list.
+export function suggestTitles(query, index, limit = 7) {
+  if (!query || !index?.length) return [];
+  const q = normalizeTitle(query);
+  if (q.length < 2) return [];
+  const starts = [], wordStarts = [], contains = [];
+  for (const row of index) {
+    const t = row._n || (row._n = normalizeTitle(row.title));
+    const pos = t.indexOf(q);
+    if (pos < 0) continue;
+    if (pos === 0) starts.push(row);
+    else if (t[pos - 1] === ' ') wordStarts.push(row);
+    else contains.push(row);
+  }
+  let ranked = [...starts, ...wordStarts, ...contains];
+  if (!ranked.length) ranked = findMatches(query, index, { topK: limit, minScore: 0.45 });
+  // Dedupe by canonical ISBN-13 (prefer the 13-form), keep best-ranked first.
+  const seen = new Map();
+  for (const row of ranked) {
+    const { isbn13 } = isbnAlternates(row.isbn);
+    const key = isbn13 || row.isbn;
+    if (!seen.has(key)) seen.set(key, isbn13 ? { ...row, isbn: isbn13 } : row);
+    if (seen.size >= limit) break;
+  }
+  return Array.from(seen.values());
+}
+
 export function findMatches(query, index, { topK = 3, minScore = 0.5 } = {}) {
   if (!query || !index?.length) return [];
   const out = [];
