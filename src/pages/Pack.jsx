@@ -416,7 +416,7 @@ function Shell({ children, wide }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', fontFamily: 'var(--font-sans)', padding: '20px clamp(16px, 2.5vw, 36px) 40px', boxSizing: 'border-box' }}>
       <Link to="/" style={{ color: 'var(--text-tertiary, #888)', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>{'\u2190 Home'}</Link>
-      <div style={{ maxWidth: wide ? 1100 : 460, margin: wide ? '12px 0' : '12px auto' }}>{children}</div>
+      <div style={{ maxWidth: wide ? 1400 : 460, margin: '12px auto' }}>{children}</div>
     </div>
   );
 }
@@ -450,20 +450,20 @@ const st = {
   flashOk: { background: 'var(--success-soft)', border: '1px solid var(--success)', color: 'var(--success)' },
   flashWarn: { background: 'var(--warning-soft)', border: '1px solid var(--warning)', color: 'var(--warning)' },
   flashErr: { background: 'var(--error-soft)', border: '1px solid var(--error)', color: 'var(--error)' },
-  boxRow: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 },
-  boxCard: { background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 12, padding: 14, minWidth: 200, boxShadow: 'var(--shadow-card)' },
+  boxRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginBottom: 18 },
+  boxCard: { background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 12, padding: 18, boxShadow: 'var(--shadow-card)' },
   boxTop: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 },
   dot: { width: 14, height: 14, borderRadius: 4, flexShrink: 0, display: 'inline-block' },
   boxId: { fontFamily: 'monospace', fontSize: 13, color: 'var(--text-secondary,#aaa)', marginTop: 4 },
-  boxCount: { fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '6px 0' },
+  boxCount: { fontSize: 32, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '6px 0' },
   closeBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text-secondary,#ccc)', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
-  actions: { display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 16 },
-  scanFocal: { display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center', background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 14, padding: '16px 20px', margin: '4px auto 16px', maxWidth: 560, boxShadow: 'var(--shadow-card)' },
+  actions: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, maxWidth: 900, margin: '0 auto 18px' },
+  scanFocal: { display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center', background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 14, padding: '18px 22px', margin: '4px auto 18px', maxWidth: 760, boxShadow: 'var(--shadow-card)' },
   scanFocalIcon: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 52, borderRadius: 12, background: 'var(--accent-soft)', color: 'var(--accent)', flexShrink: 0 },
   scanFocalTitle: { fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-display)' },
   scanFocalSub: { fontSize: 13, color: 'var(--text-secondary,#aaa)', marginTop: 2 },
   noBarcode: { textAlign: 'center', color: 'var(--text-tertiary,#999)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 10px' },
-  actionTile: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '18px 16px', minWidth: 140, flex: '1 1 140px', maxWidth: 200, borderRadius: 14, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: 'var(--shadow-card)' },
+  actionTile: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '26px 16px', borderRadius: 14, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 800, fontSize: 16, cursor: 'pointer', boxShadow: 'var(--shadow-card)' },
   tileAI: { borderColor: 'rgba(139,92,246,0.55)', background: 'rgba(139,92,246,0.14)', color: '#c4b5fd' },
   tileTitle: { borderColor: 'var(--accent)', background: 'var(--accent-soft)', color: 'var(--accent)' },
   tileIsbn: { borderColor: 'rgba(56,189,248,0.45)', background: 'rgba(56,189,248,0.12)', color: '#7dd3fc' },
