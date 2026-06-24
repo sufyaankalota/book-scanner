@@ -34,6 +34,7 @@ export default function Setup() {
   const [mode, setMode] = useState('single');
   const [workflow, setWorkflow] = useState('scan');
   const [testJob, setTestJob] = useState(false);
+  const [showCreate, setShowCreate] = useState(false); // reach New Job Form while a job is active (TEST-job creation only)
   const [dailyTarget, setDailyTarget] = useState(22000);
   const [workingHours, setWorkingHours] = useState(8);
   const [pods, setPods] = useState(DEFAULT_PODS);
@@ -396,6 +397,7 @@ export default function Setup() {
       logAudit(testJob ? 'test_job_created' : 'job_created', { jobId, name: jobName.trim(), mode, workflow });
       setActivateProgress({ written: 0, total: 0, label: '' });
       if (testJob) {
+        setShowCreate(false);
         toast(`Test job "${jobName.trim()}" created (not active). Open /pack or /pallet to test — the live job is untouched.`, 'success');
       } else {
         setActiveJob({ id: jobId, meta: { name: jobName.trim(), mode, workflow, dailyTarget: target, workingHours: hours, pods, active: true, floaters: Number(floaters) || 0, runners: Number(runners) || 0, supervisors: Number(supervisors) || 0, location: location.trim() || '' }, poColors: mode === 'multi' ? poColors : {}, poNumbers: mode === 'multi' ? poNumbers : {}, exceptionColor: excColor, exceptionNumber: excNumber, ...(jobManifestMeta ? { manifestMeta: jobManifestMeta } : {}) });
@@ -858,7 +860,7 @@ export default function Setup() {
   if (loading) return <div style={s.container}><p style={s.text}>Loading...</p></div>;
 
   // ─── Active Job View ───
-  if (activeJob) {
+  if (activeJob && !showCreate) {
     return (
       <div style={s.container}>
         <Link to="/" style={s.backLink}>← Back to Home</Link>
@@ -894,6 +896,12 @@ export default function Setup() {
               )}
               <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <Link to="/dashboard" style={s.linkBtn}>Go to Dashboard</Link>
+                <button onClick={() => {
+                  setWorkflow('pack'); setMode('multi'); setTestJob(true); setShowCreate(true);
+                }} style={{ ...s.editBtn, borderColor: '#3B82F6', color: '#93C5FD' }}
+                  title="Create a TEST packing job to try /pack and /pallet without touching the live job">
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Package size={15} /> Test packing workflow</span>
+                </button>
                 <button onClick={() => {
                   setEditPoColors({ ...(activeJob.poColors || {}) });
                   setEditPoNumbers({ ...(activeJob.poNumbers || {}) });
@@ -1357,6 +1365,14 @@ export default function Setup() {
     <div style={s.container}>
       <Link to="/" style={s.backLink}>← Back to Home</Link>
       <h1 style={s.title}>Job Setup</h1>
+      {activeJob && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16, padding: '12px 16px', backgroundColor: '#10243f', border: '1px solid #3B82F6', borderRadius: 8 }}>
+          <span style={{ color: '#cfe3ff', fontSize: 14 }}>
+            Live job <strong>{activeJob.meta.name}</strong> stays active — this creates a <strong>TEST</strong> packing job that won{'\u2019'}t touch it.
+          </span>
+          <button onClick={() => setShowCreate(false)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #555', backgroundColor: 'transparent', color: '#ccc', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+        </div>
+      )}
       <div style={s.card}>
         <label style={s.label}>Job Name / PO Label</label>
         <input type="text" value={jobName} onChange={(e) => { setJobName(e.target.value); setFieldError((p) => ({ ...p, jobName: undefined })); }}
