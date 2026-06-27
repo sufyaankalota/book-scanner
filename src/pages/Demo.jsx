@@ -178,7 +178,7 @@ function Scene({ step }) {
     case 'palletlabel': return <Narrate kicker="Step 7" title="Pallet full → weighed → 4 labels print" body="Weight and height are captured (max 2,500 lb / 72 in). Each label is stamped 'Finalized by' the employee who closed it.">
       <div style={s2.palletLabels}>
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} style={{ ...s2.palletLabelWrap, animation: `popIn .4s ${i * 0.12}s both`, transform: `rotate(${(i - 1.5) * 3}deg)` }}>
+          <div key={i} style={{ ...s2.palletLabelWrap, animation: `popIn .4s ${i * 0.12}s both` }}>
             <PalletLabel />
           </div>
         ))}
@@ -412,9 +412,9 @@ const s2 = {
   stackBox: { width: 80, height: 36, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, opacity: 0.92 },
   palletBase: { width: 110, height: 12, borderRadius: 3, background: '#6b4f2a', marginTop: 4 },
   palletMeta: { paddingBottom: 8 },
-  palletLabels: { display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' },
-  palletLabelWrap: { margin: '0 -14px' },
-  label46sm: { width: 130, padding: 10, background: '#fff', color: '#111', borderRadius: 6, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, boxShadow: 'var(--shadow-elev)' },
+  palletLabels: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%' },
+  palletLabelWrap: {},
+  label46sm: { width: 140, padding: 10, background: '#fff', color: '#111', borderRadius: 6, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, boxShadow: 'var(--shadow-elev)' },
   brandSm: { fontWeight: 800, fontSize: 9 },
   labelBigSm: { fontWeight: 800, fontSize: 16 },
   labelMonoSm: { fontFamily: 'monospace', fontSize: 9 },
