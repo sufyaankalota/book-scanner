@@ -12,7 +12,7 @@ import { writeManifestChunks, deleteManifestChunks } from '../utils/manifestStor
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useDailyBreakdown } from '../hooks/useDailyBreakdown';
 import { useExceptionScans } from '../hooks/useExceptionScans';
-import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt, FileText, Upload, Truck, Trash2, Download, Search, FolderOpen, Clock } from 'lucide-react';
+import { CheckCircle2, Keyboard, Camera, AlertTriangle, Package, BarChart3, Receipt, FileText, Upload, Truck, Trash2, Download, Search, FolderOpen, Clock, Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_COLORS = [
@@ -43,6 +43,9 @@ export default function CustomerPortal() {
   // pull every scan doc into the browser just to count them.
   const [aggregates, setAggregates] = useState(null);
   const [bols, setBols] = useState([]);
+  const [pallets, setPallets] = useState([]);
+  const [palletItems, setPalletItems] = useState({}); // palletId -> items[] | 'loading'
+  const [expandedPallet, setExpandedPallet] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('daily');
 
@@ -257,6 +260,48 @@ export default function CustomerPortal() {
         .sort((a, b) => (b.date || '').localeCompare(a.date || '')));
     });
   }, [authenticated, job]);
+
+  // Pallets built for this job (live) + lazy per-pallet item manifests.
+  useEffect(() => {
+    if (!authenticated || !job) return;
+    const q = query(collection(db, 'pallets'), where('jobId', '==', job.id));
+    return onSnapshot(q, (snap) => {
+      setPallets(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.number || 0) - (b.number || 0)));
+    });
+  }, [authenticated, job]);
+
+  const togglePallet = async (pallet) => {
+    if (expandedPallet === pallet.id) { setExpandedPallet(null); return; }
+    setExpandedPallet(pallet.id);
+    if (palletItems[pallet.id]) return;
+    setPalletItems((p) => ({ ...p, [pallet.id]: 'loading' }));
+    try {
+      const boxIds = pallet.boxIds || [];
+      const perBox = await Promise.all(boxIds.map(async (bId) => {
+        const snap = await getDocs(collection(db, 'boxes', bId, 'items'));
+        return snap.docs.map((d) => ({ ...d.data(), boxId: bId }));
+      }));
+      const items = perBox.flat().sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+      setPalletItems((p) => ({ ...p, [pallet.id]: items }));
+    } catch {
+      setPalletItems((p) => ({ ...p, [pallet.id]: [] }));
+    }
+  };
+
+  const downloadPalletCsv = (pallet) => {
+    const items = palletItems[pallet.id];
+    if (!Array.isArray(items)) return;
+    const rows = [['Pallet', 'PO', 'Box', 'ISBN', 'Title']];
+    for (const it of items) rows.push([`Pallet ${pallet.number ?? ''}`, pallet.poName || '', it.boxId || '', it.isbn13 || '', it.title || '']);
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `pallet-${pallet.number ?? pallet.id}-manifest.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   // Billing reports
   useEffect(() => {
@@ -1174,7 +1219,7 @@ export default function CustomerPortal() {
       )}
 
       <div style={st.tabBar}>
-        {[['daily','Daily Volume',BarChart3],['search','Search',Search],['exceptions','Exceptions',AlertTriangle],['billing','Billing',Receipt],['reports','Reports',FileText],['upload','Upload POs',Upload],['bols','BOLs',Truck]].map(([key, label, Icon]) => (
+        {[['daily','Daily Volume',BarChart3],['search','Search',Search],['exceptions','Exceptions',AlertTriangle],['billing','Billing',Receipt],['reports','Reports',FileText],['pallets','Pallets',Layers],['upload','Upload POs',Upload],['bols','BOLs',Truck]].map(([key, label, Icon]) => (
           <button key={key} onClick={() => setActiveTab(key)}
             style={{ ...st.tab, ...(activeTab === key ? st.tabActive : {}), display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon size={14} /> {label}
@@ -1783,6 +1828,68 @@ export default function CustomerPortal() {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'pallets' && (
+        <div>
+          <div style={st.card}>
+            <h3 style={st.cardTitle}>Pallet Manifests</h3>
+            <p style={{ color: '#888', fontSize: 14, marginBottom: 8 }}>
+              Every pallet built for this job and the items on it. Use these to confirm which pallets go on each outbound truck.
+            </p>
+            {pallets.length === 0 && <p style={{ color: '#888', textAlign: 'center', padding: 20 }}>No pallets yet.</p>}
+            {pallets.map((p) => {
+              const open = expandedPallet === p.id;
+              const items = palletItems[p.id];
+              return (
+                <div key={p.id} style={{ borderBottom: '1px solid #222', padding: '12px 0' }}>
+                  <div onClick={() => togglePallet(p)} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', flexWrap: 'wrap' }}>
+                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    <span style={{ color: '#fff', fontWeight: 800, fontSize: 16 }}>Pallet {p.number ?? '\u2014'}</span>
+                    <span style={{ padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, backgroundColor: p.status === 'closed' ? '#14532d' : '#422006', color: p.status === 'closed' ? '#22C55E' : '#EAB308' }}>{(p.status || 'open').toUpperCase()}</span>
+                    <span style={{ color: '#9aa4b2', fontSize: 13 }}>PO {p.poName}</span>
+                    <span style={{ color: '#9aa4b2', fontSize: 13 }}>{p.boxCount || 0} boxes</span>
+                    {p.totalWeightLb != null && <span style={{ color: '#9aa4b2', fontSize: 13 }}>{p.totalWeightLb} lb</span>}
+                    {p.totalHeightIn != null && <span style={{ color: '#9aa4b2', fontSize: 13 }}>{p.totalHeightIn} in</span>}
+                    {p.finalizedBy && <span style={{ color: '#666', fontSize: 12 }}>by {p.finalizedBy}</span>}
+                  </div>
+                  {open && (
+                    <div style={{ marginTop: 10 }}>
+                      {items === 'loading' && <p style={{ color: '#888', fontSize: 13 }}>{'Loading items\u2026'}</p>}
+                      {Array.isArray(items) && items.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No items recorded.</p>}
+                      {Array.isArray(items) && items.length > 0 && (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <span style={{ color: '#9aa4b2', fontSize: 13 }}>{items.length} item{items.length === 1 ? '' : 's'}</span>
+                            <button onClick={() => downloadPalletCsv(p)} style={st.smallBtn}><Download size={12} style={{ verticalAlign: '-2px' }} /> CSV</button>
+                          </div>
+                          <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #222', borderRadius: 8 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                              <thead><tr>
+                                <th style={{ textAlign: 'left', padding: '6px 8px', color: '#888', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', position: 'sticky', top: 0, background: '#161a24', borderBottom: '1px solid #222' }}>Title</th>
+                                <th style={{ textAlign: 'left', padding: '6px 8px', color: '#888', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', position: 'sticky', top: 0, background: '#161a24', borderBottom: '1px solid #222' }}>ISBN</th>
+                                <th style={{ textAlign: 'left', padding: '6px 8px', color: '#888', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', position: 'sticky', top: 0, background: '#161a24', borderBottom: '1px solid #222' }}>Box</th>
+                              </tr></thead>
+                              <tbody>
+                                {items.map((it, i) => (
+                                  <tr key={i}>
+                                    <td style={{ padding: '6px 8px', color: '#ddd', borderBottom: '1px solid #1a1a1a' }}>{it.title || '\u2014'}</td>
+                                    <td style={{ padding: '6px 8px', color: '#ddd', borderBottom: '1px solid #1a1a1a', fontFamily: 'monospace' }}>{it.isbn13}</td>
+                                    <td style={{ padding: '6px 8px', color: '#888', borderBottom: '1px solid #1a1a1a', fontFamily: 'monospace' }}>{it.boxId}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
