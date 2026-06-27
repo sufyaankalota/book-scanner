@@ -10,7 +10,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import TodayLeaderboard from '../components/TodayLeaderboard';
 import { computeDailyTarget } from '../utils/target';
-import { Settings, LayoutDashboard, MonitorPlay, History, Receipt, TrendingUp, Package, Download, Pause } from 'lucide-react';
+import { Settings, LayoutDashboard, MonitorPlay, History, Receipt, TrendingUp, Package, Download, Pause, Boxes, Layers, Printer, PlayCircle } from 'lucide-react';
 
 export default function Home() {
   const { currentUser, logout } = useAuth();
@@ -183,6 +183,22 @@ export default function Home() {
         <Link to="/portal" style={styles.navLink}>
           <Package size={22} />
           <span>Portal</span>
+        </Link>
+        <Link to="/pack" style={styles.navLink}>
+          <Boxes size={22} />
+          <span>Pack</span>
+        </Link>
+        <Link to="/pallet" style={styles.navLink}>
+          <Layers size={22} />
+          <span>Pallet</span>
+        </Link>
+        <Link to="/print-station" style={styles.navLink}>
+          <Printer size={22} />
+          <span>Print Station</span>
+        </Link>
+        <Link to="/demo" style={styles.navLink}>
+          <PlayCircle size={22} />
+          <span>Demo</span>
         </Link>
       </nav>
 
