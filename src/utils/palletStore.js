@@ -87,11 +87,12 @@ export function checkPalletLimits({ weightLb, heightIn }) {
 }
 
 /** Close a pallet. Throws if the entered weight/height exceed the limits. */
-export async function closePallet(palletId, { weightLb, heightIn }) {
+export async function closePallet(palletId, { weightLb, heightIn, finalizedBy }) {
   const chk = checkPalletLimits({ weightLb, heightIn });
   if (!chk.ok) throw new Error(chk.error);
   await updateDoc(doc(db, 'pallets', palletId), {
-    status: 'closed', totalWeightLb: weightLb, totalHeightIn: heightIn, closedAt: serverTimestamp(),
+    status: 'closed', totalWeightLb: weightLb, totalHeightIn: heightIn,
+    finalizedBy: finalizedBy || null, closedAt: serverTimestamp(),
   });
 }
 

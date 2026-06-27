@@ -10,6 +10,7 @@ import { getBox } from '../utils/boxStore';
 import { printPalletLabel } from '../utils/labels';
 import { useScanInput } from '../hooks/useScanInput';
 import { makePoColorFor } from '../utils/poColors';
+import OperatorEntry from '../components/OperatorEntry';
 
 // Human-friendly pallet name. `number` is the job-wide Pallet 1,2,3…; older
 // pallets created before numbering fall back to the license-plate id.
@@ -108,15 +109,15 @@ export default function Pallet() {
     const chk = checkPalletLimits({ weightLb, heightIn });
     if (!chk.ok) { showFlash('error', chk.error); return; }
     try {
-      if (!training) await closePallet(pallet.id, { weightLb, heightIn });
-      printPalletLabel({ palletId: pallet.id, number: pallet.number, po: pallet.poName, boxCount: pallet.boxCount || 0, jobName: job?.meta?.name }, 4);
+      if (!training) await closePallet(pallet.id, { weightLb, heightIn, finalizedBy: operator });
+      printPalletLabel({ palletId: pallet.id, number: pallet.number, po: pallet.poName, boxCount: pallet.boxCount || 0, jobName: job?.meta?.name, finalizedBy: operator }, 4);
       palletByPoRef.current[pallet.poName] = undefined;
       setClosingId(null);
       setLastAdd(null);
       setMeasure((prev) => { const next = { ...prev }; delete next[pallet.id]; return next; });
       showFlash('success', `${palletName(pallet)} done \u2014 printing 4 labels`);
     } catch (e) { showFlash('error', e.message || 'Failed to close pallet'); }
-  }, [measure, training, job, showFlash]);
+  }, [measure, training, job, operator, showFlash]);
 
   const setM = (palletId, key, val) => setMeasure((prev) => ({ ...prev, [palletId]: { ...prev[palletId], [key]: val } }));
 
@@ -141,18 +142,21 @@ export default function Pallet() {
 
   if (!entered) {
     return (
-      <Shell>
-        <h2 style={st.h2}>Pallet station</h2>
-        <label style={st.label}>Your name</label>
-        <input style={st.input} value={operator} onChange={(e) => setOperator(e.target.value)} placeholder="e.g. Sam" autoFocus />
-        <label style={st.label}>Station</label>
-        <input style={st.input} value={station} onChange={(e) => setStation(e.target.value)} placeholder="PALLET-1" />
-        <button style={st.primary} disabled={!operator.trim()} onClick={() => {
-          localStorage.setItem('pallet_operator', operator.trim());
-          localStorage.setItem('pallet_station', station.trim() || 'PALLET-1');
+      <OperatorEntry
+        title="Pallet station"
+        subtitle="Scan boxes onto pallets, then print pallet labels."
+        stationLabel="Station"
+        stationDefault={station || 'PALLET-1'}
+        stationPlaceholder="PALLET-1"
+        cta="Start palletizing"
+        onStart={({ name, station: st0 }) => {
+          localStorage.setItem('pallet_operator', name);
+          localStorage.setItem('pallet_station', st0);
+          setOperator(name);
+          setStation(st0);
           setEntered(true);
-        }}>Start palletizing</button>
-      </Shell>
+        }}
+      />
     );
   }
 

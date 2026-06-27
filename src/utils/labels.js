@@ -27,17 +27,22 @@ function renderDataUrl(opts) {
   return canvas.toDataURL('image/png');
 }
 
-/** EAN-13 barcode (PNG data URL) for a book's ISBN-13. */
+/** EAN-13 barcode (PNG data URL) for a book's ISBN-13. Bars only — the human
+ *  digits are rendered in HTML so the label layout is fully controlled. */
 export function ean13DataUrl(isbn13) {
   const digits = String(isbn13 || '').replace(/[^0-9]/g, '');
   try {
-    // Short bars (height 9mm) so the barcode + its digits leave room for the
-    // title on a 2.25x1.25 label; scale 6 keeps it well above 203 dpi (crisp).
-    return renderDataUrl({ bcid: 'ean13', text: digits, scale: 6, height: 9, includetext: true, textxalign: 'center', textsize: 9 });
+    return renderDataUrl({ bcid: 'ean13', text: digits, scale: 4, height: 12, includetext: false });
   } catch {
     // A bad check digit must never block printing — fall back to Code-128.
-    return renderDataUrl({ bcid: 'code128', text: digits, scale: 5, height: 9, includetext: true, textxalign: 'center', textsize: 9 });
+    return renderDataUrl({ bcid: 'code128', text: digits, scale: 4, height: 12, includetext: false });
   }
+}
+
+/** Format an ISBN-13 as "9 780547 928227" for the human-readable line. */
+function groupIsbn13(s) {
+  const d = String(s || '').replace(/[^0-9]/g, '');
+  return d.length === 13 ? `${d[0]} ${d.slice(1, 7)} ${d.slice(7)}` : d;
 }
 
 /** QR code (PNG data URL) for an opaque box/pallet license-plate id. */
@@ -77,9 +82,13 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
     .qr, .ean { image-rendering: -webkit-optimize-contrast; image-rendering: pixelated; }
     .brand { font-weight: 800; font-size: 12pt; letter-spacing: 0.4px; }
     .qr { width: 2.4in; height: 2.4in; }
-    .ean { width: 1.95in; max-height: 0.72in; object-fit: contain; }
-    .bk-title { font-size: 8.5pt; font-weight: 700; line-height: 1.12; max-width: 2.05in; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bk-po { font-size: 8pt; line-height: 1.1; }
+    /* Book label: a 4-row grid (title / bars / digits / PO) so rows can never
+       overlap regardless of barcode aspect. Bars are height-constrained. */
+    .bk { display: grid; grid-auto-rows: min-content; row-gap: 0.03in; width: 100%; height: 100%; align-content: center; justify-items: center; }
+    .ean { width: 2.0in; height: 0.5in; object-fit: contain; }
+    .bk-title { font-size: 8pt; font-weight: 700; line-height: 1.05; max-width: 2.1in; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bk-digits { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.5px; font-family: 'Courier New', monospace; }
+    .bk-po { font-size: 7.5pt; line-height: 1.05; }
     .big { font-size: 20pt; font-weight: 800; }
     .mid { font-size: 13pt; font-weight: 700; }
     .small { font-size: 9pt; }
@@ -96,13 +105,16 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
   setTimeout(fire, 400);
 }
 
-/** Print a single book ISBN label (2.25 x 1.25): EAN-13 + short title + PO. */
+/** Print a single book ISBN label (2.25 x 1.25): title + EAN-13 bars + digits + PO. */
 export function printBookLabel({ isbn13, title, po }) {
   const img = ean13DataUrl(isbn13);
   const html = `
-    <div class="bk-title">${esc(truncate(title, 30))}</div>
-    <img class="ean" src="${img}" alt="" />
-    <div class="bk-po">PO: ${esc(po || '')}</div>
+    <div class="bk">
+      <div class="bk-title">${esc(truncate(title, 30))}</div>
+      <img class="ean" src="${img}" alt="" />
+      <div class="bk-digits">${esc(groupIsbn13(isbn13))}</div>
+      <div class="bk-po">PO: ${esc(po || '')}</div>
+    </div>
   `;
   printLabels([html], { ...LABEL_SIZES.book, title: 'ISBN label' });
 }
@@ -123,7 +135,7 @@ export function printBoxLabel({ boxId, po, itemCount, jobName }) {
 }
 
 /** Print a pallet label (4 x 6) x4 copies: QR(palletId) + branding + PO + box count. */
-export function printPalletLabel({ palletId, number, po, boxCount, jobName }, copies = 4) {
+export function printPalletLabel({ palletId, number, po, boxCount, jobName, finalizedBy }, copies = 4) {
   const img = qrDataUrl(palletId);
   const html = `
     <div class="brand">${esc(CO_BRAND)}</div>
@@ -133,6 +145,7 @@ export function printPalletLabel({ palletId, number, po, boxCount, jobName }, co
     <div class="row small">${esc(palletId)}</div>
     <div class="row mid">PO: ${esc(po || '')}</div>
     <div class="row small">${Number(boxCount || 0)} boxes</div>
+    ${finalizedBy ? `<div class="row mid">Finalized by ${esc(finalizedBy)}</div>` : ''}
   `;
   printLabels([html], { ...LABEL_SIZES.pallet, copies, title: 'Pallet label' });
 }
