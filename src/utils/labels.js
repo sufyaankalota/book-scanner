@@ -64,12 +64,7 @@ function truncate(s, n) {
  * label. `copies` repeats the whole set (pallet labels print x4).
  * Throws if the popup is blocked so the caller can surface a clear message.
  */
-export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = {}) {
-  const win = window.open('', '_blank', 'width=520,height=720');
-  if (!win) throw new Error('Could not open the print window — allow pop-ups for this site, then retry.');
-  const pages = [];
-  for (let c = 0; c < copies; c++) pages.push(...pageHtmls);
-  const css = `
+const LABEL_CSS = (w, h) => `
     @page { size: ${w}in ${h}in; margin: 0; }
     html, body { margin: 0; padding: 0; }
     * { box-sizing: border-box; }
@@ -77,13 +72,9 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       text-align: center; font-family: Arial, Helvetica, sans-serif; color: #000; }
     .label:last-child { page-break-after: auto; }
-    /* Keep thermal output sharp: print the high-res barcode 1:1 with no
-       smoothing so 203-dpi bars/modules stay crisp and scannable. */
     .qr, .ean { image-rendering: -webkit-optimize-contrast; image-rendering: pixelated; }
     .brand { font-weight: 800; font-size: 12pt; letter-spacing: 0.4px; }
     .qr { width: 2.4in; height: 2.4in; }
-    /* Book label: a 4-row grid (title / bars / digits / PO) so rows can never
-       overlap regardless of barcode aspect. Bars are height-constrained. */
     .bk { display: grid; grid-auto-rows: min-content; row-gap: 0.03in; width: 100%; height: 100%; align-content: center; justify-items: center; }
     .ean { width: 2.0in; height: 0.5in; object-fit: contain; }
     .bk-title { font-size: 8pt; font-weight: 700; line-height: 1.05; max-width: 2.1in; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -94,10 +85,22 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
     .small { font-size: 9pt; }
     .row { margin: 2px 0; }
   `;
-  win.document.write(
-    `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head>` +
-    `<body>${pages.map((p) => `<div class="label">${p}</div>`).join('')}</body></html>`
-  );
+
+/** Build the full printable HTML document for a set of pre-sized label pages.
+ *  Returned shape is serialisable, so it can be queued to the print station. */
+export function buildLabelDoc(pageHtmls, { w, h, copies = 1, title = 'Labels' } = {}) {
+  const pages = [];
+  for (let c = 0; c < copies; c++) pages.push(...pageHtmls);
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${LABEL_CSS(w, h)}</style></head>`
+    + `<body>${pages.map((p) => `<div class="label">${p}</div>`).join('')}</body></html>`;
+  return { html, w, h, copies, title };
+}
+
+/** Local fallback: open a popup window and print a built doc. */
+export function printLabelDoc({ html }) {
+  const win = window.open('', '_blank', 'width=520,height=720');
+  if (!win) throw new Error('Could not open the print window — allow pop-ups for this site, then retry.');
+  win.document.write(html);
   win.document.close();
   win.focus();
   const fire = () => { try { win.print(); } catch { /* user can print manually */ } };
@@ -105,10 +108,15 @@ export function printLabels(pageHtmls, { w, h, copies = 1, title = 'Labels' } = 
   setTimeout(fire, 400);
 }
 
-/** Print a single book ISBN label (2.25 x 1.25): title + EAN-13 bars + digits + PO. */
-export function printBookLabel({ isbn13, title, po }) {
+/** Back-compat: build + print in one step (used by older callers). */
+export function printLabels(pageHtmls, opts = {}) {
+  printLabelDoc(buildLabelDoc(pageHtmls, opts));
+}
+
+// ─── Per-label page markup (inner content of one .label) ───
+function bookPage({ isbn13, title, po }) {
   const img = ean13DataUrl(isbn13);
-  const html = `
+  return `
     <div class="bk">
       <div class="bk-title">${esc(truncate(title, 30))}</div>
       <img class="ean" src="${img}" alt="" />
@@ -116,13 +124,10 @@ export function printBookLabel({ isbn13, title, po }) {
       <div class="bk-po">PO: ${esc(po || '')}</div>
     </div>
   `;
-  printLabels([html], { ...LABEL_SIZES.book, title: 'ISBN label' });
 }
-
-/** Print a box label (4 x 6): QR(boxId) + branding + PO + item count. */
-export function printBoxLabel({ boxId, po, itemCount, jobName }) {
+function boxPage({ boxId, po, itemCount, jobName }) {
   const img = qrDataUrl(boxId);
-  const html = `
+  return `
     <div class="brand">${esc(CO_BRAND)}</div>
     <div class="row small">${esc(jobName || '')}</div>
     <img class="qr" src="${img}" alt="" />
@@ -131,13 +136,10 @@ export function printBoxLabel({ boxId, po, itemCount, jobName }) {
     <div class="row mid">PO: ${esc(po || '')}</div>
     <div class="row small">${Number(itemCount || 0)} items</div>
   `;
-  printLabels([html], { ...LABEL_SIZES.box, title: 'Box label' });
 }
-
-/** Print a pallet label (4 x 6) x4 copies: QR(palletId) + branding + PO + box count. */
-export function printPalletLabel({ palletId, number, po, boxCount, jobName, finalizedBy }, copies = 4) {
+function palletPage({ palletId, number, po, boxCount, jobName, finalizedBy }) {
   const img = qrDataUrl(palletId);
-  const html = `
+  return `
     <div class="brand">${esc(CO_BRAND)}</div>
     <div class="row small">${esc(jobName || '')}</div>
     <img class="qr" src="${img}" alt="" />
@@ -147,5 +149,14 @@ export function printPalletLabel({ palletId, number, po, boxCount, jobName, fina
     <div class="row small">${Number(boxCount || 0)} boxes</div>
     ${finalizedBy ? `<div class="row mid">Finalized by ${esc(finalizedBy)}</div>` : ''}
   `;
-  printLabels([html], { ...LABEL_SIZES.pallet, copies, title: 'Pallet label' });
 }
+
+// ─── Doc builders (serialisable; for the print queue) ───
+export function bookLabelDoc(x) { return { ...buildLabelDoc([bookPage(x)], { ...LABEL_SIZES.book, title: 'ISBN label' }), kind: 'book' }; }
+export function boxLabelDoc(x) { return { ...buildLabelDoc([boxPage(x)], { ...LABEL_SIZES.box, title: 'Box label' }), kind: 'box' }; }
+export function palletLabelDoc(x, copies = 4) { return { ...buildLabelDoc([palletPage(x)], { ...LABEL_SIZES.pallet, copies, title: 'Pallet label' }), kind: 'pallet' }; }
+
+// ─── Local print helpers (open a popup; used when no station printer is set) ───
+export function printBookLabel(x) { printLabelDoc(bookLabelDoc(x)); }
+export function printBoxLabel(x) { printLabelDoc(boxLabelDoc(x)); }
+export function printPalletLabel(x, copies = 4) { printLabelDoc(palletLabelDoc(x, copies)); }

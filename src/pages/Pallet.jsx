@@ -7,10 +7,11 @@ import {
   openPallet, addBoxToPallet, closePallet, checkPalletLimits, watchOpenPallets, deletePallet,
 } from '../utils/palletStore';
 import { getBox } from '../utils/boxStore';
-import { printPalletLabel } from '../utils/labels';
+import { palletLabelDoc, printLabelDoc } from '../utils/labels';
 import { useScanInput } from '../hooks/useScanInput';
 import { makePoColorFor } from '../utils/poColors';
 import OperatorEntry from '../components/OperatorEntry';
+import { watchPrinters, enqueuePrintJob, getAssignment, setAssignment } from '../lib/printQueue';
 
 // Human-friendly pallet name. `number` is the job-wide Pallet 1,2,3…; older
 // pallets created before numbering fall back to the license-plate id.
@@ -33,6 +34,9 @@ export default function Pallet() {
   const [busy, setBusy] = useState(false);
   const [lastAdd, setLastAdd] = useState(null); // { number, po, boxCount, boxId } — the box just scanned
   const [closingId, setClosingId] = useState(null); // pallet id currently being weighed + printed
+  const [printers, setPrinters] = useState([]);
+  const [palletAssign, setPalletAssign] = useState(() => getAssignment('pallet'));
+  const [sentTo, setSentTo] = useState(null); // { printerName, label } after a pallet is sent
 
   const flashTimer = useRef(null);
   const showFlash = useCallback((tone, msg) => {
@@ -93,6 +97,7 @@ export default function Pallet() {
       }
       const res = await addBoxToPallet(pallet.id, boxId);
       setLastAdd({ number: pallet.number ?? null, po, boxCount: res.boxCount, boxId });
+      setSentTo(null);
     } catch (e) {
       showFlash('error', e.message || 'Failed to add box');
     } finally {
@@ -102,6 +107,8 @@ export default function Pallet() {
 
   useScanInput(onScan, { enabled: entered });
 
+  useEffect(() => watchPrinters(setPrinters), []);
+
   const handleClose = useCallback(async (pallet) => {
     const m = measure[pallet.id] || {};
     const weightLb = m.w === '' || m.w == null ? null : Number(m.w);
@@ -110,14 +117,21 @@ export default function Pallet() {
     if (!chk.ok) { showFlash('error', chk.error); return; }
     try {
       if (!training) await closePallet(pallet.id, { weightLb, heightIn, finalizedBy: operator });
-      printPalletLabel({ palletId: pallet.id, number: pallet.number, po: pallet.poName, boxCount: pallet.boxCount || 0, jobName: job?.meta?.name, finalizedBy: operator }, 4);
+      const labelDoc = palletLabelDoc({ palletId: pallet.id, number: pallet.number, po: pallet.poName, boxCount: pallet.boxCount || 0, jobName: job?.meta?.name, finalizedBy: operator }, 4);
+      if (palletAssign?.printerId) {
+        await enqueuePrintJob({ printerId: palletAssign.printerId, printerName: palletAssign.printerName, type: 'pallet', labelDoc, meta: { label: palletName(pallet) }, createdBy: operator });
+        setSentTo({ printerName: palletAssign.printerName, label: palletName(pallet) });
+        showFlash('success', `${palletName(pallet)} \u2192 ${palletAssign.printerName}`);
+      } else {
+        printLabelDoc(labelDoc);
+        showFlash('success', `${palletName(pallet)} done \u2014 printing 4 labels`);
+      }
       palletByPoRef.current[pallet.poName] = undefined;
       setClosingId(null);
       setLastAdd(null);
       setMeasure((prev) => { const next = { ...prev }; delete next[pallet.id]; return next; });
-      showFlash('success', `${palletName(pallet)} done \u2014 printing 4 labels`);
     } catch (e) { showFlash('error', e.message || 'Failed to close pallet'); }
-  }, [measure, training, job, operator, showFlash]);
+  }, [measure, training, job, operator, palletAssign, showFlash]);
 
   const setM = (palletId, key, val) => setMeasure((prev) => ({ ...prev, [palletId]: { ...prev[palletId], [key]: val } }));
 
@@ -176,6 +190,19 @@ export default function Pallet() {
         </label>
       </div>
       <p style={st.sub}>{`${operator} \u00b7 ${station}`}</p>
+      <div style={st.printerRow}>
+        <Printer size={14} />
+        <span style={st.printerLbl}>Labels to</span>
+        <select style={st.printerSel} value={palletAssign?.printerId || ''} onChange={(e) => {
+          const id = e.target.value;
+          let v = null;
+          if (id) { const p = printers.find((x) => x.id === id); v = p ? { printerId: p.id, printerName: p.name } : null; }
+          setAssignment('pallet', v); setPalletAssign(v);
+        }}>
+          <option value="">This device (popup)</option>
+          {printers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
 
       {/* The one thing that matters after a scan: which pallet to stack it on */}
       {/* The one thing that matters after a scan: which PO pallet to stack it on */}
@@ -195,6 +222,16 @@ export default function Pallet() {
       {flash && (
         <div style={{ ...st.flash, ...(flash.tone === 'success' ? st.flashOk : flash.tone === 'warn' ? st.flashWarn : st.flashErr) }}>
           {flash.tone === 'success' ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />} {flash.msg}
+        </div>
+      )}
+
+      {sentTo && (
+        <div style={st.goTo}>
+          <Printer size={22} />
+          <div>
+            <div style={st.goToTitle}>{`Go to ${sentTo.printerName}`}</div>
+            <div style={st.goToSub}>{`${sentTo.label}\u2019s 4 labels are printing there`}</div>
+          </div>
         </div>
       )}
 
@@ -257,6 +294,12 @@ const st = {
   h2: { fontSize: 20, fontWeight: 800, margin: '0 0 12px', fontFamily: 'var(--font-display)' },
   dim: { color: 'var(--text-secondary, #888)', fontSize: 14, margin: '4px 0' },
   sub: { color: 'var(--text-secondary,#888)', fontSize: 13, margin: '2px 0 16px' },
+  printerRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: 'var(--text-secondary,#9aa4b2)' },
+  printerLbl: { fontSize: 13, fontWeight: 600, flexShrink: 0 },
+  printerSel: { flex: 1, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#1a1a1a)', color: 'var(--text,#fff)', fontSize: 14 },
+  goTo: { display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderRadius: 14, background: 'var(--accent-soft,rgba(77,124,255,.14))', border: '2px solid var(--accent,#4d7cff)', color: 'var(--accent,#7da2ff)', marginBottom: 16 },
+  goToTitle: { fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-display)' },
+  goToSub: { fontSize: 13, color: 'var(--text-secondary,#9aa4b2)', marginTop: 2 },
   warn: { color: 'var(--warning, #f5a524)', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 },
   label: { display: 'block', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 700, margin: '14px 0 6px' },
   input: { width: '100%', padding: '14px', borderRadius: 10, border: '1px solid var(--border, #444)', background: 'var(--bg-input, #1a1a1a)', color: 'var(--text, #fff)', fontSize: 17, boxSizing: 'border-box' },

@@ -8,7 +8,8 @@ import { lookupEntry, loadTitleIndex } from '../utils/manifestStore';
 import { suggestTitles } from '../utils/fuzzy';
 import { openBox, addBoxItem, closeBox, watchOpenBoxes, listBoxesWithItems } from '../utils/boxStore';
 import { listPalletsForJob } from '../utils/palletStore';
-import { printBookLabel, printBoxLabel } from '../utils/labels';
+import { printBookLabel, printBoxLabel, bookLabelDoc, boxLabelDoc } from '../utils/labels';
+import { watchPrinters, enqueuePrintJob, getAssignment, setAssignment } from '../lib/printQueue';
 import { exportBoxPalletXLSX } from '../utils/export';
 import { makePoColorFor } from '../utils/poColors';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
@@ -45,6 +46,10 @@ export default function Pack() {
   const [flash, setFlash] = useState(null); // { tone, msg }
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [printers, setPrinters] = useState([]);
+  const [barcodeAssign, setBarcodeAssign] = useState(() => getAssignment('pack_barcode'));
+  const [boxAssign, setBoxAssign] = useState(() => getAssignment('pack_box'));
+  const [showPrinters, setShowPrinters] = useState(false);
   const [recent, setRecent] = useState([]); // [{ isbn, title, po, boxId, t }]
   const [trainCount, setTrainCount] = useState(0);
 
@@ -117,6 +122,23 @@ export default function Pack() {
 
   const pushRecent = useCallback((r) => setRecent((prev) => [r, ...prev].slice(0, 8)), []);
 
+  useEffect(() => watchPrinters(setPrinters), []);
+
+  // Route a label to its assigned print-station printer, else print locally.
+  const emitBookLabel = useCallback((payload) => {
+    if (barcodeAssign?.printerId) {
+      enqueuePrintJob({ printerId: barcodeAssign.printerId, printerName: barcodeAssign.printerName, type: 'book', labelDoc: bookLabelDoc(payload), meta: { label: payload.title || payload.isbn13 }, createdBy: operator })
+        .catch((e) => showFlash('error', e.message || 'Print queue failed'));
+    } else { printBookLabel(payload); }
+  }, [barcodeAssign, operator, showFlash]);
+
+  const emitBoxLabel = useCallback((payload) => {
+    if (boxAssign?.printerId) {
+      enqueuePrintJob({ printerId: boxAssign.printerId, printerName: boxAssign.printerName, type: 'box', labelDoc: boxLabelDoc(payload), meta: { label: payload.boxId }, createdBy: operator })
+        .catch((e) => showFlash('error', e.message || 'Print queue failed'));
+    } else { printBoxLabel(payload); }
+  }, [boxAssign, operator, showFlash]);
+
   // ── Core: resolve a book to its manifest entry, then pack it ──
   const resolveAndPack = useCallback(async (rawIsbn, { source }) => {
     if (!job || !hasManifest) { showFlash('error', 'No active packing job with a manifest'); return; }
@@ -132,7 +154,7 @@ export default function Pack() {
       const needsPrint = source === 'title' || source === 'manual' || source === 'camera';
 
       if (training) {
-        if (needsPrint) printBookLabel({ isbn13: canonical, title, po });
+        if (needsPrint) emitBookLabel({ isbn13: canonical, title, po });
         setTrainCount((n) => n + 1);
         showFlash('success', `TRAIN · ${po} · ${title || canonical}`);
         return;
@@ -155,7 +177,7 @@ export default function Pack() {
         boxesByPoRef.current[po] = box; // sync guard against rapid double-open
       }
       const res = await addBoxItem(box.id, { isbn13: canonical, title, source: source || 'scan' });
-      if (needsPrint) printBookLabel({ isbn13: canonical, title, po });
+      if (needsPrint) emitBookLabel({ isbn13: canonical, title, po });
       if (res.added === false) showFlash('warn', `Already in ${box.id}`);
       else showFlash('success', `${po} \u2192 ${box.id}`);
       pushRecent({ isbn: canonical, title, po, boxId: box.id, t: Date.now() });
@@ -164,7 +186,7 @@ export default function Pack() {
     } finally {
       setBusy(false);
     }
-  }, [job, hasManifest, manifestPath, numChunks, training, station, operator, showFlash, pushRecent]);
+  }, [job, hasManifest, manifestPath, numChunks, training, station, operator, showFlash, pushRecent, emitBookLabel]);
 
   // ── Scan input (wedge / native bridge / manual) ──
   const submitScan = useScanInput((code) => resolveAndPack(code, { source: 'scan' }), { enabled: entered && !showTitle && !showManual && !showCamera });
@@ -229,13 +251,13 @@ export default function Pack() {
   const handleCloseBox = useCallback(async (box) => {
     try {
       if (!training) await closeBox(box.id);
-      printBoxLabel({ boxId: box.id, po: box.poName, itemCount: box.itemCount || 0, jobName: job?.meta?.name });
+      emitBoxLabel({ boxId: box.id, po: box.poName, itemCount: box.itemCount || 0, jobName: job?.meta?.name });
       boxesByPoRef.current[box.poName] = undefined;
       showFlash('success', `Closed ${box.id}`);
     } catch (e) {
       showFlash('error', e.message || 'Failed to close box');
     }
-  }, [training, job, showFlash]);
+  }, [training, job, showFlash, emitBoxLabel]);
 
   // ── Render ──
   if (jobLoading) return <Shell><p style={st.dim}>{'Loading\u2026'}</p></Shell>;
@@ -274,6 +296,9 @@ export default function Pack() {
           <p style={st.dim}>{`${operator} \u00b7 ${station} \u00b7 ${hasManifest ? `${(job.manifestMeta?.totalIsbns || 0).toLocaleString()} ISBNs` : 'no manifest'}`}</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button style={st.exportBtn} onClick={() => setShowPrinters(true)}>
+            <Printer size={15} /> Printers
+          </button>
           <button style={st.exportBtn} disabled={exporting} onClick={exportContent}>
             <Download size={15} /> {exporting ? 'Exporting\u2026' : 'Export content'}
           </button>
@@ -381,6 +406,17 @@ export default function Pack() {
         </Modal>
       )}
 
+      {/* Printer settings modal */}
+      {showPrinters && (
+        <Modal onClose={() => setShowPrinters(false)} title="Label printers">
+          <PrinterPicker label="Barcode (book ISBN) labels" printers={printers} value={barcodeAssign}
+            onChange={(v) => { setAssignment('pack_barcode', v); setBarcodeAssign(v); }} />
+          <PrinterPicker label="Box labels" printers={printers} value={boxAssign}
+            onChange={(v) => { setAssignment('pack_box', v); setBoxAssign(v); }} />
+          <p style={st.hint}>Labels go to the Print Station agent for the chosen printer (no popup). Pick {'\u201c'}This device{'\u201d'} to use the browser print window. Add printers at /print-station.</p>
+        </Modal>
+      )}
+
       {/* AI cover camera modal */}
       {showCamera && (
         <Modal onClose={closeCamera} title="Scan cover (AI)">
@@ -413,6 +449,23 @@ export default function Pack() {
         </Modal>
       )}
     </Shell>
+  );
+}
+
+function PrinterPicker({ label, printers, value, onChange }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={st.label}>{label}</label>
+      <select style={st.input} value={value?.printerId || ''} onChange={(e) => {
+        const id = e.target.value;
+        if (!id) { onChange(null); return; }
+        const p = printers.find((x) => x.id === id);
+        onChange(p ? { printerId: p.id, printerName: p.name } : null);
+      }}>
+        <option value="">This device (print popup)</option>
+        {printers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+    </div>
   );
 }
 
