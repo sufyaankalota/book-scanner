@@ -17,6 +17,7 @@ import { useScanInput } from '../hooks/useScanInput';
 import BookCamera from '../components/BookCamera';
 import OperatorEntry from '../components/OperatorEntry';
 import StationBar from '../components/StationBar';
+import { getOperator, clearOperator } from '../lib/stationIdentity';
 
 const CLAIM_TTL = 60 * 24 * 3600; // 60 days — a packing job can span weeks
 
@@ -37,9 +38,9 @@ function suggestIsbns(digits, index, limit = 7) {
 export default function Pack() {
   const [job, setJob] = useState(null);
   const [jobLoading, setJobLoading] = useState(true);
-  const [operator, setOperator] = useState(() => localStorage.getItem('pack_operator') || '');
+  const [operator, setOperator] = useState(() => getOperator());
   const [station, setStation] = useState(() => localStorage.getItem('pack_station') || 'PACK-1');
-  const [entered, setEntered] = useState(() => Boolean(localStorage.getItem('pack_operator')));
+  const [entered, setEntered] = useState(() => Boolean(getOperator()));
   const [training, setTraining] = useState(false);
 
   const [openBoxes, setOpenBoxes] = useState([]);
@@ -126,7 +127,7 @@ export default function Pack() {
   useEffect(() => watchPrinters(setPrinters), []);
 
   const switchOperator = useCallback(() => {
-    localStorage.removeItem('pack_operator');
+    clearOperator();
     setEntered(false);
   }, []);
 
@@ -273,13 +274,11 @@ export default function Pack() {
       <OperatorEntry
         title="Pack station"
         subtitle="Scan or look up each book, pack it into its PO box, then close the box."
-        area="pack"
+        current="pack"
         stationLabel="Station"
         stationDefault={station || 'PACK-1'}
         stationPlaceholder="PACK-1"
-        cta="Start packing"
         onStart={({ name, station: st0 }) => {
-          localStorage.setItem('pack_operator', name);
           localStorage.setItem('pack_station', st0);
           setOperator(name);
           setStation(st0);

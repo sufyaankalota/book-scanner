@@ -17,7 +17,7 @@ import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import { PER_POD_DAILY_TARGET, PER_POD_DAILY_MIN, PER_POD_BONUS_TARGET } from '../utils/target';
 import { displayOperatorName } from '../utils/operator';
-import StationBar from '../components/StationBar';
+import { setOperator as setStationOperator } from '../lib/stationIdentity';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
@@ -291,6 +291,7 @@ export default function Pod() {
       return;
     }
     saveOperatorToHistory(name);
+    setStationOperator(name);
     setPodLocked(false);
     // Fire-and-forget: look up this operator's most recent prior day total
     // so we can show them a record to beat. Doesn't block pod entry.
@@ -1833,7 +1834,6 @@ export default function Pod() {
       <div style={styles.container}>
         <Link to={backPath} style={styles.backLink}>{fromPods ? t('backToPods') : t('backToHome')}</Link>
         <h1 style={styles.podTitle}>Pod {podId}</h1>
-        <StationBar area="scan" />
         <div style={styles.setupCard}>
           <div style={styles.stepIndicator}>{t('step1Of2')}</div>
           <h2 style={styles.setupHeading}>{t('enterName')}?</h2>
@@ -1865,11 +1865,20 @@ export default function Pod() {
             </div>
           )}
 
-          <button
-            onClick={() => { if (operatorName.trim()) advanceFromOperator(); }}
-            disabled={!operatorName.trim()}
-            style={{ ...styles.primaryBtn, marginTop: 16, opacity: operatorName.trim() ? 1 : 0.5 }}
-          >{t('nextPairScanner')}</button>
+          <div style={{ marginTop: 18, color: 'var(--text-tertiary,#999)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
+            {operatorName.trim() ? 'Choose your work area' : 'Enter your name to choose an area'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10 }}>
+            <button disabled={!operatorName.trim()}
+              onClick={() => { if (operatorName.trim()) advanceFromOperator(); }}
+              style={{ ...styles.primaryBtn, margin: 0, opacity: operatorName.trim() ? 1 : 0.5 }}>Scan books</button>
+            <button disabled={!operatorName.trim()}
+              onClick={() => { const n = displayOperatorName(operatorName); if (!n) return; setStationOperator(n); saveOperatorToHistory(n); navigate('/pack'); }}
+              style={{ padding: '14px', borderRadius: 10, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 800, fontSize: 15, cursor: 'pointer', opacity: operatorName.trim() ? 1 : 0.5 }}>Pack boxes</button>
+            <button disabled={!operatorName.trim()}
+              onClick={() => { const n = displayOperatorName(operatorName); if (!n) return; setStationOperator(n); saveOperatorToHistory(n); navigate('/pallet'); }}
+              style={{ padding: '14px', borderRadius: 10, border: '1px solid var(--border,#444)', background: 'var(--bg-input,#222)', color: 'var(--text,#fff)', fontWeight: 800, fontSize: 15, cursor: 'pointer', opacity: operatorName.trim() ? 1 : 0.5 }}>Build pallets</button>
+          </div>
         </div>
       </div>
     );

@@ -155,35 +155,9 @@ export default function Home() {
       {job && <TodayLeaderboard job={job} compact />}
 
       {/* Navigation */}
+      {/* Worker stations — open directly, or reach them from any pod */}
+      <div style={{ color: 'var(--text-tertiary, #888)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '22px 0 10px' }}>Stations</div>
       <nav className="home-nav stagger" style={styles.nav}>
-        <Link to="/setup" style={styles.navLink}>
-          <Settings size={22} />
-          <span>Setup</span>
-        </Link>
-        <Link to="/dashboard" style={styles.navLink}>
-          <LayoutDashboard size={22} />
-          <span>Dashboard</span>
-        </Link>
-        <Link to="/kiosk" style={styles.navLink}>
-          <MonitorPlay size={22} />
-          <span>Kiosk</span>
-        </Link>
-        <Link to="/history" style={styles.navLink}>
-          <History size={22} />
-          <span>History</span>
-        </Link>
-        <Link to="/billing" style={styles.navLink}>
-          <Receipt size={22} />
-          <span>Billing</span>
-        </Link>
-        <Link to="/reports" style={styles.navLink}>
-          <TrendingUp size={22} />
-          <span>Reports</span>
-        </Link>
-        <Link to="/portal" style={styles.navLink}>
-          <Package size={22} />
-          <span>Portal</span>
-        </Link>
         <Link to="/pack" style={styles.navLink}>
           <Boxes size={22} />
           <span>Pack</span>
@@ -196,6 +170,39 @@ export default function Home() {
           <Printer size={22} />
           <span>Print Station</span>
         </Link>
+      </nav>
+
+      {/* Management */}
+      <div style={{ color: 'var(--text-tertiary, #888)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, margin: '22px 0 10px' }}>Manage</div>
+      <nav className="home-nav stagger" style={styles.nav}>
+        <Link to="/setup" style={styles.navLink}>
+          <Settings size={22} />
+          <span>Setup</span>
+        </Link>
+        <Link to="/dashboard" style={styles.navLink}>
+          <LayoutDashboard size={22} />
+          <span>Dashboard</span>
+        </Link>
+        <Link to="/reports" style={styles.navLink}>
+          <TrendingUp size={22} />
+          <span>Reports</span>
+        </Link>
+        <Link to="/billing" style={styles.navLink}>
+          <Receipt size={22} />
+          <span>Billing</span>
+        </Link>
+        <Link to="/history" style={styles.navLink}>
+          <History size={22} />
+          <span>History</span>
+        </Link>
+        <Link to="/portal" style={styles.navLink}>
+          <Package size={22} />
+          <span>Portal</span>
+        </Link>
+        <Link to="/kiosk" style={styles.navLink}>
+          <MonitorPlay size={22} />
+          <span>Kiosk</span>
+        </Link>
         <Link to="/demo" style={styles.navLink}>
           <PlayCircle size={22} />
           <span>Demo</span>
@@ -205,7 +212,7 @@ export default function Home() {
       {/* Pod Grid */}
       <h2 style={styles.sectionTitle}>Pod Stations</h2>
       <p style={styles.sectionHint}>
-        Open the link for your pod on its laptop. Scanner connects automatically via USB.
+        Each laptop opens its pod link below. The worker enters their name, then picks a work area {'\u2014'} Scan, Pack, or Pallet.
       </p>
 
       <div className="home-podgrid stagger" style={styles.podGrid}>

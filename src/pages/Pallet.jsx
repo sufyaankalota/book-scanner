@@ -13,6 +13,7 @@ import { makePoColorFor } from '../utils/poColors';
 import OperatorEntry from '../components/OperatorEntry';
 import StationBar from '../components/StationBar';
 import { watchPrinters, enqueuePrintJob, getAssignment, setAssignment } from '../lib/printQueue';
+import { getOperator, clearOperator } from '../lib/stationIdentity';
 
 // Human-friendly pallet name. `number` is the job-wide Pallet 1,2,3…; older
 // pallets created before numbering fall back to the license-plate id.
@@ -23,9 +24,9 @@ function palletName(p) {
 export default function Pallet() {
   const [job, setJob] = useState(null);
   const [jobLoading, setJobLoading] = useState(true);
-  const [operator, setOperator] = useState(() => localStorage.getItem('pallet_operator') || '');
+  const [operator, setOperator] = useState(() => getOperator());
   const [station, setStation] = useState(() => localStorage.getItem('pallet_station') || 'PALLET-1');
-  const [entered, setEntered] = useState(() => Boolean(localStorage.getItem('pallet_operator')));
+  const [entered, setEntered] = useState(() => Boolean(getOperator()));
   const [training, setTraining] = useState(false);
 
   const [openPallets, setOpenPallets] = useState([]);
@@ -111,7 +112,7 @@ export default function Pallet() {
   useEffect(() => watchPrinters(setPrinters), []);
 
   const switchOperator = useCallback(() => {
-    localStorage.removeItem('pallet_operator');
+    clearOperator();
     setEntered(false);
   }, []);
 
@@ -165,13 +166,11 @@ export default function Pallet() {
       <OperatorEntry
         title="Pallet station"
         subtitle="Scan boxes onto pallets, then print pallet labels."
-        area="pallet"
+        current="pallet"
         stationLabel="Station"
         stationDefault={station || 'PALLET-1'}
         stationPlaceholder="PALLET-1"
-        cta="Start palletizing"
         onStart={({ name, station: st0 }) => {
-          localStorage.setItem('pallet_operator', name);
           localStorage.setItem('pallet_station', st0);
           setOperator(name);
           setStation(st0);

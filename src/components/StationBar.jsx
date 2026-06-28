@@ -28,7 +28,7 @@ export default function StationBar({ area, operator, onSwitchOperator }) {
         <div style={s.who}>
           <span style={s.dot} /> {operator}
           {onSwitchOperator && (
-            <button style={s.switch} onClick={onSwitchOperator}><LogOut size={13} /> Switch</button>
+            <button style={s.switch} onClick={onSwitchOperator}><LogOut size={13} /> Change name</button>
           )}
         </div>
       )}
