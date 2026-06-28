@@ -11,6 +11,7 @@ import { palletLabelDoc, printLabelDoc } from '../utils/labels';
 import { useScanInput } from '../hooks/useScanInput';
 import { makePoColorFor } from '../utils/poColors';
 import OperatorEntry from '../components/OperatorEntry';
+import StationBar from '../components/StationBar';
 import { watchPrinters, enqueuePrintJob, getAssignment, setAssignment } from '../lib/printQueue';
 
 // Human-friendly pallet name. `number` is the job-wide Pallet 1,2,3…; older
@@ -109,6 +110,11 @@ export default function Pallet() {
 
   useEffect(() => watchPrinters(setPrinters), []);
 
+  const switchOperator = useCallback(() => {
+    localStorage.removeItem('pallet_operator');
+    setEntered(false);
+  }, []);
+
   const handleClose = useCallback(async (pallet) => {
     const m = measure[pallet.id] || {};
     const weightLb = m.w === '' || m.w == null ? null : Number(m.w);
@@ -159,6 +165,7 @@ export default function Pallet() {
       <OperatorEntry
         title="Pallet station"
         subtitle="Scan boxes onto pallets, then print pallet labels."
+        area="pallet"
         stationLabel="Station"
         stationDefault={station || 'PALLET-1'}
         stationPlaceholder="PALLET-1"
@@ -182,6 +189,7 @@ export default function Pallet() {
 
   return (
     <Shell>
+      <StationBar area="pallet" operator={operator} onSwitchOperator={switchOperator} />
       <div style={st.topBar}>
         <h1 style={st.h1}>{`Pallets${job.meta?.test ? ' \u00b7 TEST' : ''}`}</h1>
         <label style={st.trainToggle}>

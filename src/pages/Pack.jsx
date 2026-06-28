@@ -16,6 +16,7 @@ import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import { useScanInput } from '../hooks/useScanInput';
 import BookCamera from '../components/BookCamera';
 import OperatorEntry from '../components/OperatorEntry';
+import StationBar from '../components/StationBar';
 
 const CLAIM_TTL = 60 * 24 * 3600; // 60 days — a packing job can span weeks
 
@@ -123,6 +124,11 @@ export default function Pack() {
   const pushRecent = useCallback((r) => setRecent((prev) => [r, ...prev].slice(0, 8)), []);
 
   useEffect(() => watchPrinters(setPrinters), []);
+
+  const switchOperator = useCallback(() => {
+    localStorage.removeItem('pack_operator');
+    setEntered(false);
+  }, []);
 
   // Route a label to its assigned print-station printer, else print locally.
   const emitBookLabel = useCallback((payload) => {
@@ -267,6 +273,7 @@ export default function Pack() {
       <OperatorEntry
         title="Pack station"
         subtitle="Scan or look up each book, pack it into its PO box, then close the box."
+        area="pack"
         stationLabel="Station"
         stationDefault={station || 'PACK-1'}
         stationPlaceholder="PACK-1"
@@ -290,6 +297,7 @@ export default function Pack() {
 
   return (
     <Shell wide>
+      <StationBar area="pack" operator={operator} onSwitchOperator={switchOperator} />
       <div style={st.headerRow}>
         <div>
           <h1 style={st.h1}>{`Pack \u2014 ${job.meta?.name || ''}${job.meta?.test ? ' (TEST)' : ''}`}</h1>

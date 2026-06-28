@@ -17,6 +17,7 @@ import { lookupIsbn, clearChunkCache } from '../utils/manifestStore';
 import { classify, MATCH_CONFIDENT, MATCH_AMBIGUOUS } from '../utils/fuzzy';
 import { PER_POD_DAILY_TARGET, PER_POD_DAILY_MIN, PER_POD_BONUS_TARGET } from '../utils/target';
 import { displayOperatorName } from '../utils/operator';
+import StationBar from '../components/StationBar';
 import { isScanEngineConfigured, scanEngine } from '../lib/scanEngine';
 import ExceptionModal from '../components/ExceptionModal';
 import BookCamera from '../components/BookCamera';
@@ -1832,6 +1833,7 @@ export default function Pod() {
       <div style={styles.container}>
         <Link to={backPath} style={styles.backLink}>{fromPods ? t('backToPods') : t('backToHome')}</Link>
         <h1 style={styles.podTitle}>Pod {podId}</h1>
+        <StationBar area="scan" />
         <div style={styles.setupCard}>
           <div style={styles.stepIndicator}>{t('step1Of2')}</div>
           <h2 style={styles.setupHeading}>{t('enterName')}?</h2>

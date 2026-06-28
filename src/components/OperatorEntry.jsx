@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { displayOperatorName, normalizeOperatorKey } from '../utils/operator';
+import StationBar from './StationBar';
 
 // Shared "who are you?" entry for the pack + pallet stations, matching the POD
 // flow: type your name (or tap a recent one) + a station, then start. Names are
@@ -22,7 +23,7 @@ export function rememberOperator(name) {
   return disp;
 }
 
-export default function OperatorEntry({ title, subtitle, stationLabel = 'Station', stationDefault = '', stationPlaceholder = '', cta = 'Start', onStart }) {
+export default function OperatorEntry({ title, subtitle, area, stationLabel = 'Station', stationDefault = '', stationPlaceholder = '', cta = 'Start', onStart }) {
   const [name, setName] = useState('');
   const [station, setStation] = useState(stationDefault);
   const [history] = useState(loadHistory);
@@ -37,6 +38,7 @@ export default function OperatorEntry({ title, subtitle, stationLabel = 'Station
     <div style={s.wrap}>
       <Link to="/" style={s.back}>{'\u2190 Home'}</Link>
       <div style={s.card}>
+        {area && <StationBar area={area} />}
         <h2 style={s.h2}>{title}</h2>
         {subtitle && <p style={s.hint}>{subtitle}</p>}
         <label style={s.label}>Your name</label>
@@ -66,7 +68,7 @@ export default function OperatorEntry({ title, subtitle, stationLabel = 'Station
 const s = {
   wrap: { minHeight: '100vh', background: 'var(--bg, #0f0f0f)', color: 'var(--text, #f0f0f0)', fontFamily: 'var(--font-sans)', padding: '20px clamp(16px, 2.5vw, 36px) 40px', boxSizing: 'border-box' },
   back: { color: 'var(--text-tertiary, #888)', textDecoration: 'none', fontSize: 13, fontWeight: 600 },
-  card: { maxWidth: 460, margin: '32px auto', background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 16, padding: 24, boxShadow: 'var(--shadow-card)' },
+  card: { maxWidth: 520, margin: '32px auto', background: 'linear-gradient(180deg, var(--bg-elev,#1b2030), var(--bg-card,#161a24))', border: '1px solid var(--border,#252b3a)', borderRadius: 16, padding: 24, boxShadow: 'var(--shadow-card)' },
   h2: { fontSize: 24, fontWeight: 800, margin: '0 0 6px', fontFamily: 'var(--font-display)' },
   hint: { color: 'var(--text-secondary, #9aa4b2)', fontSize: 14, margin: '0 0 8px' },
   label: { display: 'block', color: 'var(--text-secondary, #aaa)', fontSize: 13, fontWeight: 700, margin: '16px 0 6px' },
